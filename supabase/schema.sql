@@ -13,6 +13,8 @@ create table if not exists public.words (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   term text not null,
+  pronunciation text,
+  ipa text,
   type text not null check (type in ('vocab', 'idiom', 'collocation')),
   meaning_id text not null,
   examples_json jsonb not null default '[]'::jsonb,
@@ -63,6 +65,8 @@ create table if not exists public.study_logs (
 -- Idempotent migration guards if upgrading from single-user v1 schema
 alter table public.words
   add column if not exists user_id uuid default auth.uid() references auth.users(id) on delete cascade,
+  add column if not exists pronunciation text,
+  add column if not exists ipa text,
   add column if not exists next_review_at timestamptz,
   add column if not exists interval_days integer not null default 0,
   add column if not exists ease_factor numeric(4,2) not null default 2.50,
