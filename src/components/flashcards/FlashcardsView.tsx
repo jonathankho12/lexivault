@@ -1,0 +1,909 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useTransform,
+  type PanInfo,
+} from "framer-motion";
+import {
+  BookMarked,
+  CalendarClock,
+  CheckCircle2,
+  Layers,
+  RotateCcw,
+  RotateCw,
+  Shuffle,
+  Sparkles,
+  Tag,
+  XCircle,
+} from "lucide-react";
+import { ComboBadge } from "@/components/gamification/ComboBadge";
+import { AudioButton } from "@/components/ui/AudioButton";
+import { HighlightedText } from "@/components/ui/HighlightedText";
+import { PronunciationText } from "@/components/ui/PronunciationText";
+import { useLanguage } from "@/context/LanguageContext";
+import { useLexiVault } from "@/context/LexiVaultContext";
+import { usePronunciation } from "@/hooks/usePronunciation";
+import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
+import { getDueWords, previewSm2IntervalLabels } from "@/lib/sm2";
+import {
+  playCorrectChime,
+  playGlassClick,
+  playWrongThud,
+} from "@/lib/soundEffects";
+import {
+  cn,
+  formatRegisterBadgeClass,
+  formatTypeLabel,
+} from "@/lib/utils";
+import type { Sm2Rating, WordEntry } from "@/types/lexivault";
+
+type DeckFilter = "due" | "all" | "weakest" | "recent";
+
+function buildDeckByFilter(
+  words: WordEntry[],
+  filter: DeckFilter,
+  shuffle = false
+): WordEntry[] {
+  let base: WordEntry[] = [];
+
+  if (filter === "due") {
+    base = getDueWords(words);
+  } else if (filter === "weakest") {
+    const candidates = words.filter(
+      (w) => w.wrong_count > 0 || w.correct_count < 2
+    );
+    base = [...candidates].sort((a, b) => {
+      const rateA = a.wrong_count / Math.max(1, a.correct_count + a.wrong_count);
+      const rateB = b.wrong_count / Math.max(1, b.correct_count + b.wrong_count);
+      if (Math.abs(rateB - rateA) > 0.01) return rateB - rateA;
+      if (b.wrong_count !== a.wrong_count) return b.wrong_count - a.wrong_count;
+      return a.correct_count - b.correct_count;
+    });
+  } else if (filter === "recent") {
+    base = [...words]
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      .slice(0, 12);
+  } else {
+    base = [...words];
+  }
+
+  if (shuffle && base.length > 1) {
+    for (let i = base.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [base[i], base[j]] = [base[j], base[i]];
+    }
+  }
+
+  return base;
+}
+
+interface SwipeFlashcardProps {
+  word: WordEntry;
+  flipped: boolean;
+  onToggleFlip: () => void;
+  onSwipeAction: (direction: "left" | "right") => void;
+}
+
+function SwipeableFlashcard({
+  word,
+  flipped,
+  onToggleFlip,
+  onSwipeAction,
+}: SwipeFlashcardProps) {
+  const { accent } = useLexiVault();
+  const { t } = useLanguage();
+  const x = useMotionValue(0);
+  const rotate = useTransform(x, [-220, 0, 220], [-9, 0, 9]);
+  const rightBadgeOpacity = useTransform(x, [25, 110], [0, 1]);
+  const leftBadgeOpacity = useTransform(x, [-110, -25], [1, 0]);
+  const isDraggingRef = useRef(false);
+
+  const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
+
+  const handleDragStart = () => {
+    isDraggingRef.current = true;
+  };
+
+  const handleDragEnd = (
+    _event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 60);
+
+    if (info.offset.x > 95 || info.velocity.x > 460) {
+      onSwipeAction("right");
+    } else if (info.offset.x < -95 || info.velocity.x < -460) {
+      onSwipeAction("left");
+    }
+  };
+
+  const handleCardTap = () => {
+    if (isDraggingRef.current) return;
+    playGlassClick();
+    onToggleFlip();
+  };
+
+  return (
+    <motion.div
+      style={{ x, rotate }}
+      drag="x"
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.75}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      initial={{ opacity: 0, scale: 0.94, y: 14 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.92, y: -12, transition: { duration: 0.16 } }}
+      transition={IOS_SPRING}
+      className="transform-gpu will-change-transform relative w-full touch-pan-y select-none cursor-grab active:cursor-grabbing"
+    >
+      {/* Swipe Right Indicator ("Good / Hafal") */}
+      <motion.div
+        style={{ opacity: rightBadgeOpacity }}
+        className="pointer-events-none absolute top-5 left-5 z-30 inline-flex items-center gap-1.5 rounded-full bg-[#30D158]/30 border border-[#30D158]/70 px-3.5 py-1.5 text-xs font-bold text-[#7CF099]"
+      >
+        <CheckCircle2 className="h-4 w-4" />
+        <span>{t.flashcards.swipeGood}</span>
+      </motion.div>
+
+      {/* Swipe Left Indicator ("Again / Ulangi") */}
+      <motion.div
+        style={{ opacity: leftBadgeOpacity }}
+        className="pointer-events-none absolute top-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full bg-[#FF453A]/30 border border-[#FF453A]/70 px-3.5 py-1.5 text-xs font-bold text-[#FFB4AE]"
+      >
+        <XCircle className="h-4 w-4" />
+        <span>{t.flashcards.swipeAgain}</span>
+      </motion.div>
+
+      {/* 3D Flip Container */}
+      <div className="perspective-1200">
+        <motion.div
+          animate={{ rotateY: flipped ? 180 : 0 }}
+          transition={IOS_SPRING}
+          onClick={handleCardTap}
+          className="preserve-3d transform-gpu will-change-transform relative h-[410px] sm:h-[440px] w-full cursor-pointer"
+        >
+          {/* FRONT FACE */}
+          <div className="liquid-glass backface-hidden absolute inset-0 flex flex-col justify-between rounded-[32px] p-5 sm:p-7">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-white/[0.08] border border-white/[0.12] text-[#F5F5F7]">
+                  {formatTypeLabel(word.type)}
+                </span>
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-[11px] font-semibold border",
+                    formatRegisterBadgeClass(word.register)
+                  )}
+                >
+                  {word.register}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] text-[#8E8E93] bg-white/[0.05]">
+                  <Tag className="h-3 w-3" />
+                  {word.source_tag || "Umum"}
+                </span>
+              </div>
+
+              <div
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1.5 shrink-0"
+              >
+                <AudioButton
+                  text={word.term}
+                  remoteUrl={remoteUrl}
+                  wordId={word.id}
+                  size="md"
+                />
+              </div>
+            </div>
+
+            <div className="my-auto py-4 text-center space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-[#8E8E93]">
+                Ingat arti &amp; penggunaannya?
+              </p>
+              <h3 className="text-3xl sm:text-5xl font-bold tracking-tight text-white break-words px-2">
+                {word.term}
+              </h3>
+
+              <PronunciationText
+                term={word.term}
+                pronunciation={word.pronunciation}
+                ipa={word.ipa}
+                showIpa
+                align="center"
+                size="sm"
+                className="px-2"
+              />
+
+              {/* Quick US / UK audio pills */}
+              <div
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center justify-center gap-2 pt-2"
+              >
+                <AudioButton
+                  text={word.term}
+                  accentOverride="US"
+                  remoteUrl={word.audio_us_url}
+                  wordId={word.id}
+                  label="US"
+                  size="sm"
+                />
+                <AudioButton
+                  text={word.term}
+                  accentOverride="UK"
+                  remoteUrl={word.audio_uk_url}
+                  wordId={word.id}
+                  label="UK"
+                  size="sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-[#8E8E93] pt-2 border-t border-white/[0.08]">
+              <span>← {t.flashcards.swipeAgain}</span>
+              <span className="inline-flex items-center gap-1 text-[#70BCFF] font-medium">
+                <RotateCw className="h-3 w-3" />
+                {t.flashcards.tapFlipHint}
+              </span>
+              <span>{t.flashcards.swipeGood} →</span>
+            </div>
+          </div>
+
+          {/* BACK FACE */}
+          <div className="liquid-glass-elevated backface-hidden rotate-y-180 absolute inset-0 flex flex-col rounded-[32px] p-5 sm:p-6 overflow-y-auto no-scrollbar">
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/[0.09] shrink-0">
+              <div className="min-w-0">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#0A84FF]">
+                  {formatTypeLabel(word.type)} · {word.register}
+                </span>
+                <h4 className="text-lg sm:text-xl font-bold text-white truncate">
+                  {word.term}
+                </h4>
+                <PronunciationText
+                  term={word.term}
+                  pronunciation={word.pronunciation}
+                  ipa={word.ipa}
+                  size="xs"
+                  className="mt-0.5"
+                />
+              </div>
+              <div
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <AudioButton
+                  text={word.term}
+                  remoteUrl={remoteUrl}
+                  wordId={word.id}
+                  size="sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-3.5 space-y-3.5 flex-1">
+              {/* Meaning */}
+              <div className="rounded-2xl bg-white/[0.05] border border-white/[0.09] p-3.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8E8E93] mb-1">
+                  {t.flashcards.meaningTitle}
+                </p>
+                <p className="text-sm sm:text-[15px] leading-relaxed font-medium text-[#F5F5F7]">
+                  {word.meaning_id}
+                </p>
+              </div>
+
+              {/* Example */}
+              {word.examples_json?.[0] && (
+                <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3.5 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#70BCFF]">
+                      {t.flashcards.exampleTitle}
+                    </span>
+                    <div
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <AudioButton
+                        text={word.examples_json[0].sentence.replace(/\*\*/g, "")}
+                        size="sm"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs sm:text-sm leading-relaxed text-[#F5F5F7]">
+                    <HighlightedText text={word.examples_json[0].sentence} />
+                  </p>
+                  {word.examples_json[0].translation_id && (
+                    <p className="text-[11px] leading-relaxed text-[#8E8E93]">
+                      <HighlightedText
+                        text={word.examples_json[0].translation_id}
+                      />
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Synonyms & Antonyms */}
+              {(word.synonyms.length > 0 || word.antonyms.length > 0) && (
+                <div className="flex flex-wrap gap-1.5">
+                  {word.synonyms.slice(0, 3).map((syn, idx) => (
+                    <span
+                      key={`syn-${idx}`}
+                      className="rounded-full bg-[#30D158]/12 border border-[#30D158]/30 px-2.5 py-0.5 text-[11px] text-[#A5F2B8]"
+                    >
+                      ≈ {syn}
+                    </span>
+                  ))}
+                  {word.antonyms.slice(0, 2).map((ant, idx) => (
+                    <span
+                      key={`ant-${idx}`}
+                      className="rounded-full bg-[#FF9F0A]/12 border border-[#FF9F0A]/30 px-2.5 py-0.5 text-[11px] text-[#FFD18C]"
+                    >
+                      ≠ {ant}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Word Family */}
+              {word.word_families_json.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  {word.word_families_json.slice(0, 4).map((wf, idx) => (
+                    <span
+                      key={`wf-${idx}`}
+                      className="rounded-full bg-[#5E5CE6]/18 border border-[#5E5CE6]/30 px-2.5 py-0.5 text-[11px] text-[#D7D6FF]"
+                    >
+                      {wf.word}{" "}
+                      <span className="text-[#A7A5FF]">({wf.pos})</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
+export function FlashcardsView() {
+  const {
+    words,
+    accent,
+    isHydrated,
+    selectedWord,
+    recordSm2Review,
+    setActiveTab,
+  } = useLexiVault();
+  const { t } = useLanguage();
+  const { prefetchMany } = usePronunciation();
+
+  const [filter, setFilter] = useState<DeckFilter>("due");
+  const [deck, setDeck] = useState<WordEntry[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [knownCount, setKnownCount] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [repeatWords, setRepeatWords] = useState<WordEntry[]>([]);
+  const [sessionSeed, setSessionSeed] = useState(0);
+
+  const wordsRef = useRef(words);
+  wordsRef.current = words;
+
+  const dueWordsCount = useMemo(
+    () => (isHydrated ? getDueWords(words).length : 0),
+    [words, isHydrated]
+  );
+
+  const startDeck = useCallback(
+    (nextFilter: DeckFilter, shuffle = false, customCards?: WordEntry[]) => {
+      const built =
+        customCards ?? buildDeckByFilter(wordsRef.current, nextFilter, shuffle);
+      setDeck(built);
+      setCurrentIndex(0);
+      setFlipped(false);
+      setKnownCount(0);
+      setCombo(0);
+      setRepeatWords([]);
+      setSessionSeed((s) => s + 1);
+    },
+    []
+  );
+
+  // Initialize deck once hydrated or when filter changes
+  useEffect(() => {
+    if (!isHydrated) return;
+    startDeck(filter, false);
+  }, [isHydrated, filter, startDeck]);
+
+  // If Vault gains/loses words while deck is empty (e.g., after demo reset or adding first word)
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (deck.length === 0 && words.length > 0 && currentIndex === 0) {
+      if (filter === "due" && getDueWords(words).length === 0) return;
+      startDeck(filter, false);
+    } else if (words.length === 0 && deck.length > 0) {
+      setDeck([]);
+      setCurrentIndex(0);
+    }
+  }, [words, isHydrated, deck.length, currentIndex, filter, startDeck]);
+
+  const currentCard = deck[currentIndex] ?? null;
+  const sessionDone = deck.length > 0 && currentIndex >= deck.length;
+
+  const intervalLabels = useMemo(
+    () => (currentCard ? previewSm2IntervalLabels(currentCard) : null),
+    [currentCard]
+  );
+
+  // Zero-lag background audio pre-fetching for current + next card
+  useEffect(() => {
+    if (!currentCard) return;
+    const targets = [
+      {
+        text: currentCard.term,
+        accent,
+        remoteUrl:
+          accent === "UK" ? currentCard.audio_uk_url : currentCard.audio_us_url,
+        wordId: currentCard.id,
+      },
+      {
+        text: currentCard.term,
+        accent: (accent === "US" ? "UK" : "US") as "US" | "UK",
+        remoteUrl:
+          accent === "US" ? currentCard.audio_uk_url : currentCard.audio_us_url,
+        wordId: currentCard.id,
+      },
+    ];
+
+    const nextCard = deck[currentIndex + 1];
+    if (nextCard) {
+      targets.push({
+        text: nextCard.term,
+        accent,
+        remoteUrl:
+          accent === "UK" ? nextCard.audio_uk_url : nextCard.audio_us_url,
+        wordId: nextCard.id,
+      });
+    }
+
+    prefetchMany(targets);
+  }, [currentCard, currentIndex, deck, accent, prefetchMany]);
+
+  const handleGradeSm2 = useCallback(
+    (rating: Sm2Rating) => {
+      if (!currentCard) return;
+
+      const isFail = rating === "again";
+      if (isFail) {
+        playWrongThud();
+        setCombo(0);
+        setRepeatWords((prev) =>
+          prev.some((w) => w.id === currentCard.id)
+            ? prev
+            : [...prev, currentCard]
+        );
+      } else {
+        setCombo((prev) => {
+          const next = prev + 1;
+          playCorrectChime(next);
+          return next;
+        });
+        setKnownCount((c) => c + 1);
+      }
+
+      setFlipped(false);
+      setCurrentIndex((idx) => idx + 1);
+      void recordSm2Review(currentCard.id, rating);
+    },
+    [currentCard, recordSm2Review]
+  );
+
+  const handleSwipeAction = useCallback(
+    (direction: "left" | "right") => {
+      handleGradeSm2(direction === "right" ? "good" : "again");
+    },
+    [handleGradeSm2]
+  );
+
+  // Desktop keyboard shortcuts: Space = Flip, 1-4 = SM-2 Ratings, Left/Right = Again/Good
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (selectedWord || !currentCard || sessionDone) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.code === "Space" || e.key === " ") {
+        e.preventDefault();
+        playGlassClick();
+        setFlipped((prev) => !prev);
+      } else if (e.key === "1") {
+        e.preventDefault();
+        handleGradeSm2("again");
+      } else if (e.key === "2") {
+        e.preventDefault();
+        handleGradeSm2("hard");
+      } else if (e.key === "3") {
+        e.preventDefault();
+        handleGradeSm2("good");
+      } else if (e.key === "4") {
+        e.preventDefault();
+        handleGradeSm2("easy");
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handleGradeSm2("again");
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleGradeSm2("good");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedWord, currentCard, sessionDone, handleGradeSm2]);
+
+  const progressPct = useMemo(() => {
+    if (deck.length === 0) return 0;
+    const completed = Math.min(currentIndex, deck.length);
+    return Math.round((completed / deck.length) * 100);
+  }, [currentIndex, deck.length]);
+
+  const sm2Buttons: Array<{
+    rating: Sm2Rating;
+    label: string;
+    shortcut: string;
+    toneClass: string;
+    intervalClass: string;
+  }> = [
+    {
+      rating: "again",
+      label: "Again",
+      shortcut: "1",
+      toneClass:
+        "border-[#FF453A]/35 text-[#FFB4AE] hover:bg-[#FF453A]/15",
+      intervalClass: "text-[#FF8982]",
+    },
+    {
+      rating: "hard",
+      label: "Hard",
+      shortcut: "2",
+      toneClass:
+        "border-[#FF9F0A]/35 text-[#FFE0A6] hover:bg-[#FF9F0A]/15",
+      intervalClass: "text-[#FFBE5C]",
+    },
+    {
+      rating: "good",
+      label: "Good",
+      shortcut: "3",
+      toneClass:
+        "border-[#30D158]/35 text-[#8FF5A7] hover:bg-[#30D158]/15",
+      intervalClass: "text-[#7CF099]",
+    },
+    {
+      rating: "easy",
+      label: "Easy",
+      shortcut: "4",
+      toneClass:
+        "border-[#0A84FF]/40 text-[#9FD0FF] hover:bg-[#0A84FF]/15",
+      intervalClass: "text-[#70BCFF]",
+    },
+  ];
+
+  return (
+    <div className="space-y-5 max-w-2xl mx-auto">
+      {/* Header & Deck Controls */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[#0A84FF]">
+            {t.flashcards.eyebrow}
+          </p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F5F5F7]">
+            {t.flashcards.title}
+          </h2>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ComboBadge combo={combo} />
+          <motion.button
+            type="button"
+            whileTap={TAP_SCALE}
+            disabled={words.length < 2}
+            onClick={() => {
+              playGlassClick();
+              startDeck(filter, true);
+            }}
+            title={t.flashcards.shuffleDeck}
+            className="liquid-glass-pill inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium text-[#F5F5F7] hover:bg-white/[0.12] cursor-pointer disabled:opacity-40"
+          >
+            <Shuffle className="h-3.5 w-3.5 text-[#0A84FF]" />
+            <span>{t.flashcards.shuffleDeck}</span>
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Filter Pills */}
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+        {(
+          [
+            {
+              id: "due",
+              label: t.flashcards.filterDue,
+              badge: isHydrated ? dueWordsCount : null,
+            },
+            { id: "all", label: t.flashcards.filterAll, badge: null },
+            { id: "weakest", label: t.flashcards.filterWeakest, badge: null },
+            { id: "recent", label: t.flashcards.filterRecent, badge: null },
+          ] as const
+        ).map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => {
+              playGlassClick();
+              setFilter(opt.id);
+            }}
+            className={cn(
+              "shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors cursor-pointer",
+              filter === opt.id
+                ? "bg-[#0A84FF]/25 border-[#0A84FF]/50 text-white"
+                : "bg-white/[0.05] border-white/[0.09] text-[#8E8E93] hover:text-[#F5F5F7]"
+            )}
+          >
+            <span>{opt.label}</span>
+            {opt.badge !== null && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                  opt.badge > 0
+                    ? "bg-[#FF9F0A]/25 text-[#FFD18C]"
+                    : "bg-[#30D158]/20 text-[#7CF099]"
+                )}
+              >
+                {opt.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Session Progress Bar */}
+      {deck.length > 0 && (
+        <div className="liquid-glass rounded-3xl p-4 space-y-2.5">
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="font-semibold text-[#F5F5F7]">
+              {sessionDone
+                ? `${t.flashcards.doneLabel} (${deck.length} ${t.flashcards.cardsSuffix})`
+                : `${t.flashcards.cardWordPrefix} ${currentIndex + 1} ${t.flashcards.ofWord} ${deck.length}`}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-[#30D158]/15 border border-[#30D158]/30 px-2.5 py-0.5 font-semibold text-[#7CF099]">
+                {knownCount} {t.flashcards.recallCount}
+              </span>
+              <span className="rounded-full bg-[#FF9F0A]/15 border border-[#FF9F0A]/30 px-2.5 py-0.5 font-semibold text-[#FFD18C]">
+                {repeatWords.length} {t.flashcards.repeatCount}
+              </span>
+            </div>
+          </div>
+
+          <div className="h-2 w-full overflow-hidden rounded-full bg-white/[0.08]">
+            <motion.div
+              className="h-full w-full rounded-full bg-gradient-to-r from-[#0A84FF] via-[#5E5CE6] to-[#30D158] transform-gpu will-change-transform"
+              style={{ transformOrigin: "left" }}
+              initial={false}
+              animate={{
+                scaleX: Math.max(0, Math.min(1, progressPct / 100)),
+              }}
+              transition={IOS_SPRING}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Main Card Area / Summary / Empty State */}
+      {!isHydrated ? (
+        <div className="liquid-glass shimmer-glass h-[410px] rounded-[32px]" />
+      ) : words.length === 0 ? (
+        <div className="liquid-glass rounded-3xl p-8 text-center space-y-4">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0A84FF]/20 border border-[#0A84FF]/35">
+            <BookMarked className="h-7 w-7 text-[#0A84FF]" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">
+              {t.flashcards.emptyVaultTitle}
+            </h3>
+            <p className="mt-1 text-sm text-[#8E8E93]">
+              {t.flashcards.emptyVaultBody}
+            </p>
+          </div>
+          <motion.button
+            type="button"
+            whileTap={TAP_SCALE}
+            onClick={() => setActiveTab("vault")}
+            className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>{t.flashcards.emptyVaultCta}</span>
+          </motion.button>
+        </div>
+      ) : deck.length === 0 ? (
+        <div className="liquid-glass rounded-3xl p-8 text-center space-y-4">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#30D158]/20 border border-[#30D158]/35">
+            {filter === "due" ? (
+              <CalendarClock className="h-7 w-7 text-[#30D158]" />
+            ) : (
+              <Layers className="h-7 w-7 text-[#30D158]" />
+            )}
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">
+              {filter === "due"
+                ? t.flashcards.emptyDueTitle
+                : t.flashcards.emptyWeakTitle}
+            </h3>
+            <p className="mt-1 text-sm text-[#8E8E93]">
+              {filter === "due"
+                ? t.flashcards.emptyDueBody
+                : t.flashcards.emptyWeakBody}
+            </p>
+          </div>
+          <motion.button
+            type="button"
+            whileTap={TAP_SCALE}
+            onClick={() => {
+              playGlassClick();
+              setFilter("all");
+            }}
+            className="rounded-full bg-white/[0.1] border border-white/[0.15] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+          >
+            {t.flashcards.viewAllWords}
+          </motion.button>
+        </div>
+      ) : sessionDone ? (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={IOS_SPRING}
+          className="liquid-glass-elevated transform-gpu will-change-transform rounded-3xl p-6 sm:p-8 text-center space-y-5"
+        >
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#30D158]/20 border border-[#30D158]/40 shadow-[0_0_32px_rgba(48,209,88,0.25)]">
+            <CheckCircle2 className="h-8 w-8 text-[#30D158]" />
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
+              {t.flashcards.sessionDoneEyebrow}
+            </p>
+            <h3 className="mt-1 text-2xl sm:text-3xl font-bold text-white">
+              {knownCount} {t.flashcards.sessionDoneTitleMid} {deck.length}{" "}
+              {t.flashcards.sessionDoneTitleSuffix}
+            </h3>
+            <p className="mt-1 text-sm text-[#8E8E93]">
+              {repeatWords.length > 0
+                ? `${repeatWords.length} ${t.flashcards.sessionDoneRepeatHint}`
+                : t.flashcards.sessionDoneAllMastered}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+            {repeatWords.length > 0 && (
+              <motion.button
+                type="button"
+                whileTap={TAP_SCALE}
+                onClick={() => {
+                  playGlassClick();
+                  startDeck(filter, false, repeatWords);
+                }}
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#FF9F0A] to-[#FF453A] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span>
+                  {t.flashcards.repeatAgainBtn} ({repeatWords.length})
+                </span>
+              </motion.button>
+            )}
+
+            <motion.button
+              type="button"
+              whileTap={TAP_SCALE}
+              onClick={() => {
+                playGlassClick();
+                startDeck(filter, true);
+              }}
+              className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+            >
+              <Shuffle className="h-4 w-4" />
+              <span>{t.flashcards.reloadDeckBtn}</span>
+            </motion.button>
+          </div>
+        </motion.div>
+      ) : (
+        <div className="space-y-3.5">
+          <AnimatePresence mode="wait">
+            {currentCard && (
+              <SwipeableFlashcard
+                key={`${sessionSeed}-${currentCard.id}-${currentIndex}`}
+                word={currentCard}
+                flipped={flipped}
+                onToggleFlip={() => setFlipped((prev) => !prev)}
+                onSwipeAction={handleSwipeAction}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Compact Flip Pill */}
+          <div className="flex justify-center">
+            <motion.button
+              type="button"
+              whileTap={TAP_SCALE}
+              onClick={() => {
+                playGlassClick();
+                setFlipped((prev) => !prev);
+              }}
+              className="liquid-glass-pill inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-semibold text-[#F5F5F7] hover:bg-white/[0.12] cursor-pointer"
+            >
+              <RotateCw className="h-3.5 w-3.5 text-[#0A84FF]" />
+              <span>
+                {flipped ? t.flashcards.closeMeaning : t.flashcards.flipCard}
+              </span>
+            </motion.button>
+          </div>
+
+          {/* 4 SM-2 Spaced Repetition Rating Pills */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+            {sm2Buttons.map((btn) => (
+              <motion.button
+                key={btn.rating}
+                type="button"
+                whileTap={TAP_SCALE}
+                onClick={() => handleGradeSm2(btn.rating)}
+                className={cn(
+                  "liquid-glass transform-gpu flex flex-col items-center justify-center rounded-2xl py-3 px-3 transition-colors cursor-pointer",
+                  btn.toneClass
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold">{btn.label}</span>
+                  <span className="hidden md:inline-flex h-4 min-w-4 items-center justify-center rounded bg-white/[0.08] px-1 text-[10px] font-semibold text-[#8E8E93]">
+                    {btn.shortcut}
+                  </span>
+                </div>
+                <span
+                  className={cn(
+                    "mt-0.5 text-[11px] font-medium tabular-nums",
+                    btn.intervalClass
+                  )}
+                >
+                  {intervalLabels ? intervalLabels[btn.rating] : "—"}
+                </span>
+              </motion.button>
+            ))}
+          </div>
+
+          <p className="hidden md:block text-center text-[11px] text-[#8E8E93]">
+            {t.flashcards.shortcutHint}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
