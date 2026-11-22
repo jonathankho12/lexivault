@@ -1,9 +1,11 @@
-const CACHE_NAME = "lexivault-static-v5";
+const CACHE_NAME = "lexivault-static-v6";
 const STATIC_ASSETS = [
   "/manifest.json",
+  "/logo-badge.png",
+  "/favicon.png",
+  "/favicon.ico",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
-  "/icons/icon.svg",
 ];
 
 self.addEventListener("install", (event) => {
