@@ -9,7 +9,11 @@ import {
 } from "@/lib/gemini";
 import { FALLBACK_SUGGESTED_WORDS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
-import { normalizeSourceTag, normalizeTermKey } from "@/lib/utils";
+import {
+  normalizeDuplicateKey,
+  normalizeSourceTag,
+  normalizeTermKey,
+} from "@/lib/utils";
 import type {
   CefrLevel,
   RegisterType,
@@ -61,7 +65,9 @@ function normalizeSuggestedItem(
         : "Academic";
   const cefr: CefrLevel = raw.cefr === "C2" ? "C2" : "C1";
 
-  const rawSource = normalizeSourceTag(raw.source_tag || raw.source || "article");
+  const rawSource = normalizeSourceTag(
+    raw.source_tag || raw.source || "article"
+  );
   const source_tag: SourceTag = VALID_SOURCES.has(rawSource as SourceTag)
     ? (rawSource as SourceTag)
     : "article";
@@ -69,17 +75,24 @@ function normalizeSuggestedItem(
   const examples: WordExample[] = Array.isArray(raw.examples)
     ? raw.examples
         .filter(
-          (ex) => ex && typeof ex.sentence === "string" && ex.sentence.trim()
+          (ex) =>
+            ex &&
+            typeof ex.sentence === "string" &&
+            ex.sentence.trim().length >= 8
         )
         .slice(0, 2)
         .map((ex, idx) => ({
           sentence: ex.sentence.trim(),
           translation_id: (ex.translation_id || "").trim(),
-          context: ex.context || (idx === 0 ? "Daily" : "Academic"),
+          context: (ex.context || "").trim() || (idx === 0 ? "Daily" : "Academic"),
         }))
     : [];
 
-  if (examples.length === 0 && typeof raw.example === "string" && raw.example.trim()) {
+  if (
+    examples.length === 0 &&
+    typeof raw.example === "string" &&
+    raw.example.trim().length >= 8
+  ) {
     examples.push({
       sentence: raw.example.trim(),
       translation_id: "",
@@ -87,30 +100,24 @@ function normalizeSuggestedItem(
     });
   }
 
-  if (examples.length === 0) {
-    examples.push({
-      sentence: `Using **${term}** accurately elevates your spoken and written fluency.`,
-      translation_id: `Menggunakan **${term}** secara tepat membuat bahasa Inggrismu terdengar lebih fasih.`,
-      context: "Daily",
-    });
+  const meaning_en =
+    (raw.meaning_en || "").trim() || builtInBilingual?.meaning_en || "";
+  const meaning_id = (raw.meaning_id || "").trim();
+
+  // Never emit placeholder definitions or dummy examples
+  if (meaning_en.length < 4 || meaning_id.length < 4 || examples.length === 0) {
+    return null;
   }
 
   const word_families: WordFamilyItem[] = Array.isArray(raw.word_families)
     ? raw.word_families
         .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
+        .slice(0, 4)
         .map((wf) => ({
           word: wf.word.trim(),
           pos: (wf.pos || type).trim(),
         }))
-    : [{ word: term, pos: type }];
-
-  const meaning_en =
-    (raw.meaning_en || "").trim() ||
-    builtInBilingual?.meaning_en ||
-    `Advanced C1–C2 English expression "${term}".`;
-  const meaning_id =
-    (raw.meaning_id || "").trim() ||
-    `Ekspresi bahasa Inggris tingkat C1–C2 "${term}".`;
+    : [];
 
   return {
     term,
@@ -143,7 +150,7 @@ function pickFallbackSuggestions(
   needed = 4
 ): SuggestedWordItem[] {
   const candidates = FALLBACK_SUGGESTED_WORDS.filter((item) => {
-    const key = normalizeTermKey(item.term);
+    const key = normalizeDuplicateKey(item.term);
     if (excludeKeys.has(key)) return false;
     if (category !== "mix" && item.type !== category) return false;
     if (register !== "any" && item.register !== register) return false;
@@ -157,9 +164,11 @@ function pickFallbackSuggestions(
       : [
           ...candidates,
           ...FALLBACK_SUGGESTED_WORDS.filter((item) => {
-            const key = normalizeTermKey(item.term);
+            const key = normalizeDuplicateKey(item.term);
             if (excludeKeys.has(key)) return false;
-            if (candidates.some((c) => normalizeTermKey(c.term) === key)) {
+            if (
+              candidates.some((c) => normalizeDuplicateKey(c.term) === key)
+            ) {
               return false;
             }
             return category === "mix" || item.type === category;
@@ -173,10 +182,12 @@ function pickFallbackSuggestions(
       : [
           ...relaxedCategory,
           ...FALLBACK_SUGGESTED_WORDS.filter((item) => {
-            const key = normalizeTermKey(item.term);
+            const key = normalizeDuplicateKey(item.term);
             return (
               !excludeKeys.has(key) &&
-              !relaxedCategory.some((c) => normalizeTermKey(c.term) === key)
+              !relaxedCategory.some(
+                (c) => normalizeDuplicateKey(c.term) === key
+              )
             );
           }),
         ];
@@ -194,7 +205,7 @@ function pickFallbackSuggestions(
     let count = 0;
     for (const item of shuffled) {
       if (count >= limit) break;
-      const key = normalizeTermKey(item.term);
+      const key = normalizeDuplicateKey(item.term);
       if (pickedKeys.has(key) || item.type !== targetType) continue;
       pickedKeys.add(key);
       picked.push(item);
@@ -208,7 +219,7 @@ function pickFallbackSuggestions(
 
   for (const item of shuffled) {
     if (picked.length >= needed) break;
-    const key = normalizeTermKey(item.term);
+    const key = normalizeDuplicateKey(item.term);
     if (pickedKeys.has(key)) continue;
     pickedKeys.add(key);
     picked.push(item);
@@ -246,7 +257,7 @@ export async function POST(request: Request) {
           .filter(Boolean)
           .slice(0, 150)
       : [];
-    const excludeKeys = new Set(rawExisting.map(normalizeTermKey));
+    const excludeKeys = new Set(rawExisting.map(normalizeDuplicateKey));
 
     const existingCsv = formatCompactExistingTerms(rawExisting, 150);
     const categoryInstruction =
@@ -262,8 +273,8 @@ export async function POST(request: Request) {
 ${categoryInstruction} ${registerInstruction}
 EXCLUDE (no exact or variant matches): ${existingCsv}
 
-Concise JSON per item:
-term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Casual), pronunciation ("·" dots + ALL CAPS stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural figurative Indonesian sentence), examples (1 Daily + 1 Academic short sentence with **bold** target + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-2 {word,pos}), source_tag (film|book|lecture|article|general).`;
+Concise complete JSON per item:
+term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Casual), pronunciation ("·" dots + ALL CAPS stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural figurative Indonesian sentence), examples (2 short sentences — 1 Daily, 1 Academic — wrapping target in **bold**, with translation_id & context), synonyms (2-3), antonyms (1-2), word_families (1-2 real {word,pos}), source_tag (film|book|lecture|article|general).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items?: Partial<SuggestedWordItem>[];
@@ -271,11 +282,20 @@ term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Ca
       tier: "flash",
       routeName: "api/suggest-words",
       systemInstruction:
-        "Fast C1-C2 English lexicographer. Output compact valid JSON only with zero duplicates.",
+        "Fast C1-C2 English lexicographer. Output complete, compact valid JSON only with zero duplicates.",
       contents: prompt,
-      maxOutputTokens: 1000,
+      maxOutputTokens: 3072,
       temperature: 0.7,
-      timeoutMs: 6000,
+      timeoutMs: 12000,
+      validate: (parsed) => {
+        if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+          return "empty items array";
+        }
+        const validCount = parsed.items.filter(
+          (it) => normalizeSuggestedItem(it) !== null
+        ).length;
+        return validCount === 0 ? "no valid complete items" : null;
+      },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -375,7 +395,7 @@ term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Ca
       for (const rawItem of aiRes.data.items) {
         const normalized = normalizeSuggestedItem(rawItem);
         if (!normalized) continue;
-        const key = normalizeTermKey(normalized.term);
+        const key = normalizeDuplicateKey(normalized.term);
         if (seenBatch.has(key)) continue;
         seenBatch.add(key);
         uniqueItems.push(normalized);

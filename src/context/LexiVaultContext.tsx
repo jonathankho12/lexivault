@@ -1024,6 +1024,20 @@ export function LexiVaultProvider({
         }
 
         const aiData = json.data;
+        // Defensive completeness guard: never save a hollow or broken card to the Vault
+        const hasRealMeaning =
+          Boolean(aiData.meaning_en?.trim()) &&
+          Boolean(aiData.meaning_id?.trim());
+        const hasRealExamples =
+          Array.isArray(aiData.examples) &&
+          aiData.examples.some((ex) => Boolean(ex?.sentence?.trim()));
+        if (!hasRealMeaning || !hasRealExamples) {
+          const incompleteMsg = isEn
+            ? "Gemini AI returned incomplete word details. Please try again."
+            : "Detail kata dari Gemini AI tidak lengkap. Silakan coba lagi.";
+          setCaptureToast({ type: "error", message: incompleteMsg });
+          return { ok: false, error: incompleteMsg };
+        }
         // Final safeguard if AI canonicalized the lemma to an already-saved Vault term
         const canonicalDup = findLocalDuplicateWord(
           aiData.term,

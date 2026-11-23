@@ -71,8 +71,22 @@ function normalizeItems(
     const builtIn = BUILT_IN_PRONUNCIATIONS[key];
     const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
     const meaning_en =
-      (item.meaning_en || "").trim() || builtInBilingual?.meaning_en || undefined;
-    const meaning_id = (item.meaning_id || "").trim() || meaning_en || "";
+      (item.meaning_en || "").trim() || builtInBilingual?.meaning_en || "";
+    const meaning_id = (item.meaning_id || "").trim();
+    const examples = Array.isArray(item.examples_json)
+      ? item.examples_json
+          .filter(
+            (ex) =>
+              ex &&
+              typeof ex.sentence === "string" &&
+              ex.sentence.trim().length >= 8
+          )
+          .slice(0, 2)
+      : [];
+
+    if (meaning_en.length < 4 || meaning_id.length < 4 || examples.length === 0) {
+      continue;
+    }
 
     out.push({
       id: item.id || `disc-${dateStr}-${nonce}-${idx + 1}`,
@@ -84,9 +98,7 @@ function normalizeItems(
       type: item.type && validTypes.has(item.type) ? item.type : "vocab",
       meaning_id,
       meaning_en,
-      examples_json: Array.isArray(item.examples_json)
-        ? item.examples_json.slice(0, 2)
-        : [],
+      examples_json: examples,
       synonyms: Array.isArray(item.synonyms) ? item.synonyms.slice(0, 3) : [],
       antonyms: Array.isArray(item.antonyms) ? item.antonyms.slice(0, 2) : [],
       word_families_json: Array.isArray(item.word_families_json)
@@ -176,9 +188,9 @@ term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Ca
       systemInstruction:
         "Fast C1-C2 English lexicographer. Return compact valid JSON only with zero duplicates.",
       contents: prompt,
-      maxOutputTokens: mode === "more" ? 1350 : 1550,
+      maxOutputTokens: 3584,
       temperature: 0.75,
-      timeoutMs: 7500,
+      timeoutMs: 12000,
       responseSchema: {
         type: Type.OBJECT,
         properties: {

@@ -5,6 +5,7 @@ import {
   classifyGeminiError,
   emptyGeminiResponseError,
   generateStructuredWithHybridModel,
+  incompleteGeminiResponseError,
   logGeminiRouteError,
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
@@ -53,9 +54,9 @@ Concise JSON per item: term, cefr (B2|C1|C2), type (vocab|idiom|collocation), re
       systemInstruction:
         "Fast English-Indonesian vocabulary extractor. Return compact valid JSON only.",
       contents: prompt,
-      maxOutputTokens: 1650,
+      maxOutputTokens: 4096,
       temperature: 0.25,
-      timeoutMs: 7500,
+      timeoutMs: 12000,
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -163,16 +164,32 @@ Concise JSON per item: term, cefr (B2|C1|C2), type (vocab|idiom|collocation), re
     const normalized: ExtractedVocabItem[] = aiRes.data.items
       .filter((it) => it && typeof it.term === "string" && it.term.trim())
       .slice(0, 12)
-      .map((it) => {
+      .map((it): ExtractedVocabItem | null => {
         const cleanTerm = it.term!.trim();
         const key = normalizeTermKey(cleanTerm);
         const builtIn = BUILT_IN_PRONUNCIATIONS[key];
         const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
         const meaning_en =
-          (it.meaning_en || "").trim() ||
-          builtInBilingual?.meaning_en ||
-          undefined;
-        const meaning_id = (it.meaning_id || "").trim() || meaning_en || "";
+          (it.meaning_en || "").trim() || builtInBilingual?.meaning_en || "";
+        const meaning_id = (it.meaning_id || "").trim();
+        const examples = Array.isArray(it.examples)
+          ? it.examples
+              .filter(
+                (ex) =>
+                  ex &&
+                  typeof ex.sentence === "string" &&
+                  ex.sentence.trim().length >= 8
+              )
+              .slice(0, 2)
+          : [];
+
+        if (
+          meaning_en.length < 4 ||
+          meaning_id.length < 4 ||
+          examples.length === 0
+        ) {
+          return null;
+        }
 
         return {
           term: cleanTerm,
@@ -189,14 +206,33 @@ Concise JSON per item: term, cefr (B2|C1|C2), type (vocab|idiom|collocation), re
               : "Academic",
           meaning_en,
           meaning_id,
-          examples: Array.isArray(it.examples) ? it.examples.slice(0, 2) : [],
+          examples,
           synonyms: Array.isArray(it.synonyms) ? it.synonyms.slice(0, 4) : [],
           antonyms: Array.isArray(it.antonyms) ? it.antonyms.slice(0, 3) : [],
           word_families: Array.isArray(it.word_families)
             ? it.word_families
             : [],
         };
+      })
+      .filter((item): item is ExtractedVocabItem => item !== null);
+
+    if (normalized.length === 0) {
+      const incompleteErr = incompleteGeminiResponseError(
+        aiRes.modelUsed,
+        "no complete vocabulary items extracted"
+      );
+      logGeminiRouteError("api/extract-vocab", incompleteErr, {
+        model: aiRes.modelUsed,
       });
+      return NextResponse.json(
+        {
+          error: incompleteErr.detail,
+          code: incompleteErr.code,
+          detail: incompleteErr.rawMessage,
+        },
+        { status: incompleteErr.status }
+      );
+    }
 
     return NextResponse.json({
       items: normalized,

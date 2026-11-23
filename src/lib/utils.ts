@@ -273,6 +273,14 @@ export function formatGeminiClientError(
       return isEn
         ? "Gemini AI returned an empty response. Please try again."
         : "Server Gemini AI mengembalikan respons kosong. Silakan coba lagi.";
+    case "parse_error":
+      return isEn
+        ? "Gemini AI response was cut off before finishing. Please try again."
+        : "Respons Gemini AI terpotong sebelum selesai. Silakan coba lagi.";
+    case "incomplete_response":
+      return isEn
+        ? "Gemini AI returned incomplete word details. Please try again."
+        : "Detail kata dari Gemini AI tidak lengkap. Silakan coba lagi.";
     default:
       if (httpStatus === 503) {
         return isEn

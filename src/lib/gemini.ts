@@ -1,4 +1,10 @@
-import { GoogleGenAI, type GenerateContentConfig, type Schema } from "@google/genai";
+import {
+  GoogleGenAI,
+  ThinkingLevel,
+  type GenerateContentConfig,
+  type Schema,
+  type ThinkingConfig,
+} from "@google/genai";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 export type GeminiErrorCode =
@@ -9,12 +15,15 @@ export type GeminiErrorCode =
   | "model"
   | "network"
   | "empty_response"
+  | "parse_error"
+  | "incomplete_response"
   | "api_error";
 
 export interface ClassifiedGeminiError {
   status: number;
   upstreamStatus?: number;
   code: GeminiErrorCode;
+  shortReason: string;
   detail: string;
   rawMessage: string;
 }
@@ -22,13 +31,13 @@ export interface ClassifiedGeminiError {
 export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 export const DEFAULT_GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
 
-// Fast circuit-breaker + tight latency limits for Cloudflare Workers
+// Balanced circuit-breaker + Cloudflare Workers timeout budgets
 const MODEL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown for 503/429/404 models
 const MODEL_DISCOVERY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes per Worker isolate
 const MODEL_DISCOVERY_TIMEOUT_MS = 3500;
-const DEFAULT_ATTEMPT_TIMEOUT_MS = 6000;
+const DEFAULT_ATTEMPT_TIMEOUT_MS = 12000;
 const SINGLE_RETRY_DELAY_MS = 450;
-const MAX_FALLBACK_MODELS = 3;
+const MAX_FALLBACK_MODELS = 2;
 
 interface DiscoveredModelsCache {
   fetchedAt: number;
@@ -66,6 +75,15 @@ function hashKeyFingerprint(value: string): number {
   return h >>> 0;
 }
 
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === "string") return msg;
+  }
+  return String(err ?? "Unknown Gemini API error");
+}
+
 function isModelInCooldown(model: string, now = Date.now()): boolean {
   const until = modelCooldownUntil.get(model.toLowerCase());
   if (!until) return false;
@@ -85,18 +103,58 @@ function markModelCooldown(model: string, reason: string): void {
   );
 }
 
+/**
+ * Selects the model-generation-compatible minimal thinking config:
+ * - Gemini 3.x models use `thinkingLevel` (`MINIMAL` for Flash, `LOW` for Pro) — `thinkingBudget: 0` triggers HTTP 400.
+ * - Gemini 2.5 Flash / Flash-Lite use `thinkingBudget: 0` — `thinkingLevel` triggers HTTP 400.
+ * - Older Gemini 2.0 / 1.5 and Gemini 2.5 Pro omit `thinkingConfig` altogether.
+ * - Any model that ever rejects `thinkingConfig` with HTTP 400 is cached in `modelsRejectingThinkingConfig`.
+ */
+function resolveThinkingConfigForModel(
+  model: string
+): ThinkingConfig | undefined {
+  const lower = model.toLowerCase();
+  if (modelsRejectingThinkingConfig.has(lower)) {
+    return undefined;
+  }
+
+  // Gemini 3.x family (e.g. gemini-3.8-flash, gemini-3.0-flash, gemini-3-flash-preview)
+  if (/^gemini-3(\.\d+)?[-_]/i.test(lower) || /^gemini-3(\.\d+)?$/i.test(lower)) {
+    if (lower.includes("flash")) {
+      return { thinkingLevel: ThinkingLevel.MINIMAL };
+    }
+    return { thinkingLevel: ThinkingLevel.LOW };
+  }
+
+  // Gemini 2.5 Flash / Flash-Lite support thinkingBudget: 0
+  if (lower.includes("gemini-2.5-flash")) {
+    return { thinkingBudget: 0 };
+  }
+
+  // Gemini 2.0, 1.5, and 2.5-pro do not accept thinkingBudget: 0
+  return undefined;
+}
+
 function isThinkingConfigRejection(err: unknown): boolean {
-  const msg =
-    err instanceof Error
-      ? err.message
-      : typeof (err as { message?: unknown })?.message === "string"
-        ? String((err as { message?: unknown }).message)
-        : String(err ?? "");
+  const msg = extractErrorMessage(err);
   const lower = msg.toLowerCase();
   const status = extractUpstreamStatus(err, msg);
+  const is400 =
+    status === 400 ||
+    lower.includes("invalid_argument") ||
+    lower.includes("bad request");
+  if (!is400) return false;
+
   return (
-    (status === 400 || lower.includes("invalid_argument")) &&
-    (lower.includes("thinking") || lower.includes("thinkingbudget") || lower.includes("thinking_budget"))
+    lower.includes("thinking") ||
+    lower.includes("budget") ||
+    lower.includes("thinkinglevel") ||
+    lower.includes("thinking_level") ||
+    lower.includes("thinkingbudget") ||
+    lower.includes("thinking_budget") ||
+    lower.includes("thinkingconfig") ||
+    lower.includes("thinking_config") ||
+    lower.includes("level")
   );
 }
 
@@ -367,8 +425,11 @@ async function discoverAvailableFallbackModels(
 
     return eligible.filter((m) => !excluded.has(m.toLowerCase()));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err ?? "");
-    console.warn("[LexiVault][gemini-discovery] Discovery skipped:", msg.slice(0, 160));
+    const msg = extractErrorMessage(err);
+    console.warn(
+      "[LexiVault][gemini-discovery] Discovery skipped:",
+      msg.slice(0, 160)
+    );
     return [];
   } finally {
     clearTimeout(timer);
@@ -379,22 +440,82 @@ export function missingGeminiKeyError(): ClassifiedGeminiError {
   return {
     status: 503,
     code: "missing_key",
+    shortReason: "missing_api_key",
     detail:
       "GEMINI_API_KEY is not configured in Cloudflare Workers runtime bindings or environment variables.",
     rawMessage: "GEMINI_API_KEY missing in both Cloudflare env and process.env",
   };
 }
 
-export function emptyGeminiResponseError(model?: string): ClassifiedGeminiError {
+export function emptyGeminiResponseError(
+  model?: string,
+  finishReason?: string
+): ClassifiedGeminiError {
   return {
     status: 502,
     code: "empty_response",
+    shortReason: finishReason
+      ? `empty_response_${finishReason.toLowerCase()}`
+      : "empty_response",
     detail: "Gemini AI returned an empty response. Please try again.",
-    rawMessage: `Empty response body from model ${model || "unknown"}`,
+    rawMessage: `Empty response body from model "${model || "unknown"}" (finishReason=${finishReason || "unknown"})`,
   };
 }
 
-function extractUpstreamStatus(err: unknown, rawMessage: string): number | undefined {
+export function incompleteGeminiResponseError(
+  model: string,
+  reason: string,
+  finishReason?: string
+): ClassifiedGeminiError {
+  return {
+    status: 502,
+    code: "incomplete_response",
+    shortReason: `incomplete_output (${reason})`,
+    detail: "Gemini AI returned incomplete word details. Please try again.",
+    rawMessage: `Incomplete structured output from "${model}": ${reason} (finishReason=${finishReason || "unknown"})`,
+  };
+}
+
+function parseGeminiJsonError(
+  model: string,
+  parseErr: unknown,
+  finishReason: string | undefined,
+  textLength: number,
+  maxOutputTokens?: number
+): ClassifiedGeminiError {
+  const errMsg = extractErrorMessage(parseErr).slice(0, 160);
+  const isTruncated = finishReason === "MAX_TOKENS";
+  return {
+    status: 502,
+    code: "parse_error",
+    shortReason: isTruncated
+      ? `json_truncated_max_tokens (max=${maxOutputTokens ?? "default"}, len=${textLength})`
+      : `json_parse_error (finishReason=${finishReason || "unknown"})`,
+    detail: isTruncated
+      ? "Gemini AI response was truncated before completing JSON output. Please try again."
+      : "Gemini AI returned malformed JSON. Please try again.",
+    rawMessage: `JSON.parse failed on "${model}" (finishReason=${finishReason || "unknown"}, len=${textLength}, maxOutputTokens=${maxOutputTokens ?? "default"}): ${errMsg}`,
+  };
+}
+
+function timeoutGeminiError(
+  model: string,
+  timeoutMs: number
+): ClassifiedGeminiError {
+  return {
+    status: 503,
+    code: "network",
+    shortReason: `timeout_${timeoutMs}ms`,
+    detail:
+      "Unable to reach Gemini AI right now (network timeout). Please try again.",
+    rawMessage: `Request timed out after ${timeoutMs}ms on model "${model}"`,
+  };
+}
+
+function extractUpstreamStatus(
+  err: unknown,
+  rawMessage: string
+): number | undefined {
   if (err && typeof err === "object") {
     const obj = err as {
       status?: unknown;
@@ -432,21 +553,29 @@ function extractUpstreamStatus(err: unknown, rawMessage: string): number | undef
 }
 
 export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
-  const errObj =
-    err && typeof err === "object"
-      ? (err as { message?: unknown })
-      : null;
-
-  const rawMessage =
-    err instanceof Error
-      ? err.message
-      : typeof errObj?.message === "string"
-        ? errObj.message
-        : String(err ?? "Unknown Gemini API error");
-
+  const rawMessage = extractErrorMessage(err);
   const upstreamStatus = extractUpstreamStatus(err, rawMessage);
   const conciseRaw = rawMessage.slice(0, 320);
   const lower = rawMessage.toLowerCase();
+
+  // 0. JSON syntax / parse errors
+  if (err instanceof SyntaxError || lower.includes("json")) {
+    if (
+      lower.includes("unexpected end") ||
+      lower.includes("unterminated") ||
+      lower.includes("unexpected token") ||
+      err instanceof SyntaxError
+    ) {
+      return {
+        status: 502,
+        upstreamStatus,
+        code: "parse_error",
+        shortReason: "json_parse_error",
+        detail: "Gemini AI returned truncated or malformed JSON. Please try again.",
+        rawMessage: conciseRaw,
+      };
+    }
+  }
 
   // 1. Temporary overload / high demand (503 UNAVAILABLE) — checked before "model"
   if (
@@ -462,6 +591,7 @@ export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
       status: 503,
       upstreamStatus: upstreamStatus ?? 503,
       code: "overload",
+      shortReason: `http_${upstreamStatus ?? 503}_overload`,
       detail:
         "Gemini AI is experiencing high demand right now. Please try again in a moment.",
       rawMessage: conciseRaw,
@@ -480,7 +610,9 @@ export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
       status: 429,
       upstreamStatus: upstreamStatus ?? 429,
       code: "rate_limit",
-      detail: "Gemini AI rate limit reached right now. Please try again in a moment.",
+      shortReason: `http_${upstreamStatus ?? 429}_rate_limit`,
+      detail:
+        "Gemini AI rate limit reached right now. Please try again in a moment.",
       rawMessage: conciseRaw,
     };
   }
@@ -498,6 +630,7 @@ export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
       status: 401,
       upstreamStatus: upstreamStatus ?? 401,
       code: "auth",
+      shortReason: `http_${upstreamStatus ?? 401}_auth`,
       detail: "Gemini API key is invalid, restricted, or unauthorized.",
       rawMessage: conciseRaw,
     };
@@ -518,7 +651,14 @@ export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
       status: 503,
       upstreamStatus,
       code: "network",
-      detail: "Unable to reach Gemini AI right now (network timeout). Please try again.",
+      shortReason:
+        lower.includes("timeout") ||
+        lower.includes("timed out") ||
+        lower.includes("abort")
+          ? "timeout"
+          : "network_error",
+      detail:
+        "Unable to reach Gemini AI right now (network timeout). Please try again.",
       rawMessage: conciseRaw,
     };
   }
@@ -536,16 +676,23 @@ export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
       status: 502,
       upstreamStatus: upstreamStatus ?? 404,
       code: "model",
+      shortReason: `http_${upstreamStatus ?? 404}_model_or_invalid_arg`,
       detail: "Configured Gemini model is unavailable or rejected the request.",
       rawMessage: conciseRaw,
     };
   }
 
+  const shortSnippet = conciseRaw.split("\n")[0]?.slice(0, 80) || "unknown";
   return {
     status: 502,
     upstreamStatus,
     code: "api_error",
-    detail: `Gemini AI request failed (${upstreamStatus ?? "upstream error"}). Please try again.`,
+    shortReason: upstreamStatus
+      ? `http_${upstreamStatus}`
+      : `api_error: ${shortSnippet}`,
+    detail: `Gemini AI request failed (${
+      upstreamStatus ? `HTTP ${upstreamStatus}` : shortSnippet
+    }). Please try again.`,
     rawMessage: conciseRaw,
   };
 }
@@ -563,6 +710,17 @@ function isFallbackEligibleError(err: ClassifiedGeminiError): boolean {
     err.code === "overload" ||
     err.code === "rate_limit" ||
     err.code === "network" ||
+    err.code === "model" ||
+    err.code === "empty_response" ||
+    err.code === "parse_error" ||
+    err.code === "incomplete_response"
+  );
+}
+
+function shouldCooldownModelForError(err: ClassifiedGeminiError): boolean {
+  return (
+    err.code === "overload" ||
+    err.code === "rate_limit" ||
     err.code === "model"
   );
 }
@@ -572,14 +730,18 @@ export function logGeminiRouteError(
   classified: ClassifiedGeminiError,
   extra?: Record<string, unknown>
 ): void {
-  console.error(`[LexiVault][${route}] Gemini failure:`, {
-    httpStatus: classified.status,
-    upstreamStatus: classified.upstreamStatus ?? null,
-    code: classified.code,
-    detail: classified.detail,
-    rawMessage: classified.rawMessage,
-    ...(extra ?? {}),
-  });
+  console.error(
+    `[LexiVault][${route}] Gemini failure (${classified.shortReason}):`,
+    {
+      httpStatus: classified.status,
+      upstreamStatus: classified.upstreamStatus ?? null,
+      code: classified.code,
+      shortReason: classified.shortReason,
+      detail: classified.detail,
+      rawMessage: classified.rawMessage,
+      ...(extra ?? {}),
+    }
+  );
 }
 
 export type HybridModelResult<T> =
@@ -592,20 +754,28 @@ async function invokeModelStructuredOnce<T>(
   contents: string,
   responseSchema: Schema,
   options: {
+    routeName: string;
     maxOutputTokens?: number;
     systemInstruction?: string;
     temperature?: number;
     timeoutMs: number;
     disableThinking: boolean;
+    validate?: (data: T) => string | null;
   }
 ): Promise<{ ok: true; data: T } | { ok: false; error: ClassifiedGeminiError }> {
   const modelKey = model.toLowerCase();
-  const tryWithThinking =
-    options.disableThinking && !modelsRejectingThinkingConfig.has(modelKey);
+  const initialThinkingConfig = options.disableThinking
+    ? resolveThinkingConfigForModel(model)
+    : undefined;
 
-  const runCall = async (includeThinkingZero: boolean) => {
+  const runCall = async (thinkingConfig?: ThinkingConfig) => {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+    let didTimeout = false;
+    const timer = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, options.timeoutMs);
+
     try {
       const config: GenerateContentConfig = {
         responseMimeType: "application/json",
@@ -621,8 +791,8 @@ async function invokeModelStructuredOnce<T>(
       if (typeof options.temperature === "number") {
         config.temperature = options.temperature;
       }
-      if (includeThinkingZero) {
-        config.thinkingConfig = { thinkingBudget: 0 };
+      if (thinkingConfig) {
+        config.thinkingConfig = thinkingConfig;
       }
 
       const response = await ai.models.generateContent({
@@ -630,40 +800,91 @@ async function invokeModelStructuredOnce<T>(
         contents,
         config,
       });
-      const text = response.text?.trim() ?? "";
-      if (!text) {
-        return { ok: false as const, error: emptyGeminiResponseError(model) };
+
+      const finishReason = response.candidates?.[0]?.finishReason;
+      const rawText = response.text?.trim() ?? "";
+      if (!rawText) {
+        return {
+          ok: false as const,
+          error: emptyGeminiResponseError(model, finishReason),
+        };
       }
-      const parsed = JSON.parse(text) as T;
+
+      const cleanedText = rawText
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      let parsed: T;
+      try {
+        parsed = JSON.parse(cleanedText) as T;
+      } catch (parseErr) {
+        return {
+          ok: false as const,
+          error: parseGeminiJsonError(
+            model,
+            parseErr,
+            finishReason,
+            cleanedText.length,
+            options.maxOutputTokens
+          ),
+        };
+      }
+
+      if (options.validate) {
+        const validationReason = options.validate(parsed);
+        if (validationReason) {
+          return {
+            ok: false as const,
+            error: incompleteGeminiResponseError(
+              model,
+              validationReason,
+              finishReason
+            ),
+          };
+        }
+      }
+
       return { ok: true as const, data: parsed };
     } catch (err) {
-      // Gracefully retry ONCE without thinkingConfig ONLY if this fallback model explicitly rejects it with HTTP 400
-      if (includeThinkingZero && isThinkingConfigRejection(err)) {
+      if (didTimeout) {
+        return {
+          ok: false as const,
+          error: timeoutGeminiError(model, options.timeoutMs),
+        };
+      }
+
+      // If this model returned HTTP 400 rejecting our thinkingConfig, cache it and retry this SAME model immediately without thinkingConfig
+      if (thinkingConfig && isThinkingConfigRejection(err)) {
         modelsRejectingThinkingConfig.add(modelKey);
         console.info(
-          `[LexiVault][gemini-config] Model "${model}" rejected thinkingConfig; cached without thinkingConfig & retrying immediately`
+          `[LexiVault][${options.routeName}] Model "${model}" rejected thinkingConfig (${extractErrorMessage(
+            err
+          ).slice(0, 140)}); cached & retrying SAME model without thinkingConfig`
         );
-        return null; // signal immediate single retry without thinkingConfig
+        return null;
       }
+
       return { ok: false as const, error: classifyGeminiError(err) };
     } finally {
       clearTimeout(timer);
     }
   };
 
-  const first = await runCall(tryWithThinking);
+  const first = await runCall(initialThinkingConfig);
   if (first !== null) return first;
 
-  const second = await runCall(false);
+  // Immediate retry on the SAME model without thinkingConfig (never treated as upstream error)
+  const second = await runCall(undefined);
   return second ?? { ok: false, error: emptyGeminiResponseError(model) };
 }
 
 /**
- * Blazing-fast, resilient structured JSON Gemini execution:
- * 1. Disables hidden thinking tokens (`thinkingConfig: { thinkingBudget: 0 }`) to eliminate 5-15s reasoning latency.
- * 2. Smart 5-minute circuit-breaker: skips models currently in 503/429 cooldown immediately (0ms delay).
- * 3. Tight per-attempt AbortController timeout (default 6000ms) so requests never hang.
- * 4. Fails over cleanly to manual `GEMINI_FALLBACK_MODELS` + dynamically discovered active Flash/Flash-Lite models (cached 10m).
+ * Fast, resilient structured JSON Gemini execution:
+ * 1. Uses generation-correct minimal thinking config (Gemini 3.x -> `thinkingLevel: MINIMAL`; Gemini 2.5 Flash -> `thinkingBudget: 0`), auto-retrying the SAME model without `thinkingConfig` if rejected with HTTP 400.
+ * 2. Smart 5-minute circuit-breaker: skips models currently in 503/429/404 cooldown immediately (0ms delay).
+ * 3. Balanced 12s per-attempt AbortController timeout and capped 2-model fallback so valid generations finish and failed requests never stall.
+ * 4. Explicitly classifies & logs timeout, MAX_TOKENS JSON truncation, JSON parse errors, incomplete output, HTTP 400, and HTTP 503.
  */
 export async function generateStructuredWithHybridModel<T>({
   tier = "flash",
@@ -675,6 +896,7 @@ export async function generateStructuredWithHybridModel<T>({
   temperature,
   timeoutMs = DEFAULT_ATTEMPT_TIMEOUT_MS,
   disableThinking = true,
+  validate,
 }: {
   tier?: "flash" | "pro";
   contents: string;
@@ -685,6 +907,7 @@ export async function generateStructuredWithHybridModel<T>({
   temperature?: number;
   timeoutMs?: number;
   disableThinking?: boolean;
+  validate?: (data: T) => string | null;
 }): Promise<HybridModelResult<T>> {
   const apiKey = await resolveGeminiApiKey();
   if (!apiKey) {
@@ -698,11 +921,13 @@ export async function generateStructuredWithHybridModel<T>({
   const proModel = await getGeminiProModel();
   const primaryModel = tier === "pro" ? proModel : flashModel;
   const invokeOptions = {
+    routeName,
     maxOutputTokens,
     systemInstruction,
     temperature,
     timeoutMs,
     disableThinking,
+    validate,
   };
 
   let attempts = 0;
@@ -724,12 +949,11 @@ export async function generateStructuredWithHybridModel<T>({
     }
 
     primaryError = res.error;
-    if (
-      res.error.code === "overload" ||
-      res.error.code === "rate_limit" ||
-      res.error.code === "model"
-    ) {
-      markModelCooldown(primaryModel, res.error.code);
+    console.warn(
+      `[LexiVault][${routeName}] Primary "${primaryModel}" failed (${res.error.shortReason})`
+    );
+    if (shouldCooldownModelForError(res.error)) {
+      markModelCooldown(primaryModel, res.error.shortReason);
     }
 
     // Immediate bailout for auth errors — retrying/failing over won't fix an invalid key
@@ -803,7 +1027,7 @@ export async function generateStructuredWithHybridModel<T>({
       primaryError = retryRes.error;
     }
 
-    // If primary was skipped by circuit-breaker and NO healthy fallbacks exist, try primary or earliest-expiring fallback once
+    // If primary was skipped by circuit-breaker and NO healthy fallbacks exist, probe once
     if (candidatesToTry.length === 0 && primaryInCooldown) {
       const probeModel = cooledFallbacks[0] || primaryModel;
       attempts += 1;
@@ -834,25 +1058,21 @@ export async function generateStructuredWithHybridModel<T>({
       if (res.ok) {
         console.info(
           `[LexiVault][${routeName}] Fast failover succeeded with "${fallbackModel}" (primary "${primaryModel}" ${
-            primaryInCooldown ? "in cooldown" : primaryError?.code
+            primaryInCooldown ? "in cooldown" : primaryError?.shortReason
           }, attempts=${attempts})`
         );
         return { ok: true, data: res.data, modelUsed: fallbackModel, attempts };
       }
 
-      if (
-        res.error.code === "overload" ||
-        res.error.code === "rate_limit" ||
-        res.error.code === "model"
-      ) {
-        markModelCooldown(fallbackModel, res.error.code);
+      if (shouldCooldownModelForError(res.error)) {
+        markModelCooldown(fallbackModel, res.error.shortReason);
       }
       if (!primaryError) {
         primaryError = res.error;
       }
 
       console.warn(
-        `[LexiVault][${routeName}] Fallback "${fallbackModel}" failed (${res.error.code}, HTTP ${res.error.upstreamStatus ?? res.error.status}); continuing`
+        `[LexiVault][${routeName}] Fallback "${fallbackModel}" failed (${res.error.shortReason}); continuing`
       );
     }
   }

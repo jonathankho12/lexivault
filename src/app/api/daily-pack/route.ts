@@ -64,7 +64,11 @@ function normalizeDailyPackItem(
         }))
     : [];
 
-  if (examples.length === 0 && typeof raw.example === "string" && raw.example.trim()) {
+  if (
+    examples.length === 0 &&
+    typeof raw.example === "string" &&
+    raw.example.trim().length >= 8
+  ) {
     examples.push({
       sentence: raw.example.trim(),
       translation_id: "",
@@ -72,30 +76,24 @@ function normalizeDailyPackItem(
     });
   }
 
-  if (examples.length === 0) {
-    examples.push({
-      sentence: `Using **${term}** naturally demonstrates strong C1–C2 command of English.`,
-      translation_id: `Menggunakan **${term}** secara natural menunjukkan penguasaan bahasa Inggris level C1–C2.`,
-      context: "Daily",
-    });
+  const meaning_en =
+    (raw.meaning_en || "").trim() || builtInBilingual?.meaning_en || "";
+  const meaning_id = (raw.meaning_id || "").trim();
+
+  // Never emit placeholder definitions or dummy examples
+  if (meaning_en.length < 4 || meaning_id.length < 4 || examples.length === 0) {
+    return null;
   }
 
   const word_families: WordFamilyItem[] = Array.isArray(raw.word_families)
     ? raw.word_families
         .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
+        .slice(0, 4)
         .map((wf) => ({
           word: wf.word.trim(),
           pos: (wf.pos || type).trim(),
         }))
-    : [{ word: term, pos: type }];
-
-  const meaning_en =
-    (raw.meaning_en || "").trim() ||
-    builtInBilingual?.meaning_en ||
-    `Advanced C1–C2 English ${type === "idiom" ? "idiom" : "word"} "${term}".`;
-  const meaning_id =
-    (raw.meaning_id || "").trim() ||
-    `Ekspresi bahasa Inggris C1–C2 "${term}".`;
+    : [];
 
   return {
     id: `${dateStr}-ai-${index}-${key.replace(/[^a-z0-9]+/g, "-").slice(0, 24)}`,
@@ -191,9 +189,9 @@ term, type (vocab|idiom), cefr (C1|C2), register (Academic|Formal|Casual), pronu
       systemInstruction:
         "Fast C1-C2 English lexicographer. Output compact valid JSON only with zero duplicates.",
       contents: prompt,
-      maxOutputTokens: Math.min(4096, Math.max(1200, totalNeeded * 260)),
+      maxOutputTokens: Math.min(6144, Math.max(2048, totalNeeded * 360)),
       temperature: 0.65,
-      timeoutMs: 9500,
+      timeoutMs: 12000,
       responseSchema: {
         type: Type.OBJECT,
         properties: {
