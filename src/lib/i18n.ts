@@ -479,6 +479,8 @@ export interface TranslationDictionary {
     iosGuideTitle: string;
     iosStep1: string;
     iosStep2: string;
+    androidStep1: string;
+    androidStep2: string;
     androidManualHint: string;
   };
   developer: {
@@ -982,7 +984,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
     pwa: {
       getAndroidAppBtn: "Get Android App",
       modalTitle: "LexiVault App",
-      modalSubtitle: "Install instan di HP/Laptop atau unduh paket Android APK",
+      modalSubtitle: "Pasang LexiVault sebagai aplikasi layar penuh di HP atau Laptop",
       close: "Tutup",
       apkTitle: "Download APK (Android)",
       apkDesc: "File installer .apk native-wrapped untuk perangkat Android.",
@@ -1000,6 +1002,8 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       iosGuideTitle: "Panduan 2 Langkah Add to Home Screen:",
       iosStep1: "Ketuk ikon Bagikan (Share) pada bilah browser Safari.",
       iosStep2: "Pilih 'Add to Home Screen' / 'Tambahkan ke Layar Utama'.",
+      androidStep1: "Ketuk menu titik tiga (⋮) di pojok kanan atas browser Chrome.",
+      androidStep2: "Pilih 'Install app' atau 'Add to Home screen', lalu konfirmasi.",
       androidManualHint:
         "Buka menu titik tiga browser (⋮), lalu pilih 'Install app' atau 'Add to Home screen'.",
     },
@@ -1499,7 +1503,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
     pwa: {
       getAndroidAppBtn: "Get Android App",
       modalTitle: "LexiVault App",
-      modalSubtitle: "Install instantly as a Web App or download the Android APK",
+      modalSubtitle: "Install LexiVault as a full-screen app on Android, iOS, or Desktop",
       close: "Close",
       apkTitle: "Download APK (Android)",
       apkDesc: "Standalone Android .apk installer package.",
@@ -1517,6 +1521,8 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       iosGuideTitle: "2-Step Add to Home Screen Guide:",
       iosStep1: "Tap the Share icon in the Safari toolbar.",
       iosStep2: "Choose 'Add to Home Screen' and confirm.",
+      androidStep1: "Tap the browser menu (⋮) in the top-right corner of Chrome.",
+      androidStep2: "Tap 'Install app' or 'Add to Home screen' and confirm.",
       androidManualHint:
         "Open your browser menu (⋮), then tap 'Install app' or 'Add to Home screen'.",
     },

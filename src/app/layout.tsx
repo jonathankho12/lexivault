@@ -18,10 +18,40 @@ export const viewport: Viewport = {
   themeColor: "#000000",
 };
 
+const SITE_URL = "https://lexivault.my.id";
+const SITE_TITLE = "LexiVault — AI-Powered C1–C2 English Vocabulary & Idiom Vault";
+const SITE_DESCRIPTION =
+  "Master C1–C2 English vocabulary, idioms, and collocations with Gemini AI autofill, SM-2 spaced repetition flashcards, daily learning packs, US/UK pronunciation audio, and real-time Supabase cloud sync.";
+
 export const metadata: Metadata = {
-  title: "LexiVault — Personal English Trainer",
-  description:
-    "Personal English vocabulary, idiom, and collocation trainer with iOS Dark Liquid Glass UI, real-time sync, and zero-lag US/UK audio.",
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  applicationName: "LexiVault",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    siteName: "LexiVault",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: SITE_TITLE,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: ["/og-image.png"],
+  },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

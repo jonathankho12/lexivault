@@ -9,6 +9,7 @@ import {
 } from "@/lib/gemini";
 import { FALLBACK_SUGGESTED_WORDS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
+import { checkAiRateLimit } from "@/lib/rate-limit";
 import {
   normalizeDuplicateKey,
   normalizeSourceTag,
@@ -250,6 +251,11 @@ export async function POST(request: Request) {
         ? body.register
         : "any";
     const lang = body.lang === "en" ? "en" : "id";
+
+    const rateLimit = checkAiRateLimit(request, lang);
+    if (!rateLimit.allowed) {
+      return rateLimit.response;
+    }
 
     const rawExisting = Array.isArray(body.existingTerms)
       ? body.existingTerms

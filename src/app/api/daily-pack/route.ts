@@ -9,6 +9,7 @@ import {
   logGeminiRouteError,
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
+import { checkAiRateLimit } from "@/lib/rate-limit";
 import { getLocalDateString, normalizeTermKey } from "@/lib/utils";
 import type {
   CefrLevel,
@@ -164,6 +165,12 @@ export async function POST(request: Request) {
         items: [],
         source: "fallback",
       });
+    }
+
+    const lang = body.lang === "en" ? "en" : "id";
+    const rateLimit = checkAiRateLimit(request, lang);
+    if (!rateLimit.allowed) {
+      return rateLimit.response;
     }
 
     const rawExisting = Array.isArray(body.existingTerms)

@@ -9,6 +9,7 @@ import {
   logGeminiRouteError,
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
+import { checkAiRateLimit } from "@/lib/rate-limit";
 import { normalizeDuplicateKey, normalizeTermKey } from "@/lib/utils";
 import type {
   AutofillPayload,
@@ -224,6 +225,11 @@ export async function POST(request: Request) {
           source: "local-check",
         });
       }
+    }
+
+    const rateLimit = checkAiRateLimit(request, lang);
+    if (!rateLimit.allowed) {
+      return rateLimit.response;
     }
 
     const existingCsv = formatCompactExistingTerms(existingList, 140);

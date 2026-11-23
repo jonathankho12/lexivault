@@ -9,6 +9,7 @@ import {
 } from "@/lib/gemini";
 import { FALLBACK_DISCOVERY_PACKS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
+import { checkAiRateLimit } from "@/lib/rate-limit";
 import { normalizeDuplicateKey, normalizeTermKey } from "@/lib/utils";
 import type {
   DailyDiscoveryPack,
@@ -134,6 +135,11 @@ export async function POST(request: Request) {
         ? body.date
         : new Date().toISOString().slice(0, 10);
     const lang = body.lang === "en" ? "en" : "id";
+    const rateLimit = checkAiRateLimit(request, lang);
+    if (!rateLimit.allowed) {
+      return rateLimit.response;
+    }
+
     const mode = body.mode === "more" ? "more" : "daily";
     const category: DiscoverCategory =
       body.category === "vocab" ||

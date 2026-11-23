@@ -9,6 +9,7 @@ import {
   logGeminiRouteError,
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
+import { checkAiRateLimit } from "@/lib/rate-limit";
 import { normalizeTermKey } from "@/lib/utils";
 import type {
   ExtractedVocabItem,
@@ -37,6 +38,11 @@ export async function POST(request: Request) {
         },
         { status: 400 }
       );
+    }
+
+    const rateLimit = checkAiRateLimit(request, lang);
+    if (!rateLimit.allowed) {
+      return rateLimit.response;
     }
 
     const prompt = `Extract 6–10 high-value C1/C2 vocab, idioms, or collocations from this text (ui: ${lang}). Skip basic words.
