@@ -38,35 +38,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const prompt = `You are a bilingual English-Indonesian IELTS & Vocabulary Coach (active learner UI language: ${lang}).
-Extract the 6 to 12 MOST valuable English items from the text below for an upper-intermediate/advanced learner (mix C1/C2 vocabulary words, figurative idioms, and useful academic/natural collocations).
-Ignore trivial basic words (e.g., "important", "people", "make").
-
+    const prompt = `Extract 6–10 high-value C1/C2 vocab, idioms, or collocations from this text (ui: ${lang}). Skip basic words.
 Text:
 """
 ${rawText}
 """
-
-For EACH extracted item return strictly valid JSON matching the schema:
-- "term": canonical expression
-- "cefr": "B2" | "C1" | "C2"
-- "type": "vocab" | "idiom" | "collocation"
-- "register": "Academic" | "Formal" | "Casual" | "Slang"
-- "meaning_en": crisp, natural C1–C2 monolingual English learner's dictionary definition
-- "meaning_id": accurate natural Indonesian explanation
-- "examples": 2 contextual sentences highlighting the term in **bold**, with Indonesian "translation_id" and "context" ("Daily" or "Academic")
-- "synonyms": 2-3 strings
-- "antonyms": 1-2 strings
-- "word_families": array of { "word": string, "pos": string }
-- "pronunciation": Google-style "Sounds like" phonetic respelling with "·" syllable dots and ALL CAPS stressed syllable (e.g. "am·BIV·uh·luhnt")
-- "ipa": IPA transcription enclosed in slashes (e.g. "/æmˈbɪv.ə.lənt/")`;
+Concise JSON per item: term, cefr (B2|C1|C2), type (vocab|idiom|collocation), register (Academic|Formal|Casual|Slang), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural Indonesian sentence), examples (2 short sentences with **bold** term + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-3 real {word,pos}).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items: Partial<ExtractedVocabItem>[];
     }>({
       tier: "flash",
       routeName: "api/extract-vocab",
+      systemInstruction:
+        "Fast English-Indonesian vocabulary extractor. Return compact valid JSON only.",
       contents: prompt,
+      maxOutputTokens: 1650,
+      temperature: 0.25,
+      timeoutMs: 7500,
       responseSchema: {
         type: Type.OBJECT,
         properties: {

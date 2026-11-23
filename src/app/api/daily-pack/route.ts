@@ -4,6 +4,7 @@ import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import { pickFallbackDailyPack } from "@/lib/dailyPackFallback";
 import {
   classifyGeminiError,
+  formatCompactExistingTerms,
   generateStructuredWithHybridModel,
   logGeminiRouteError,
 } from "@/lib/gemini";
@@ -175,35 +176,24 @@ export async function POST(request: Request) {
       : [];
     const excludeKeys = new Set(rawExisting.map(normalizeTermKey));
 
-    const prompt = `You are a master C1–C2 English lexicographer and IELTS Band 8.5+ coach designing a fresh Daily Learning Pack for date ${dateStr}.
+    const existingCsv = formatCompactExistingTerms(rawExisting, 180);
+    const prompt = `Daily Pack for ${dateStr}: generate EXACTLY ${wordsQuota} C1–C2 single words (type:"vocab") and ${idiomsQuota} C1–C2 idioms (type:"idiom"), total ${totalNeeded}.
+EXCLUDE (no exact or variant matches): ${existingCsv}
 
-Generate EXACTLY ${wordsQuota} advanced C1–C2 single-word vocabulary items (type: "vocab") AND EXACTLY ${idiomsQuota} authentic C1–C2 idiomatic expressions (type: "idiom"), for a total of ${totalNeeded} unique items.
-
-STRICT RULES:
-1. Exact split: ${wordsQuota} items with "type": "vocab" and ${idiomsQuota} items with "type": "idiom".
-2. STRICT DEDUPLICATION: NEVER include any of these existing Vault terms (or simple inflections):
-   ${rawExisting.length > 0 ? rawExisting.join(", ") : "none"}.
-3. Choose genuinely high-utility C1–C2 expressions used in educated conversation, journalism, and academic writing (avoid basic B1 words or obscure archaic trivia).
-4. For EVERY item provide strictly valid JSON matching the schema:
-   - "term": canonical English expression
-   - "type": "vocab" or "idiom"
-   - "cefr": "C1" or "C2"
-   - "register": "Academic" | "Formal" | "Casual"
-   - "pronunciation": Google-style "Sounds like" phonetic respelling using middle dots "·" and ALL CAPS on the primary stressed syllable (e.g., "ih·FEM·er·uhl", "kuht KOR·nerz")
-   - "ipa": standard IPA transcription in slashes
-   - "meaning_en": crisp, natural monolingual English C1–C2 dictionary definition (1 clear sentence)
-   - "meaning_id": accurate, natural, figurative-aware Indonesian explanation (1 clear sentence; never word-by-word literal for idioms)
-   - "examples": 2 concise, natural sentences (1 "Daily", 1 "Academic") wrapping the target term in **bold**, each with a natural Indonesian "translation_id" and "context"
-   - "synonyms": 2-3 register-matched English synonyms
-   - "antonyms": 1-2 contrasting expressions
-   - "word_families": array of { "word": string, "pos": string }`;
+Concise JSON per item:
+term, type (vocab|idiom), cefr (C1|C2), register (Academic|Formal|Casual), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 crisp sentence), meaning_id (1 natural figurative Indonesian sentence), examples (2 short sentences with **bold** target + translation_id + context Daily/Academic), synonyms (2), antonyms (1-2), word_families (1-2 {word,pos}).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items?: Partial<DailyPackItem>[];
     }>({
       tier: "flash",
       routeName: "api/daily-pack",
+      systemInstruction:
+        "Fast C1-C2 English lexicographer. Output compact valid JSON only with zero duplicates.",
       contents: prompt,
+      maxOutputTokens: Math.min(4096, Math.max(1200, totalNeeded * 260)),
+      temperature: 0.65,
+      timeoutMs: 9500,
       responseSchema: {
         type: Type.OBJECT,
         properties: {

@@ -128,6 +128,9 @@ export interface TranslationDictionary {
     captureSaving: string;
     captureSourceLabel: string;
     captureHint: string;
+    duplicateExact: string;
+    duplicateVariantPrefix: string;
+    viewCardBtn: string;
   };
   suggest: {
     title: string;
@@ -320,6 +323,19 @@ export interface TranslationDictionary {
     saveToVault: string;
     savedInVault: string;
     saving: string;
+    allInVaultTitle: string;
+    allInVaultSubtitle: string;
+    generateMoreTitle: string;
+    generateMoreBtn: string;
+    generatingMoreBtn: string;
+    typeLabel: string;
+    toneLabel: string;
+    typeMix: string;
+    toneC1C2: string;
+    errorLoadMore: string;
+    retryBtn: string;
+    hideSaved: string;
+    showAll: string;
   };
   ielts: {
     bannerEyebrow: string;
@@ -607,6 +623,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       captureSaving: "AI Fill",
       captureSourceLabel: "Sumber:",
       captureHint: "Auto-kategori AI: Vocab / Idiom / Collocation & Register",
+      duplicateExact: "Sudah terdaftar di Vault",
+      duplicateVariantPrefix: "Sudah terdaftar di Vault sebagai",
+      viewCardBtn: "Lihat Kartu",
     },
     suggest: {
       title: "Tambah Kata / Idiom AI",
@@ -817,6 +836,20 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       saveToVault: "Simpan ke Vault",
       savedInVault: "Tersimpan di Vault",
       saving: "Menyimpan...",
+      allInVaultTitle: "Semua kata di Discover sudah ada di Vault!",
+      allInVaultSubtitle:
+        "Buat batch kosakata, idiom, atau kolokasi C1–C2 baru yang belum ada di Vault-mu.",
+      generateMoreTitle: "Tambah Kata & Idiom Tanpa Batas",
+      generateMoreBtn: "+ Tambah Kata & Idiom Baru",
+      generatingMoreBtn: "Meracik Ekspresi Baru...",
+      typeLabel: "Tipe",
+      toneLabel: "Nada / Level",
+      typeMix: "Mix (Semua)",
+      toneC1C2: "C1–C2",
+      errorLoadMore: "Gagal memuat kata tambahan. Coba lagi.",
+      retryBtn: "Coba Lagi",
+      hideSaved: "Hanya yang Baru",
+      showAll: "Tampilkan Semua",
     },
     ielts: {
       bannerEyebrow: "Pelacak IELTS Academic & CEFR",
@@ -1110,6 +1143,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       captureSaving: "AI Fill",
       captureSourceLabel: "Source:",
       captureHint: "AI auto-tags: Vocab / Idiom / Collocation & Register",
+      duplicateExact: "Already registered in your Vault",
+      duplicateVariantPrefix: "Already in Vault as",
+      viewCardBtn: "View Card",
     },
     suggest: {
       title: "AI Suggest Idiom / Word",
@@ -1317,6 +1353,20 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       saveToVault: "Save to Vault",
       savedInVault: "Saved in Vault",
       saving: "Saving...",
+      allInVaultTitle: "All Discover items are already in your Vault!",
+      allInVaultSubtitle:
+        "Generate a fresh batch of C1–C2 vocabulary, idioms, or collocations excluded from your Vault.",
+      generateMoreTitle: "Endless AI Discovery",
+      generateMoreBtn: "+ Generate More Words & Idioms",
+      generatingMoreBtn: "Generating Fresh Expressions...",
+      typeLabel: "Type",
+      toneLabel: "Tone / Level",
+      typeMix: "Mix (All)",
+      toneC1C2: "C1–C2",
+      errorLoadMore: "Failed to generate more expressions. Please try again.",
+      retryBtn: "Retry",
+      hideSaved: "Fresh Only",
+      showAll: "Show All",
     },
     ielts: {
       bannerEyebrow: "IELTS Academic & CEFR Tracker",

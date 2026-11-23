@@ -3,11 +3,12 @@ import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
   classifyGeminiError,
+  formatCompactExistingTerms,
   generateStructuredWithHybridModel,
   logGeminiRouteError,
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
-import { normalizeTermKey } from "@/lib/utils";
+import { normalizeDuplicateKey, normalizeTermKey } from "@/lib/utils";
 import type {
   AutofillPayload,
   CefrLevel,
@@ -25,8 +26,14 @@ const VALID_REGISTERS = new Set<RegisterType>([
   "Slang",
 ]);
 
+interface AutofillModelOutput extends Partial<AutofillPayload> {
+  duplicate?: boolean;
+  existing_term?: string;
+  meaning?: string;
+}
+
 function normalizeAutofillPayload(
-  raw: Partial<AutofillPayload> & { meaning?: string },
+  raw: AutofillModelOutput,
   fallbackTerm: string
 ): AutofillPayload {
   const cleanTerm = (raw.term || fallbackTerm).trim();
@@ -60,6 +67,7 @@ function normalizeAutofillPayload(
   const word_families: WordFamilyItem[] = Array.isArray(raw.word_families)
     ? raw.word_families
         .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
+        .slice(0, 5)
         .map((wf) => ({
           word: wf.word.trim(),
           pos: (wf.pos || type).trim(),
@@ -96,10 +104,10 @@ function normalizeAutofillPayload(
     meaning_en,
     examples,
     synonyms: Array.isArray(raw.synonyms)
-      ? raw.synonyms.map((s) => String(s).trim()).filter(Boolean).slice(0, 5)
+      ? raw.synonyms.map((s) => String(s).trim()).filter(Boolean).slice(0, 4)
       : [],
     antonyms: Array.isArray(raw.antonyms)
-      ? raw.antonyms.map((s) => String(s).trim()).filter(Boolean).slice(0, 4)
+      ? raw.antonyms.map((s) => String(s).trim()).filter(Boolean).slice(0, 3)
       : [],
     word_families,
     register,
@@ -112,6 +120,8 @@ export async function POST(request: Request) {
       term?: string;
       sourceTag?: string;
       lang?: "en" | "id";
+      existingTerms?: string[];
+      skipDuplicateCheck?: boolean;
     };
     const term = body.term?.trim() ?? "";
     const lang = body.lang === "en" ? "en" : "id";
@@ -123,41 +133,69 @@ export async function POST(request: Request) {
       );
     }
 
-    const prompt = `You are an expert bilingual English-Indonesian lexicographer and C1–C2 ESL linguistic coach.
-Analyze the English expression: "${term}".
-Source context hint (optional): "${body.sourceTag || "general"}".
-Active UI language preference: "${lang}".
+    const existingList =
+      !body.skipDuplicateCheck && Array.isArray(body.existingTerms)
+        ? body.existingTerms
+        : [];
 
-You MUST accurately perform Auto-Categorization and return strictly valid JSON matching the schema:
-1. "term": clean canonical English casing for "${term}".
-2. "cefr": estimated CEFR level ("B2", "C1", or "C2").
-3. "type": auto-detect the exact lexical category:
-   - "vocab": single vocabulary word (including phrasal adjectives/participles like "gentrified", "ubiquitous", "ephemeral").
-   - "idiom": figurative multi-word expression whose overall meaning is non-literal (e.g., "snowed under", "bite the bullet", "burn the midnight oil", "on thin ice").
-   - "collocation": natural habitual pairing of words with literal/semi-literal meaning (e.g., "make a compelling case", "pose a threat", "strike a balance", "yield results").
-4. "register": auto-detect the primary stylistic register:
-   - "Academic": scholarly, analytical, research, essay vocabulary.
-   - "Formal": professional, business, polite official writing.
-   - "Casual": everyday conversational English and common idioms.
-   - "Slang": very informal, street, internet, or youth colloquialisms.
-5. "meaning_en": clear, natural, C1–C2 monolingual English learner's dictionary definition (1-2 crisp sentences). For idioms, explain the real figurative meaning in English.
-6. "meaning_id": accurate, natural, figurative-aware Indonesian explanation (1-2 crisp sentences). For idioms, explain the real figurative meaning in Indonesian, NOT word-by-word literal translation.
-7. "examples": exactly 2 natural English example sentences (1 "Daily" conversation/scenario, 1 "Academic" or professional scenario) wrapping the target expression (or its inflected form) in **double asterisks** like **${term}**, each paired with a natural Indonesian "translation_id".
-8. "synonyms": 2-4 natural English synonyms or equivalent expressions matching the same register.
-9. "antonyms": 1-3 natural English antonyms or contrasting expressions.
-10. "word_families": real morphological derivatives or closely related expressions with part-of-speech tags ("n", "v", "adj", "adv", "idiom", "collocation"). NEVER invent nonexistent words.
-11. "pronunciation": easy-to-read Google "Sounds like" phonetic respelling separating syllables with middle dots "·" and putting the primary STRESSED syllable in ALL CAPS (e.g., "am·BIV·uh·luhnt", "JEN·truh·fyd", "bair thuh BRUHNT").
-12. "ipa": standard IPA transcription enclosed in slashes (e.g., "/æmˈbɪv.ə.lənt/").`;
+    // Fast 0ms server-side normalized duplicate guard
+    if (existingList.length > 0) {
+      const targetDupKey = normalizeDuplicateKey(term);
+      const exactMatch = existingList.find(
+        (t) => normalizeDuplicateKey(String(t || "")) === targetDupKey
+      );
+      if (exactMatch) {
+        return NextResponse.json({
+          duplicate: true,
+          existingTerm: String(exactMatch).trim(),
+          source: "local-check",
+        });
+      }
+    }
 
-    const aiRes = await generateStructuredWithHybridModel<
-      Partial<AutofillPayload>
-    >({
+    const existingCsv = formatCompactExistingTerms(existingList, 140);
+    const hasExisting = existingCsv !== "none";
+
+    const systemInstruction =
+      "Fast English-Indonesian lexicographer. Output compact valid JSON only. Never invent fake word-family derivatives.";
+
+    const prompt = `Term: "${term}" (source: ${body.sourceTag || "general"}, ui: ${lang}).
+${
+  hasExisting
+    ? `Existing Vault terms: ${existingCsv}
+FIRST check if "${term}" is an exact, inflectional, or morphological/phrase variant of ANY existing Vault term (e.g. "spilling the tea" matches "spill the tea", "gentrify" matches "gentrified").
+If YES: return ONLY {"duplicate":true,"existing_term":"<exact matched term from list>"}.
+If NO: return {"duplicate":false, ...all fields below}.`
+    : 'Return {"duplicate":false, ...all fields below}.'
+}
+
+Fields when duplicate=false:
+- term: canonical casing
+- cefr: B2|C1|C2
+- type: vocab|idiom|collocation
+- register: Academic|Formal|Casual|Slang
+- pronunciation: Google "Sounds like" with "·" dots & ALL CAPS primary stress (e.g. "am·BIV·uh·luhnt")
+- ipa: /IPA/
+- meaning_en: 1 concise natural English C1-C2 definition (figurative for idioms)
+- meaning_id: 1 concise natural Indonesian definition (figurative for idioms, never literal word-by-word)
+- examples: 2 short sentences (1 Daily, 1 Academic) wrapping target in **bold**, with Indonesian translation_id & context
+- synonyms: 2-3 register-matched strings
+- antonyms: 1-2 contrasting strings
+- word_families: 1-4 real {word, pos} derivatives`;
+
+    const aiRes = await generateStructuredWithHybridModel<AutofillModelOutput>({
       tier: "flash",
       routeName: "api/autofill",
+      systemInstruction,
       contents: prompt,
+      maxOutputTokens: 600,
+      temperature: 0.2,
+      timeoutMs: 6000,
       responseSchema: {
         type: Type.OBJECT,
         properties: {
+          duplicate: { type: Type.BOOLEAN },
+          existing_term: { type: Type.STRING },
           term: { type: Type.STRING },
           pronunciation: { type: Type.STRING },
           ipa: { type: Type.STRING },
@@ -204,20 +242,7 @@ You MUST accurately perform Auto-Categorization and return strictly valid JSON m
             enum: ["Formal", "Academic", "Casual", "Slang"],
           },
         },
-        required: [
-          "term",
-          "pronunciation",
-          "ipa",
-          "cefr",
-          "type",
-          "meaning_en",
-          "meaning_id",
-          "examples",
-          "synonyms",
-          "antonyms",
-          "word_families",
-          "register",
-        ],
+        required: ["duplicate"],
       },
     });
 
@@ -233,8 +258,28 @@ You MUST accurately perform Auto-Categorization and return strictly valid JSON m
       );
     }
 
+    // Layer 2 AI semantic/variant duplicate detection
+    if (aiRes.data.duplicate === true && hasExisting) {
+      const aiMatched = (aiRes.data.existing_term || "").trim();
+      const verifiedMatch =
+        existingList.find(
+          (t) =>
+            normalizeDuplicateKey(String(t || "")) ===
+            normalizeDuplicateKey(aiMatched)
+        ) ||
+        aiMatched ||
+        term;
+      return NextResponse.json({
+        duplicate: true,
+        existingTerm: String(verifiedMatch).trim(),
+        source: "gemini",
+        modelUsed: aiRes.modelUsed,
+      });
+    }
+
     const normalized = normalizeAutofillPayload(aiRes.data, term);
     return NextResponse.json({
+      duplicate: false,
       data: normalized,
       meaning:
         lang === "en"

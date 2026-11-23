@@ -166,6 +166,40 @@ export function normalizeTermKey(term: string): string {
   return term.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/**
+ * Strict yet practical normalization for instant 0ms local duplicate detection:
+ * lowercases, trims, strips edge punctuation, collapses whitespace, and strips
+ * optional leading articles/infinitive marker ("to ", "a ", "an ", "the ").
+ */
+export function normalizeDuplicateKey(term: string): string {
+  const cleaned = term
+    .trim()
+    .toLowerCase()
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "")
+    .replace(/\s+/g, " ");
+  const stripped = cleaned.replace(/^(to|a|an|the)\s+/i, "").trim();
+  return stripped.length >= 2 ? stripped : cleaned;
+}
+
+export function findLocalDuplicateWord(
+  rawTerm: string,
+  words: WordEntry[]
+): WordEntry | null {
+  const targetExact = normalizeTermKey(rawTerm);
+  const targetNorm = normalizeDuplicateKey(rawTerm);
+  if (!targetNorm) return null;
+
+  for (const word of words) {
+    if (
+      normalizeTermKey(word.term) === targetExact ||
+      normalizeDuplicateKey(word.term) === targetNorm
+    ) {
+      return word;
+    }
+  }
+  return null;
+}
+
 export function formatRegisterBadgeClass(register: WordEntry["register"]): string {
   switch (register) {
     case "Academic":

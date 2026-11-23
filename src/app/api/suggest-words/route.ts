@@ -3,6 +3,7 @@ import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
   classifyGeminiError,
+  formatCompactExistingTerms,
   generateStructuredWithHybridModel,
   logGeminiRouteError,
 } from "@/lib/gemini";
@@ -247,45 +248,34 @@ export async function POST(request: Request) {
       : [];
     const excludeKeys = new Set(rawExisting.map(normalizeTermKey));
 
+    const existingCsv = formatCompactExistingTerms(rawExisting, 150);
     const categoryInstruction =
       category === "mix"
-        ? 'Return a rich C1–C2 mix: 2 idiomatic expressions ("idiom"), 1 advanced single word ("vocab"), and 1 natural collocation ("collocation").'
-        : `Every single item MUST have type "${category}".`;
+        ? "Mix: 2 idioms, 1 vocab, 1 collocation."
+        : `ALL 4 items must have type "${category}".`;
     const registerInstruction =
       register === "any"
-        ? 'Balance natural registers across "Academic", "Formal", and "Casual".'
-        : `Every single item MUST fit register "${register}".`;
+        ? "Balance Academic, Formal, and Casual registers."
+        : `ALL 4 items must fit register "${register}".`;
 
-    const prompt = `You are a master C1–C2 English lexicographer & IELTS Band 8.5+ vocabulary coach.
-Generate EXACTLY 4 fresh, high-utility, authentic C1 or C2 English expressions for an ambitious learner whose current UI language is "${lang}".
+    const prompt = `Generate 4 fresh C1–C2 English expressions (ui: ${lang}).
+${categoryInstruction} ${registerInstruction}
+EXCLUDE (no exact or variant matches): ${existingCsv}
 
-STRICT RULES:
-1. ${categoryInstruction}
-2. ${registerInstruction}
-3. STRICT DEDUPLICATION: You MUST NOT suggest any of these already-known or previously shown expressions (or trivial inflections of them):
-   ${rawExisting.length > 0 ? rawExisting.join(", ") : "none"}.
-4. Prioritize genuinely useful C1–C2 idioms, precise academic/formal words, and natural collocations used by educated native speakers (avoid cliché B1 words or obscure archaic words).
-5. For EVERY item return strictly valid JSON matching the schema:
-   - "term": canonical English expression
-   - "type": "vocab" | "idiom" | "collocation"
-   - "cefr": "C1" or "C2"
-   - "register": "Academic" | "Formal" | "Casual"
-   - "pronunciation": Google-style "Sounds like" phonetic respelling using middle dots "·" and ALL CAPS on the primary stressed syllable (e.g., "bair thuh BRUHNT", "am·BIV·uh·luhnt")
-   - "ipa": standard IPA transcription in slashes (e.g., "/beər ðə brʌnt/")
-   - "meaning_en": crisp, natural monolingual English C1–C2 learner's dictionary definition (1-2 clear sentences)
-   - "meaning_id": accurate, natural, figurative-aware Indonesian explanation (1-2 crisp sentences; never word-by-word literal for idioms)
-   - "examples": 2 natural contextual sentences (1 "Daily", 1 "Academic") wrapping the expression in **bold**, each with a natural Indonesian "translation_id" and "context"
-   - "synonyms": 2-4 register-matched English synonyms
-   - "antonyms": 1-3 contrasting expressions
-   - "word_families": array of { "word": string, "pos": string }
-   - "source_tag": best canonical source key from "film", "book", "lecture", "article", "general"`;
+Concise JSON per item:
+term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Casual), pronunciation ("·" dots + ALL CAPS stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural figurative Indonesian sentence), examples (1 Daily + 1 Academic short sentence with **bold** target + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-2 {word,pos}), source_tag (film|book|lecture|article|general).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items?: Partial<SuggestedWordItem>[];
     }>({
       tier: "flash",
       routeName: "api/suggest-words",
+      systemInstruction:
+        "Fast C1-C2 English lexicographer. Output compact valid JSON only with zero duplicates.",
       contents: prompt,
+      maxOutputTokens: 1000,
+      temperature: 0.7,
+      timeoutMs: 6000,
       responseSchema: {
         type: Type.OBJECT,
         properties: {

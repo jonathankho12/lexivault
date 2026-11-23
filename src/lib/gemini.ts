@@ -1,4 +1,4 @@
-import { GoogleGenAI, type Schema } from "@google/genai";
+import { GoogleGenAI, type GenerateContentConfig, type Schema } from "@google/genai";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 export type GeminiErrorCode =
@@ -22,11 +22,13 @@ export interface ClassifiedGeminiError {
 export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 export const DEFAULT_GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
 
-// Retry primary model once after ~600ms short jittered backoff on 503/429/network before failing over
-const PRIMARY_RETRY_BASE_MS = 600;
-const MAX_FALLBACK_MODELS = 3;
+// Fast circuit-breaker + tight latency limits for Cloudflare Workers
+const MODEL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown for 503/429/404 models
 const MODEL_DISCOVERY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes per Worker isolate
-const MODEL_DISCOVERY_TIMEOUT_MS = 4000;
+const MODEL_DISCOVERY_TIMEOUT_MS = 3500;
+const DEFAULT_ATTEMPT_TIMEOUT_MS = 6000;
+const SINGLE_RETRY_DELAY_MS = 450;
+const MAX_FALLBACK_MODELS = 3;
 
 interface DiscoveredModelsCache {
   fetchedAt: number;
@@ -35,6 +37,12 @@ interface DiscoveredModelsCache {
 }
 
 let discoveredModelsCache: DiscoveredModelsCache | null = null;
+
+// In-memory Worker isolate circuit-breaker: modelName(lower) -> cooldownUntilTimestamp
+const modelCooldownUntil = new Map<string, number>();
+
+// In-memory capability cache: models that return HTTP 400 when `thinkingConfig` is passed
+const modelsRejectingThinkingConfig = new Set<string>();
 
 function cleanEnvValue(raw: unknown): string {
   if (typeof raw !== "string") return "";
@@ -45,7 +53,7 @@ function cleanEnvValue(raw: unknown): string {
 }
 
 function sleepWithJitter(baseMs: number): Promise<void> {
-  const jitter = Math.floor(Math.random() * 150);
+  const jitter = Math.floor(Math.random() * 120);
   return new Promise((resolve) => setTimeout(resolve, baseMs + jitter));
 }
 
@@ -56,6 +64,63 @@ function hashKeyFingerprint(value: string): number {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+function isModelInCooldown(model: string, now = Date.now()): boolean {
+  const until = modelCooldownUntil.get(model.toLowerCase());
+  if (!until) return false;
+  if (until <= now) {
+    modelCooldownUntil.delete(model.toLowerCase());
+    return false;
+  }
+  return true;
+}
+
+function markModelCooldown(model: string, reason: string): void {
+  const key = model.toLowerCase();
+  const until = Date.now() + MODEL_COOLDOWN_MS;
+  modelCooldownUntil.set(key, until);
+  console.warn(
+    `[LexiVault][gemini-circuit] Marked "${model}" unhealthy (${reason}) for 5m cooldown`
+  );
+}
+
+function isThinkingConfigRejection(err: unknown): boolean {
+  const msg =
+    err instanceof Error
+      ? err.message
+      : typeof (err as { message?: unknown })?.message === "string"
+        ? String((err as { message?: unknown }).message)
+        : String(err ?? "");
+  const lower = msg.toLowerCase();
+  const status = extractUpstreamStatus(err, msg);
+  return (
+    (status === 400 || lower.includes("invalid_argument")) &&
+    (lower.includes("thinking") || lower.includes("thinkingbudget") || lower.includes("thinking_budget"))
+  );
+}
+
+/**
+ * Formats existing Vault terms into a compact, deduplicated CSV string
+ * to minimize prompt tokens and maximize Gemini generation speed.
+ */
+export function formatCompactExistingTerms(
+  terms: string[] | undefined,
+  maxItems = 140
+): string {
+  if (!Array.isArray(terms) || terms.length === 0) return "none";
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of terms) {
+    const clean = String(raw || "").trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+    if (out.length >= maxItems) break;
+  }
+  return out.length > 0 ? out.join(", ") : "none";
 }
 
 /**
@@ -190,7 +255,7 @@ function scoreDiscoveredModel(modelId: string): number {
 
   // Strongly prioritize fast/lightweight flash and flash-lite models
   if (lower.includes("flash-lite")) {
-    score += 1060;
+    score += 1070;
   } else if (lower.includes("flash")) {
     score += 1080;
   } else if (lower.includes("pro")) {
@@ -207,7 +272,7 @@ function scoreDiscoveredModel(modelId: string): number {
     score += major * 100 + minor * 10;
   }
 
-  // Prefer stable aliases over experimental, thinking-only, or dated snapshot versions
+  // Prefer stable GA aliases over experimental, thinking-only, or dated snapshots
   if (lower.includes("-latest")) score += 25;
   if (!lower.includes("preview") && !lower.includes("exp")) score += 20;
   if (lower.includes("-exp")) score -= 45;
@@ -295,7 +360,7 @@ async function discoverAvailableFallbackModels(
     };
 
     console.info(
-      `[LexiVault][gemini-discovery] Cached ${eligible.length} active generateContent models (top: ${eligible
+      `[LexiVault][gemini-discovery] Cached ${eligible.length} active models (top: ${eligible
         .slice(0, 5)
         .join(", ")})`
     );
@@ -355,7 +420,6 @@ function extractUpstreamStatus(err: unknown, rawMessage: string): number | undef
     }
   }
 
-  // Extract status code embedded in JSON/string error bodies like `"code":503` or `got status: 503`
   const codeMatch =
     /"code"\s*:\s*(\d{3})/.exec(rawMessage) ||
     /\bstatus[:\s]+(\d{3})\b/i.exec(rawMessage) ||
@@ -384,8 +448,7 @@ export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
   const conciseRaw = rawMessage.slice(0, 320);
   const lower = rawMessage.toLowerCase();
 
-  // 1. Temporary overload / high demand (503 UNAVAILABLE) — MUST be checked before "model"
-  // because Google's 503 messages often contain phrases like "The model is overloaded."
+  // 1. Temporary overload / high demand (503 UNAVAILABLE) — checked before "model"
   if (
     upstreamStatus === 503 ||
     upstreamStatus === 504 ||
@@ -440,7 +503,7 @@ export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
     };
   }
 
-  // 4. Transient network / timeout errors
+  // 4. Transient network / timeout / abort errors
   if (
     lower.includes("network") ||
     lower.includes("fetch failed") ||
@@ -448,7 +511,8 @@ export function classifyGeminiError(err: unknown): ClassifiedGeminiError {
     lower.includes("timed out") ||
     lower.includes("econnrefused") ||
     lower.includes("econnreset") ||
-    lower.includes("aborted")
+    lower.includes("aborted") ||
+    lower.includes("abort")
   ) {
     return {
       status: 503,
@@ -526,47 +590,101 @@ async function invokeModelStructuredOnce<T>(
   ai: GoogleGenAI,
   model: string,
   contents: string,
-  responseSchema: Schema
+  responseSchema: Schema,
+  options: {
+    maxOutputTokens?: number;
+    systemInstruction?: string;
+    temperature?: number;
+    timeoutMs: number;
+    disableThinking: boolean;
+  }
 ): Promise<{ ok: true; data: T } | { ok: false; error: ClassifiedGeminiError }> {
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-      config: {
+  const modelKey = model.toLowerCase();
+  const tryWithThinking =
+    options.disableThinking && !modelsRejectingThinkingConfig.has(modelKey);
+
+  const runCall = async (includeThinkingZero: boolean) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+    try {
+      const config: GenerateContentConfig = {
         responseMimeType: "application/json",
         responseSchema,
-      },
-    });
-    const text = response.text?.trim() ?? "";
-    if (!text) {
-      return { ok: false, error: emptyGeminiResponseError(model) };
+        abortSignal: controller.signal,
+      };
+      if (typeof options.maxOutputTokens === "number") {
+        config.maxOutputTokens = options.maxOutputTokens;
+      }
+      if (options.systemInstruction) {
+        config.systemInstruction = options.systemInstruction;
+      }
+      if (typeof options.temperature === "number") {
+        config.temperature = options.temperature;
+      }
+      if (includeThinkingZero) {
+        config.thinkingConfig = { thinkingBudget: 0 };
+      }
+
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config,
+      });
+      const text = response.text?.trim() ?? "";
+      if (!text) {
+        return { ok: false as const, error: emptyGeminiResponseError(model) };
+      }
+      const parsed = JSON.parse(text) as T;
+      return { ok: true as const, data: parsed };
+    } catch (err) {
+      // Gracefully retry ONCE without thinkingConfig ONLY if this fallback model explicitly rejects it with HTTP 400
+      if (includeThinkingZero && isThinkingConfigRejection(err)) {
+        modelsRejectingThinkingConfig.add(modelKey);
+        console.info(
+          `[LexiVault][gemini-config] Model "${model}" rejected thinkingConfig; cached without thinkingConfig & retrying immediately`
+        );
+        return null; // signal immediate single retry without thinkingConfig
+      }
+      return { ok: false as const, error: classifyGeminiError(err) };
+    } finally {
+      clearTimeout(timer);
     }
-    const parsed = JSON.parse(text) as T;
-    return { ok: true, data: parsed };
-  } catch (err) {
-    return { ok: false, error: classifyGeminiError(err) };
-  }
+  };
+
+  const first = await runCall(tryWithThinking);
+  if (first !== null) return first;
+
+  const second = await runCall(false);
+  return second ?? { ok: false, error: emptyGeminiResponseError(model) };
 }
 
 /**
- * Executes a structured JSON Gemini generation with:
- * 1. Primary model (`GEMINI_MODEL`, default `gemini-3.8-flash`) + 1 fast retry (~600ms backoff)
- *    on transient 503 UNAVAILABLE / 429 / network errors.
- * 2. Automatic failover on persistent 503 / 429 / 404 to:
- *    - Optional manual `GEMINI_FALLBACK_MODELS` runtime env/binding, AND
- *    - Dynamically discovered active `flash` / `flash-lite` models via `/v1beta/models`
- *      (cached 10 min per Worker isolate), trying up to 3 fallback models.
+ * Blazing-fast, resilient structured JSON Gemini execution:
+ * 1. Disables hidden thinking tokens (`thinkingConfig: { thinkingBudget: 0 }`) to eliminate 5-15s reasoning latency.
+ * 2. Smart 5-minute circuit-breaker: skips models currently in 503/429 cooldown immediately (0ms delay).
+ * 3. Tight per-attempt AbortController timeout (default 6000ms) so requests never hang.
+ * 4. Fails over cleanly to manual `GEMINI_FALLBACK_MODELS` + dynamically discovered active Flash/Flash-Lite models (cached 10m).
  */
 export async function generateStructuredWithHybridModel<T>({
   tier = "flash",
   contents,
   responseSchema,
   routeName = "gemini-structured",
+  maxOutputTokens,
+  systemInstruction,
+  temperature,
+  timeoutMs = DEFAULT_ATTEMPT_TIMEOUT_MS,
+  disableThinking = true,
 }: {
   tier?: "flash" | "pro";
   contents: string;
   responseSchema: Schema;
   routeName?: string;
+  maxOutputTokens?: number;
+  systemInstruction?: string;
+  temperature?: number;
+  timeoutMs?: number;
+  disableThinking?: boolean;
 }): Promise<HybridModelResult<T>> {
   const apiKey = await resolveGeminiApiKey();
   if (!apiKey) {
@@ -579,47 +697,62 @@ export async function generateStructuredWithHybridModel<T>({
   const flashModel = await getGeminiModel();
   const proModel = await getGeminiProModel();
   const primaryModel = tier === "pro" ? proModel : flashModel;
+  const invokeOptions = {
+    maxOutputTokens,
+    systemInstruction,
+    temperature,
+    timeoutMs,
+    disableThinking,
+  };
 
   let attempts = 0;
   let primaryError: ClassifiedGeminiError | null = null;
+  const primaryInCooldown = isModelInCooldown(primaryModel);
 
-  // Attempt 1 on primary model + 1 fast retry (~600ms) on 503/429/network
-  for (let attemptIdx = 0; attemptIdx <= 1; attemptIdx += 1) {
+  // Fast path: if primary model is healthy (not in 5m cooldown), try it first
+  if (!primaryInCooldown) {
     attempts += 1;
     const res = await invokeModelStructuredOnce<T>(
       ai,
       primaryModel,
       contents,
-      responseSchema
+      responseSchema,
+      invokeOptions
     );
-
     if (res.ok) {
       return { ok: true, data: res.data, modelUsed: primaryModel, attempts };
     }
 
     primaryError = res.error;
-    if (attemptIdx === 0 && isTransientGeminiError(res.error)) {
-      console.warn(
-        `[LexiVault][${routeName}] Primary model "${primaryModel}" returned ${res.error.code} (HTTP ${res.error.upstreamStatus ?? res.error.status}); retrying once after ~${PRIMARY_RETRY_BASE_MS}ms`
-      );
-      await sleepWithJitter(PRIMARY_RETRY_BASE_MS);
-      continue;
+    if (
+      res.error.code === "overload" ||
+      res.error.code === "rate_limit" ||
+      res.error.code === "model"
+    ) {
+      markModelCooldown(primaryModel, res.error.code);
     }
 
-    logGeminiRouteError(routeName, res.error, {
-      model: primaryModel,
-      attempts,
-    });
-    break;
+    // Immediate bailout for auth errors — retrying/failing over won't fix an invalid key
+    if (res.error.code === "auth") {
+      logGeminiRouteError(routeName, res.error, { model: primaryModel, attempts });
+      return { ok: false, error: res.error, attempts };
+    }
+  } else {
+    console.info(
+      `[LexiVault][${routeName}] Circuit-breaker skipped "${primaryModel}" (in 5m cooldown) -> jumping directly to healthy Flash model`
+    );
   }
 
-  // Fail over to manual GEMINI_FALLBACK_MODELS + dynamically discovered available Flash models
-  if (primaryError && isFallbackEligibleError(primaryError)) {
+  // Build ordered healthy fallback pool (manual GEMINI_FALLBACK_MODELS + dynamically discovered active Flash models)
+  const shouldUseFallbacks =
+    primaryInCooldown ||
+    (primaryError !== null && isFallbackEligibleError(primaryError));
+
+  if (shouldUseFallbacks) {
     const excludeSoFar = [primaryModel];
     const manualFallbacks = await getGeminiFallbackModels(excludeSoFar);
     const proFlashFallback =
       tier === "pro" && primaryModel !== flashModel ? [flashModel] : [];
-
     const discoveredFallbacks = await discoverAvailableFallbackModels(apiKey, [
       ...excludeSoFar,
       ...proFlashFallback,
@@ -627,7 +760,9 @@ export async function generateStructuredWithHybridModel<T>({
     ]);
 
     const seen = new Set<string>([primaryModel.toLowerCase()]);
-    const orderedFallbacks: string[] = [];
+    const healthyFallbacks: string[] = [];
+    const cooledFallbacks: string[] = [];
+
     for (const candidate of [
       ...proFlashFallback,
       ...manualFallbacks,
@@ -636,36 +771,101 @@ export async function generateStructuredWithHybridModel<T>({
       const k = candidate.toLowerCase();
       if (seen.has(k)) continue;
       seen.add(k);
-      orderedFallbacks.push(candidate);
-      if (orderedFallbacks.length >= MAX_FALLBACK_MODELS) break;
+      if (isModelInCooldown(candidate)) {
+        cooledFallbacks.push(candidate);
+      } else {
+        healthyFallbacks.push(candidate);
+      }
     }
 
-    for (const fallbackModel of orderedFallbacks) {
+    const candidatesToTry = healthyFallbacks.slice(0, MAX_FALLBACK_MODELS);
+
+    // If no healthy fallback exists and primary wasn't retried yet on a transient error, do 1 short retry
+    if (
+      candidatesToTry.length === 0 &&
+      !primaryInCooldown &&
+      primaryError &&
+      isTransientGeminiError(primaryError)
+    ) {
+      await sleepWithJitter(SINGLE_RETRY_DELAY_MS);
+      attempts += 1;
+      const retryRes = await invokeModelStructuredOnce<T>(
+        ai,
+        primaryModel,
+        contents,
+        responseSchema,
+        invokeOptions
+      );
+      if (retryRes.ok) {
+        modelCooldownUntil.delete(primaryModel.toLowerCase());
+        return { ok: true, data: retryRes.data, modelUsed: primaryModel, attempts };
+      }
+      primaryError = retryRes.error;
+    }
+
+    // If primary was skipped by circuit-breaker and NO healthy fallbacks exist, try primary or earliest-expiring fallback once
+    if (candidatesToTry.length === 0 && primaryInCooldown) {
+      const probeModel = cooledFallbacks[0] || primaryModel;
+      attempts += 1;
+      const probeRes = await invokeModelStructuredOnce<T>(
+        ai,
+        probeModel,
+        contents,
+        responseSchema,
+        invokeOptions
+      );
+      if (probeRes.ok) {
+        modelCooldownUntil.delete(probeModel.toLowerCase());
+        return { ok: true, data: probeRes.data, modelUsed: probeModel, attempts };
+      }
+      primaryError = probeRes.error;
+    }
+
+    for (const fallbackModel of candidatesToTry) {
       attempts += 1;
       const res = await invokeModelStructuredOnce<T>(
         ai,
         fallbackModel,
         contents,
-        responseSchema
+        responseSchema,
+        invokeOptions
       );
 
       if (res.ok) {
         console.info(
-          `[LexiVault][${routeName}] Fallback succeeded with model "${fallbackModel}" (after primary "${primaryModel}" failed with ${primaryError.code}, HTTP ${primaryError.upstreamStatus ?? primaryError.status})`
+          `[LexiVault][${routeName}] Fast failover succeeded with "${fallbackModel}" (primary "${primaryModel}" ${
+            primaryInCooldown ? "in cooldown" : primaryError?.code
+          }, attempts=${attempts})`
         );
         return { ok: true, data: res.data, modelUsed: fallbackModel, attempts };
       }
 
+      if (
+        res.error.code === "overload" ||
+        res.error.code === "rate_limit" ||
+        res.error.code === "model"
+      ) {
+        markModelCooldown(fallbackModel, res.error.code);
+      }
+      if (!primaryError) {
+        primaryError = res.error;
+      }
+
       console.warn(
-        `[LexiVault][${routeName}] Fallback model "${fallbackModel}" failed (${res.error.code}, HTTP ${res.error.upstreamStatus ?? res.error.status}); trying next`
+        `[LexiVault][${routeName}] Fallback "${fallbackModel}" failed (${res.error.code}, HTTP ${res.error.upstreamStatus ?? res.error.status}); continuing`
       );
     }
   }
 
-  // Always preserve primary model's accurate error (never mask a 503 overload behind a fallback 404)
+  const finalError = primaryError ?? emptyGeminiResponseError(primaryModel);
+  logGeminiRouteError(routeName, finalError, {
+    model: primaryModel,
+    attempts,
+  });
+
   return {
     ok: false,
-    error: primaryError ?? emptyGeminiResponseError(primaryModel),
+    error: finalError,
     attempts,
   };
 }

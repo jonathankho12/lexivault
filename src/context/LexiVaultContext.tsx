@@ -56,8 +56,10 @@ import {
 } from "@/lib/storage";
 import {
   calculateStreak,
+  findLocalDuplicateWord,
   formatGeminiClientError,
   getLocalDateString,
+  normalizeDuplicateKey,
   normalizeSourceTag,
   normalizeTermKey,
 } from "@/lib/utils";
@@ -261,6 +263,7 @@ export function LexiVaultProvider({
     null
   );
   const autoPopupCheckedKeyRef = useRef<string | null>(null);
+  const wordsLogQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const runCloudMutation = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T> => {
@@ -497,6 +500,95 @@ export function LexiVaultProvider({
       }
     },
     [updateWordAudioUrl]
+  );
+
+  // Serialize XP + vocab ring increments so rapid 0ms optimistic saves never race
+  const enqueueWordsAddedLog = useCallback(
+    (userId: string, count = 1) => {
+      const next = wordsLogQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const { updatedLog, newXp } = await runCloudMutation(() =>
+            incrementWordsAddedLog(todayStr, userId, count)
+          );
+          setStudyLogs((prev) => [
+            updatedLog,
+            ...prev.filter((l) => l.study_date !== updatedLog.study_date),
+          ]);
+          setXp(newXp);
+        });
+      wordsLogQueueRef.current = next;
+      return next;
+    },
+    [runCloudMutation, todayStr]
+  );
+
+  // Background non-blocking enrichment ONLY if optional fields are missing on a card
+  const silentlyEnrichWordIfNeeded = useCallback(
+    async (entry: WordEntry, userId: string) => {
+      const missingExamples = entry.examples_json.length < 2;
+      const missingEn = !entry.meaning_en?.trim();
+      const missingId = !entry.meaning_id?.trim();
+      const missingPron = !entry.pronunciation?.trim();
+      if (!missingExamples && !missingEn && !missingId && !missingPron) {
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/autofill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            term: entry.term,
+            sourceTag: normalizeSourceTag(entry.source_tag),
+            lang,
+            skipDuplicateCheck: true,
+          }),
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { data?: AutofillPayload };
+        const aiData = json.data;
+        if (!aiData) return;
+
+        const latest =
+          wordsRef.current.find((w) => w.id === entry.id) ?? entry;
+        const merged: WordEntry = {
+          ...latest,
+          pronunciation: latest.pronunciation || aiData.pronunciation,
+          ipa: latest.ipa || aiData.ipa,
+          cefr: latest.cefr || aiData.cefr,
+          meaning_en: latest.meaning_en || aiData.meaning_en,
+          meaning_id: latest.meaning_id || aiData.meaning_id,
+          examples_json:
+            latest.examples_json.length >= 2
+              ? latest.examples_json
+              : aiData.examples.length > latest.examples_json.length
+                ? aiData.examples
+                : latest.examples_json,
+          synonyms:
+            latest.synonyms.length > 0 ? latest.synonyms : aiData.synonyms,
+          antonyms:
+            latest.antonyms.length > 0 ? latest.antonyms : aiData.antonyms,
+          word_families_json:
+            latest.word_families_json.length > 0
+              ? latest.word_families_json
+              : aiData.word_families,
+        };
+
+        const updated = await runCloudMutation(() =>
+          updateWordEntry(merged, userId)
+        );
+        setWords((prev) =>
+          prev.map((w) => (w.id === entry.id ? updated : w))
+        );
+        setSelectedWord((prev) =>
+          prev && prev.id === entry.id ? updated : prev
+        );
+      } catch {
+        // Silent background enrichment — never disrupt user flow
+      }
+    },
+    [lang, runCloudMutation]
   );
 
   // ---------------------------------------------------------------------------
@@ -840,17 +932,15 @@ export function LexiVaultProvider({
         };
       }
 
-      const normalized = normalizeTermKey(trimmed);
-      const existing = wordsRef.current.find(
-        (w) => normalizeTermKey(w.term) === normalized
-      );
+      // Layer 1 (0ms local duplicate check: case/punctuation/leading-article/to normalized)
+      const existing = findLocalDuplicateWord(trimmed, wordsRef.current);
       if (existing) {
-        setSelectedWord(existing);
         setCaptureToast({
-          type: "info",
+          type: "duplicate",
           message: isEn
-            ? `"${existing.term}" is already in your Vault.`
-            : `"${existing.term}" sudah ada di Vault.`,
+            ? `Already registered in your Vault: "${existing.term}"`
+            : `Sudah terdaftar di Vault: "${existing.term}"`,
+          matchedWord: existing,
         });
         return { ok: false, duplicate: true, word: existing };
       }
@@ -866,6 +956,7 @@ export function LexiVaultProvider({
             term: trimmed,
             sourceTag: canonicalSource,
             lang,
+            existingTerms: wordsRef.current.map((w) => w.term),
           }),
         });
 
@@ -901,10 +992,55 @@ export function LexiVaultProvider({
           return { ok: false, error: errMsg };
         }
 
-        const json = (await res.json()) as { data: AutofillPayload };
-        const aiData = json.data;
-        const nowIso = new Date().toISOString();
+        const json = (await res.json()) as {
+          duplicate?: boolean;
+          existingTerm?: string;
+          data?: AutofillPayload;
+        };
 
+        // Layer 2 (AI semantic / inflectional variant duplicate guard)
+        if (json.duplicate === true) {
+          const existingTermLabel = (json.existingTerm || trimmed).trim();
+          const matchedEntry =
+            findLocalDuplicateWord(existingTermLabel, wordsRef.current) ??
+            wordsRef.current.find(
+              (w) =>
+                normalizeDuplicateKey(w.term) ===
+                normalizeDuplicateKey(existingTermLabel)
+            );
+          const displayTerm = matchedEntry?.term || existingTermLabel;
+          setCaptureToast({
+            type: "duplicate",
+            message: isEn
+              ? `Already in Vault as "${displayTerm}"`
+              : `Sudah terdaftar di Vault sebagai "${displayTerm}"`,
+            matchedWord: matchedEntry,
+          });
+          return { ok: false, duplicate: true, word: matchedEntry };
+        }
+
+        if (!json.data) {
+          throw new Error("Missing autofill data payload");
+        }
+
+        const aiData = json.data;
+        // Final safeguard if AI canonicalized the lemma to an already-saved Vault term
+        const canonicalDup = findLocalDuplicateWord(
+          aiData.term,
+          wordsRef.current
+        );
+        if (canonicalDup) {
+          setCaptureToast({
+            type: "duplicate",
+            message: isEn
+              ? `Already in Vault as "${canonicalDup.term}"`
+              : `Sudah terdaftar di Vault sebagai "${canonicalDup.term}"`,
+            matchedWord: canonicalDup,
+          });
+          return { ok: false, duplicate: true, word: canonicalDup };
+        }
+
+        const nowIso = new Date().toISOString();
         const draft: WordEntry = {
           id:
             typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -938,32 +1074,38 @@ export function LexiVaultProvider({
           created_at: nowIso,
         };
 
-        const saved = await runCloudMutation(() =>
-          saveWordEntry(draft, user.id)
-        );
-        setWords((prev) => [
-          saved,
-          ...prev.filter((w) => w.id !== saved.id),
-        ]);
-
-        const { updatedLog, newXp } = await runCloudMutation(() =>
-          incrementWordsAddedLog(todayStr, user.id, 1)
-        );
-        setStudyLogs((prev) => [
-          updatedLog,
-          ...prev.filter((l) => l.study_date !== updatedLog.study_date),
-        ]);
-        setXp(newXp);
-
-        preGenerateDualAudio(saved);
+        // Optimistic instant insert so Vault updates immediately without waiting for DB RTT
+        wordsRef.current = [
+          draft,
+          ...wordsRef.current.filter((w) => w.id !== draft.id),
+        ];
+        setWords((prev) => [draft, ...prev.filter((w) => w.id !== draft.id)]);
         setCaptureToast({
           type: "success",
           message: isEn
-            ? `"${saved.term}" saved (${saved.type} · ${saved.register})`
-            : `"${saved.term}" tersimpan (${saved.type} · ${saved.register})`,
+            ? `"${draft.term}" saved (${draft.type} · ${draft.register})`
+            : `"${draft.term}" tersimpan (${draft.type} · ${draft.register})`,
         });
+        preGenerateDualAudio(draft);
 
-        return { ok: true, word: saved };
+        const targetUserId = user.id;
+        void runCloudMutation(() => saveWordEntry(draft, targetUserId))
+          .then((saved) => {
+            if (saved.id !== draft.id) {
+              setWords((prev) =>
+                prev.map((w) => (w.id === draft.id ? saved : w))
+              );
+            }
+          })
+          .catch((persistErr) => {
+            console.error(
+              "[LexiVault] Background saveWordEntry failed:",
+              persistErr
+            );
+          });
+        void enqueueWordsAddedLog(targetUserId, 1);
+
+        return { ok: true, word: draft };
       } catch (err) {
         console.error("[LexiVault] addWordViaAI network/client error:", err);
         const errMsg = isEn
@@ -975,7 +1117,13 @@ export function LexiVaultProvider({
         setIsCapturing(false);
       }
     },
-    [lang, preGenerateDualAudio, runCloudMutation, todayStr, user]
+    [
+      enqueueWordsAddedLog,
+      lang,
+      preGenerateDualAudio,
+      runCloudMutation,
+      user,
+    ]
   );
 
   const addExtractedWordsBatch = useCallback(
@@ -985,92 +1133,95 @@ export function LexiVaultProvider({
       const canonicalSource = normalizeSourceTag(sourceTag || "article");
 
       const existingKeys = new Set(
-        wordsRef.current.map((w) => normalizeTermKey(w.term))
+        wordsRef.current.map((w) => normalizeDuplicateKey(w.term))
       );
-      const savedList: WordEntry[] = [];
+      const drafts: WordEntry[] = [];
       const nowIso = new Date().toISOString();
 
-      await runCloudMutation(async () => {
-        for (const item of items) {
-          const key = normalizeTermKey(item.term);
-          if (existingKeys.has(key)) continue;
-          existingKeys.add(key);
+      for (const item of items) {
+        const key = normalizeDuplicateKey(item.term);
+        if (!key || existingKeys.has(key)) continue;
+        existingKeys.add(key);
 
-          const draft: WordEntry = {
-            id:
-              typeof crypto !== "undefined" && "randomUUID" in crypto
-                ? crypto.randomUUID()
-                : `local-ext-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            user_id: user.id,
-            term: item.term,
-            pronunciation: item.pronunciation,
-            ipa: item.ipa,
-            cefr: item.cefr,
-            type: item.type,
-            meaning_id: item.meaning_id,
-            meaning_en: item.meaning_en,
-            examples_json: item.examples,
-            synonyms: item.synonyms,
-            antonyms: item.antonyms,
-            word_families_json: item.word_families,
-            register: item.register,
-            source_tag: canonicalSource,
-            audio_us_url: null,
-            audio_uk_url: null,
-            correct_count: 0,
-            wrong_count: 0,
-            last_practiced_at: null,
-            last_reviewed_date: null,
-            review_count: 0,
-            next_review_at: nowIso,
-            interval_days: 0,
-            ease_factor: 2.5,
-            repetitions: 0,
-            created_at: nowIso,
-          };
-
-          const saved = await saveWordEntry(draft, user.id);
-          savedList.push(saved);
-          preGenerateDualAudio(saved);
-        }
-      });
-
-      if (savedList.length > 0) {
-        const savedIds = new Set(savedList.map((s) => s.id));
-        setWords((prev) => [
-          ...savedList,
-          ...prev.filter((w) => !savedIds.has(w.id)),
-        ]);
-
-        const { updatedLog, newXp } = await runCloudMutation(() =>
-          incrementWordsAddedLog(todayStr, user.id, savedList.length)
-        );
-        setStudyLogs((prev) => [
-          updatedLog,
-          ...prev.filter((l) => l.study_date !== updatedLog.study_date),
-        ]);
-        setXp(newXp);
-        setCaptureToast({
-          type: "success",
-          message: isEn
-            ? `${savedList.length} new expression(s) extracted to Vault`
-            : `${savedList.length} kosakata baru diekstrak ke Vault`,
+        drafts.push({
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `local-ext-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          user_id: user.id,
+          term: item.term,
+          pronunciation: item.pronunciation,
+          ipa: item.ipa,
+          cefr: item.cefr,
+          type: item.type,
+          meaning_id: item.meaning_id,
+          meaning_en: item.meaning_en,
+          examples_json: item.examples,
+          synonyms: item.synonyms,
+          antonyms: item.antonyms,
+          word_families_json: item.word_families,
+          register: item.register,
+          source_tag: canonicalSource,
+          audio_us_url: null,
+          audio_uk_url: null,
+          correct_count: 0,
+          wrong_count: 0,
+          last_practiced_at: null,
+          last_reviewed_date: null,
+          review_count: 0,
+          next_review_at: nowIso,
+          interval_days: 0,
+          ease_factor: 2.5,
+          repetitions: 0,
+          created_at: nowIso,
         });
       }
 
-      return savedList.length;
+      if (drafts.length > 0) {
+        const draftIds = new Set(drafts.map((d) => d.id));
+        wordsRef.current = [
+          ...drafts,
+          ...wordsRef.current.filter((w) => !draftIds.has(w.id)),
+        ];
+        setWords((prev) => [
+          ...drafts,
+          ...prev.filter((w) => !draftIds.has(w.id)),
+        ]);
+        drafts.forEach((d) => preGenerateDualAudio(d));
+        setCaptureToast({
+          type: "success",
+          message: isEn
+            ? `${drafts.length} new expression(s) extracted to Vault`
+            : `${drafts.length} kosakata baru diekstrak ke Vault`,
+        });
+
+        const targetUserId = user.id;
+        void runCloudMutation(async () => {
+          for (const draft of drafts) {
+            const saved = await saveWordEntry(draft, targetUserId);
+            if (saved.id !== draft.id) {
+              setWords((prev) =>
+                prev.map((w) => (w.id === draft.id ? saved : w))
+              );
+            }
+          }
+        }).catch((err) => {
+          console.error("[LexiVault] Background batch save failed:", err);
+        });
+        void enqueueWordsAddedLog(targetUserId, drafts.length);
+      }
+
+      return drafts.length;
     },
-    [lang, preGenerateDualAudio, runCloudMutation, todayStr, user]
+    [enqueueWordsAddedLog, lang, preGenerateDualAudio, runCloudMutation, user]
   );
 
+  // 0ms optimistic save from AI Suggest (NEVER calls /api/autofill before insert)
   const addSuggestedWordToVault = useCallback(
     async (item: SuggestedWordItem): Promise<WordEntry | null> => {
       if (!user) return null;
       const isEn = lang === "en";
-      const normalized = normalizeTermKey(item.term);
-      const existing = wordsRef.current.find(
-        (w) => normalizeTermKey(w.term) === normalized
-      );
+      const existing = findLocalDuplicateWord(item.term, wordsRef.current);
       if (existing) {
         return existing;
       }
@@ -1109,27 +1260,49 @@ export function LexiVaultProvider({
         created_at: nowIso,
       };
 
-      const saved = await runCloudMutation(() => saveWordEntry(draft, user.id));
-      setWords((prev) => [saved, ...prev.filter((w) => w.id !== saved.id)]);
-
-      const { updatedLog, newXp } = await runCloudMutation(() =>
-        incrementWordsAddedLog(todayStr, user.id, 1)
-      );
-      setStudyLogs((prev) => [
-        updatedLog,
-        ...prev.filter((l) => l.study_date !== updatedLog.study_date),
-      ]);
-      setXp(newXp);
-      preGenerateDualAudio(saved);
+      // Synchronous 0ms UI update
+      wordsRef.current = [
+        draft,
+        ...wordsRef.current.filter((w) => w.id !== draft.id),
+      ];
+      setWords((prev) => [draft, ...prev.filter((w) => w.id !== draft.id)]);
       setCaptureToast({
         type: "success",
         message: isEn
-          ? `"${saved.term}" added to your Vault`
-          : `"${saved.term}" ditambahkan ke Vault`,
+          ? `"${draft.term}" added to your Vault`
+          : `"${draft.term}" ditambahkan ke Vault`,
       });
-      return saved;
+      preGenerateDualAudio(draft);
+
+      // Background persistence + silent optional-field enrichment
+      const targetUserId = user.id;
+      void runCloudMutation(() => saveWordEntry(draft, targetUserId))
+        .then((saved) => {
+          if (saved.id !== draft.id) {
+            setWords((prev) =>
+              prev.map((w) => (w.id === draft.id ? saved : w))
+            );
+          }
+          void silentlyEnrichWordIfNeeded(saved, targetUserId);
+        })
+        .catch((err) => {
+          console.error(
+            "[LexiVault] Background addSuggestedWordToVault failed:",
+            err
+          );
+        });
+      void enqueueWordsAddedLog(targetUserId, 1);
+
+      return draft;
     },
-    [lang, preGenerateDualAudio, runCloudMutation, todayStr, user]
+    [
+      enqueueWordsAddedLog,
+      lang,
+      preGenerateDualAudio,
+      runCloudMutation,
+      silentlyEnrichWordIfNeeded,
+      user,
+    ]
   );
 
   const refreshWordWithAI = useCallback(
@@ -1157,6 +1330,7 @@ export function LexiVaultProvider({
             term: target.term,
             sourceTag: normalizeSourceTag(target.source_tag),
             lang,
+            skipDuplicateCheck: true,
           }),
         });
         if (!res.ok) {
@@ -1237,13 +1411,11 @@ export function LexiVaultProvider({
     [lang, runCloudMutation, user]
   );
 
+  // 0ms optimistic save from Discover (NEVER calls /api/autofill before insert)
   const saveDiscoveryItemToVault = useCallback(
     async (item: DiscoveryItem): Promise<WordEntry | null> => {
       if (!user) return null;
-      const normalized = normalizeTermKey(item.term);
-      const existing = wordsRef.current.find(
-        (w) => normalizeTermKey(w.term) === normalized
-      );
+      const existing = findLocalDuplicateWord(item.term, wordsRef.current);
       if (existing) {
         return existing;
       }
@@ -1282,22 +1454,42 @@ export function LexiVaultProvider({
         created_at: nowIso,
       };
 
-      const saved = await runCloudMutation(() => saveWordEntry(draft, user.id));
-      setWords((prev) => [saved, ...prev.filter((w) => w.id !== saved.id)]);
+      // Synchronous 0ms UI update
+      wordsRef.current = [
+        draft,
+        ...wordsRef.current.filter((w) => w.id !== draft.id),
+      ];
+      setWords((prev) => [draft, ...prev.filter((w) => w.id !== draft.id)]);
+      preGenerateDualAudio(draft);
 
-      const { updatedLog, newXp } = await runCloudMutation(() =>
-        incrementWordsAddedLog(todayStr, user.id, 1)
-      );
-      setStudyLogs((prev) => [
-        updatedLog,
-        ...prev.filter((l) => l.study_date !== updatedLog.study_date),
-      ]);
-      setXp(newXp);
+      // Background persistence + silent enrichment if optional fields are missing
+      const targetUserId = user.id;
+      void runCloudMutation(() => saveWordEntry(draft, targetUserId))
+        .then((saved) => {
+          if (saved.id !== draft.id) {
+            setWords((prev) =>
+              prev.map((w) => (w.id === draft.id ? saved : w))
+            );
+          }
+          void silentlyEnrichWordIfNeeded(saved, targetUserId);
+        })
+        .catch((err) => {
+          console.error(
+            "[LexiVault] Background saveDiscoveryItemToVault failed:",
+            err
+          );
+        });
+      void enqueueWordsAddedLog(targetUserId, 1);
 
-      preGenerateDualAudio(saved);
-      return saved;
+      return draft;
     },
-    [preGenerateDualAudio, runCloudMutation, todayStr, user]
+    [
+      enqueueWordsAddedLog,
+      preGenerateDualAudio,
+      runCloudMutation,
+      silentlyEnrichWordIfNeeded,
+      user,
+    ]
   );
 
   const removeWord = useCallback(

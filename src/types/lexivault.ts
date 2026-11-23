@@ -28,7 +28,8 @@ export type SuggestRegister = "any" | "Academic" | "Formal" | "Casual";
 
 export interface CaptureToastState {
   message: string;
-  type: "success" | "error" | "info";
+  type: "success" | "error" | "info" | "duplicate";
+  matchedWord?: WordEntry;
 }
 
 export interface DailyQuotaSettings {

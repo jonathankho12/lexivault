@@ -6,12 +6,15 @@ import {
   AlertCircle,
   ArrowUp,
   CheckCircle2,
+  Eye,
+  Info,
   Loader2,
   Sparkles,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
+import { playGlassClick } from "@/lib/soundEffects";
 import {
   CANONICAL_SOURCE_TAGS,
   cn,
@@ -24,15 +27,23 @@ export function QuickCaptureBar({
 }: {
   onPendingTermChange?: (term: string) => void;
 }) {
-  const { addWordViaAI, isCapturing, captureToast, clearCaptureToast } =
-    useLexiVault();
+  const {
+    addWordViaAI,
+    isCapturing,
+    captureToast,
+    clearCaptureToast,
+    setSelectedWord,
+  } = useLexiVault();
   const { lang, t } = useLanguage();
   const [term, setTerm] = useState("");
   const [sourceTag, setSourceTag] = useState<SourceTag>("article");
 
   useEffect(() => {
     if (!captureToast) return;
-    const duration = captureToast.type === "error" ? 5000 : 3600;
+    const duration =
+      captureToast.type === "error" || captureToast.type === "duplicate"
+        ? 6000
+        : 3600;
     const timer = setTimeout(() => {
       clearCaptureToast();
     }, duration);
@@ -44,11 +55,14 @@ export function QuickCaptureBar({
     const trimmed = term.trim();
     if (!trimmed || isCapturing) return;
 
+    playGlassClick();
+    // Clear input immediately for snappy non-blocking UX; restore only on non-duplicate error
+    setTerm("");
     onPendingTermChange?.(trimmed);
     const result = await addWordViaAI(trimmed, sourceTag);
     onPendingTermChange?.("");
-    if (result.ok || result.duplicate) {
-      setTerm("");
+    if (!result.ok && !result.duplicate) {
+      setTerm(trimmed);
     }
   };
 
@@ -139,20 +153,39 @@ export function QuickCaptureBar({
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={IOS_SPRING}
             className={cn(
-              "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium",
+              "inline-flex flex-wrap items-center gap-2 rounded-2xl border px-3.5 py-2 text-xs font-medium",
               captureToast.type === "error"
                 ? "bg-red-500/10 border-red-500/30 text-red-400"
-                : captureToast.type === "info"
-                  ? "bg-[#0A84FF]/15 border-[#0A84FF]/35 text-[#70BCFF]"
-                  : "bg-[#30D158]/15 border-[#30D158]/35 text-[#7CF099]"
+                : captureToast.type === "duplicate"
+                  ? "bg-[#FF9F0A]/12 border-[#FF9F0A]/35 text-[#FFD18C]"
+                  : captureToast.type === "info"
+                    ? "bg-[#0A84FF]/15 border-[#0A84FF]/35 text-[#70BCFF]"
+                    : "bg-[#30D158]/15 border-[#30D158]/35 text-[#7CF099]"
             )}
           >
-            {captureToast.type === "error" || captureToast.type === "info" ? (
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {captureToast.type === "error" ? (
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+            ) : captureToast.type === "duplicate" ||
+              captureToast.type === "info" ? (
+              <Info className="h-3.5 w-3.5 shrink-0" />
             ) : (
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
             )}
             <span>{captureToast.message}</span>
+
+            {captureToast.type === "duplicate" && captureToast.matchedWord && (
+              <button
+                type="button"
+                onClick={() => {
+                  playGlassClick();
+                  setSelectedWord(captureToast.matchedWord!);
+                }}
+                className="inline-flex items-center gap-1 rounded-full bg-[#FF9F0A]/22 border border-[#FF9F0A]/45 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-[#FF9F0A]/35 cursor-pointer transition-colors"
+              >
+                <Eye className="h-3 w-3" />
+                <span>{t.vault.viewCardBtn}</span>
+              </button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

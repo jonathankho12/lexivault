@@ -28,13 +28,71 @@ import {
   formatSourceTagLabel,
   formatTypeLabel,
   getLocalizedMeaning,
-  normalizeTermKey,
+  normalizeDuplicateKey,
 } from "@/lib/utils";
 import type {
   SuggestCategory,
   SuggestRegister,
   SuggestedWordItem,
 } from "@/types/lexivault";
+
+interface CachedSuggestEntry {
+  items: SuggestedWordItem[];
+  source: "gemini" | "fallback" | null;
+  savedAt: number;
+}
+
+const SUGGEST_CACHE_PREFIX = "lexivault_suggest_cache_v1_";
+const SUGGEST_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min session cache
+const memorySuggestCache = new Map<string, CachedSuggestEntry>();
+
+function buildCacheKey(
+  lang: string,
+  category: SuggestCategory,
+  register: SuggestRegister
+): string {
+  return `${lang}:${category}:${register}`;
+}
+
+function readSuggestCache(key: string): CachedSuggestEntry | null {
+  const now = Date.now();
+  const inMem = memorySuggestCache.get(key);
+  if (inMem && now - inMem.savedAt < SUGGEST_CACHE_TTL_MS && inMem.items.length > 0) {
+    return inMem;
+  }
+
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(`${SUGGEST_CACHE_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedSuggestEntry;
+    if (
+      parsed &&
+      Array.isArray(parsed.items) &&
+      parsed.items.length > 0 &&
+      now - parsed.savedAt < SUGGEST_CACHE_TTL_MS
+    ) {
+      memorySuggestCache.set(key, parsed);
+      return parsed;
+    }
+  } catch {
+    // Ignore storage read errors
+  }
+  return null;
+}
+
+function writeSuggestCache(key: string, entry: CachedSuggestEntry): void {
+  memorySuggestCache.set(key, entry);
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(
+      `${SUGGEST_CACHE_PREFIX}${key}`,
+      JSON.stringify(entry)
+    );
+  } catch {
+    // Ignore sessionStorage quota errors
+  }
+}
 
 export function AiSuggestSheet({
   open,
@@ -54,7 +112,6 @@ export function AiSuggestSheet({
   const [loading, setLoading] = useState(false);
   const [hasSettledForOpen, setHasSettledForOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [addingTermKey, setAddingTermKey] = useState<string | null>(null);
 
   const seenTermsRef = useRef<Set<string>>(new Set());
   const wordsRef = useRef(words);
@@ -66,7 +123,7 @@ export function AiSuggestSheet({
   }, []);
 
   const vaultTermKeys = useMemo(
-    () => new Set(words.map((w) => normalizeTermKey(w.term))),
+    () => new Set(words.map((w) => normalizeDuplicateKey(w.term))),
     [words]
   );
 
@@ -142,8 +199,17 @@ export function AiSuggestSheet({
         };
         const list = Array.isArray(json.items) ? json.items : [];
         list.forEach((item) => seenTermsRef.current.add(item.term));
+        const nextSource = json.source ?? null;
         setItems(list);
-        setSource(json.source ?? null);
+        setSource(nextSource);
+
+        if (list.length > 0) {
+          writeSuggestCache(buildCacheKey(lang, nextCategory, nextRegister), {
+            items: list,
+            source: nextSource,
+            savedAt: Date.now(),
+          });
+        }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
@@ -161,13 +227,26 @@ export function AiSuggestSheet({
     [lang, t.suggest.errorFallback]
   );
 
-  // Immediately kick off suggestion fetch when modal opens; abort on close
+  // Instant 0ms cache hydrate on open (only calls API if cache for this filter is empty)
   useEffect(() => {
     if (!open) {
       abortRef.current?.abort();
       setHasSettledForOpen(false);
       return;
     }
+
+    const cacheKey = buildCacheKey(lang, category, register);
+    const cached = readSuggestCache(cacheKey);
+    if (cached && cached.items.length > 0) {
+      cached.items.forEach((item) => seenTermsRef.current.add(item.term));
+      setItems(cached.items);
+      setSource(cached.source);
+      setErrorMsg(null);
+      setLoading(false);
+      setHasSettledForOpen(true);
+      return;
+    }
+
     seenTermsRef.current = new Set();
     setHasSettledForOpen(false);
     setErrorMsg(null);
@@ -186,18 +265,36 @@ export function AiSuggestSheet({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
+  const loadForFilter = (
+    nextCategory: SuggestCategory,
+    nextRegister: SuggestRegister
+  ) => {
+    const cacheKey = buildCacheKey(lang, nextCategory, nextRegister);
+    const cached = readSuggestCache(cacheKey);
+    if (cached && cached.items.length > 0) {
+      cached.items.forEach((item) => seenTermsRef.current.add(item.term));
+      setItems(cached.items);
+      setSource(cached.source);
+      setErrorMsg(null);
+      setLoading(false);
+      setHasSettledForOpen(true);
+      return;
+    }
+    void fetchSuggestions(nextCategory, nextRegister, false);
+  };
+
   const handleCategoryChange = (next: SuggestCategory) => {
     if (next === category || loading) return;
     playGlassClick();
     setCategory(next);
-    void fetchSuggestions(next, register, false);
+    loadForFilter(next, register);
   };
 
   const handleRegisterChange = (next: SuggestRegister) => {
     if (next === register || loading) return;
     playGlassClick();
     setRegister(next);
-    void fetchSuggestions(category, next, false);
+    loadForFilter(category, next);
   };
 
   const handleRetry = () => {
@@ -212,18 +309,12 @@ export function AiSuggestSheet({
     void fetchSuggestions(category, register, true);
   };
 
-  const handleAdd = async (item: SuggestedWordItem) => {
-    const key = normalizeTermKey(item.term);
-    if (vaultTermKeys.has(key) || addingTermKey === key) return;
-    setAddingTermKey(key);
-    try {
-      const saved = await addSuggestedWordToVault(item);
-      if (saved) {
-        playCorrectChime(1);
-      }
-    } finally {
-      setAddingTermKey(null);
-    }
+  // Instant 0ms optimistic save (no API roundtrip wait!)
+  const handleAdd = (item: SuggestedWordItem) => {
+    const key = normalizeDuplicateKey(item.term);
+    if (vaultTermKeys.has(key)) return;
+    playCorrectChime(1);
+    void addSuggestedWordToVault(item);
   };
 
   const categoryOptions: Array<{ id: SuggestCategory; label: string }> = [
@@ -399,9 +490,8 @@ export function AiSuggestSheet({
               ) : (
                 <div className="space-y-3">
                   {items.map((item) => {
-                    const key = normalizeTermKey(item.term);
+                    const key = normalizeDuplicateKey(item.term);
                     const isAdded = vaultTermKeys.has(key);
-                    const isAdding = addingTermKey === key;
                     const meaning = getLocalizedMeaning(item, lang);
                     const firstEx = item.examples?.[0];
 
@@ -450,9 +540,9 @@ export function AiSuggestSheet({
                             <AudioButton text={item.term} size="sm" />
                             <motion.button
                               type="button"
-                              whileTap={TAP_SCALE}
-                              disabled={isAdded || isAdding}
-                              onClick={() => void handleAdd(item)}
+                              whileTap={isAdded ? undefined : TAP_SCALE}
+                              disabled={isAdded}
+                              onClick={() => handleAdd(item)}
                               className={cn(
                                 "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-all cursor-pointer",
                                 isAdded
@@ -460,12 +550,7 @@ export function AiSuggestSheet({
                                   : "bg-[#0A84FF] border-[#0A84FF] text-white shadow-[0_4px_14px_rgba(10,132,255,0.35)] hover:bg-[#1A8EFF]"
                               )}
                             >
-                              {isAdding ? (
-                                <>
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  <span>{t.suggest.adding}</span>
-                                </>
-                              ) : isAdded ? (
+                              {isAdded ? (
                                 <>
                                   <Check className="h-3.5 w-3.5 stroke-[2.5]" />
                                   <span>{t.suggest.added}</span>
