@@ -4,6 +4,7 @@ import { normalizeTermKey } from "@/lib/utils";
 const DB_NAME = "lexivault-audio-db";
 const DB_VERSION = 2;
 const STORE_NAME = "audio_clips";
+const TTS_FETCH_TIMEOUT_MS = 4000;
 
 interface StoredAudioClip {
   key: string;
@@ -23,6 +24,7 @@ const listeners = new Set<(state: AudioPlaybackState) => void>();
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 let currentAudio: HTMLAudioElement | null = null;
+let activePlayRequestId = 0;
 let currentState: AudioPlaybackState = {
   playingKey: null,
   loadingKey: null,
@@ -114,7 +116,29 @@ async function writeClipToIDB(clip: StoredAudioClip): Promise<void> {
   });
 }
 
-export async function prefetchPronunciation(options: {
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Strictly on-demand audio loader invoked ONLY when the user explicitly clicks a speaker button.
+ * Deduplicates concurrent requests per `${accent}:${text}`, caches blobs in memory (+ IndexedDB)
+ * for 0ms replays, and enforces a 4s timeout so playback seamlessly falls back to speechSynthesis.
+ */
+async function fetchAudioOnDemand(options: {
   text: string;
   accent: AccentType;
   remoteUrl?: string | null;
@@ -147,7 +171,11 @@ export async function prefetchPronunciation(options: {
 
       if (options.remoteUrl) {
         try {
-          const directRes = await fetch(options.remoteUrl);
+          const directRes = await fetchWithTimeout(
+            options.remoteUrl,
+            undefined,
+            TTS_FETCH_TIMEOUT_MS
+          );
           if (directRes.ok) {
             const candidate = await directRes.blob();
             if (candidate.size > 0) {
@@ -155,20 +183,24 @@ export async function prefetchPronunciation(options: {
             }
           }
         } catch {
-          // Fall back to /api/tts if remote URL fetch fails
+          // Fall through to /api/tts if remote URL fetch fails or times out
         }
       }
 
       if (!blob) {
-        const res = await fetch("/api/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: cleanText,
-            accent: options.accent,
-            wordId: options.wordId,
-          }),
-        });
+        const res = await fetchWithTimeout(
+          "/api/tts",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: cleanText,
+              accent: options.accent,
+              wordId: options.wordId,
+            }),
+          },
+          TTS_FETCH_TIMEOUT_MS
+        );
 
         if (res.ok) {
           const headerUrl = res.headers.get("X-Audio-Url");
@@ -185,15 +217,17 @@ export async function prefetchPronunciation(options: {
 
       if (!blob) return null;
 
-      await writeClipToIDB({
+      const objUrl = URL.createObjectURL(blob);
+      objectUrlCache.set(key, objUrl);
+
+      // Persist to IndexedDB in background so playback starts immediately
+      void writeClipToIDB({
         key,
         blob,
         remoteUrl: discoveredRemoteUrl,
         savedAt: Date.now(),
       });
 
-      const objUrl = URL.createObjectURL(blob);
-      objectUrlCache.set(key, objUrl);
       return objUrl;
     } catch {
       return null;
@@ -207,6 +241,7 @@ export async function prefetchPronunciation(options: {
 }
 
 export function stopPronunciation(): void {
+  activePlayRequestId += 1;
   if (currentAudio) {
     currentAudio.pause();
     currentAudio.currentTime = 0;
@@ -263,7 +298,11 @@ export async function clearPronunciationCache(): Promise<{
   });
 }
 
-function emergencySpeakFallback(text: string, accent: AccentType, key: string): void {
+function speakWithBrowserFallback(
+  text: string,
+  accent: AccentType,
+  key: string
+): void {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
     setAudioState({ playingKey: null, loadingKey: null });
     return;
@@ -277,21 +316,29 @@ function emergencySpeakFallback(text: string, accent: AccentType, key: string): 
     utterance.rate = 0.94;
 
     const voices = window.speechSynthesis.getVoices();
+    const targetLower = targetLang.toLowerCase();
     const preferredVoice =
-      voices.find((v) => v.lang.toLowerCase() === targetLang.toLowerCase()) ||
+      voices.find(
+        (v) =>
+          v.lang.toLowerCase() === targetLower &&
+          /google|natural|samantha|daniel|aria|libby|jenny|sonia/i.test(v.name)
+      ) ||
+      voices.find((v) => v.lang.toLowerCase() === targetLower) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith(targetLower.slice(0, 5))) ||
       voices.find((v) => v.lang.toLowerCase().startsWith("en"));
+
     if (preferredVoice) {
       utterance.voice = preferredVoice;
     }
 
     utterance.onend = () => {
       if (currentState.playingKey === key) {
-        setAudioState({ playingKey: null });
+        setAudioState({ playingKey: null, loadingKey: null });
       }
     };
     utterance.onerror = () => {
       if (currentState.playingKey === key) {
-        setAudioState({ playingKey: null });
+        setAudioState({ playingKey: null, loadingKey: null });
       }
     };
 
@@ -314,23 +361,34 @@ export async function playPronunciation(options: {
   if (!cleanText) return;
 
   const key = buildAudioKey(cleanText, options.accent);
-  const wasSamePlaying = currentState.playingKey === key;
 
+  // Prevent duplicate concurrent requests if user clicks the same loading speaker button
+  if (currentState.loadingKey === key) {
+    return;
+  }
+
+  const wasSamePlaying = currentState.playingKey === key;
   stopPronunciation();
   if (wasSamePlaying) {
     return;
   }
 
+  const requestId = activePlayRequestId;
   const cachedMemUrl = objectUrlCache.get(key);
   if (!cachedMemUrl) {
     setAudioState({ loadingKey: key, playingKey: null });
   }
 
-  const url = cachedMemUrl ?? (await prefetchPronunciation(options));
+  const url = cachedMemUrl ?? (await fetchAudioOnDemand(options));
+
+  // Ignore stale completion if user clicked another button or stopped playback
+  if (requestId !== activePlayRequestId) {
+    return;
+  }
 
   if (!url) {
-    // Emergency offline fallback only if neural TTS endpoint & IndexedDB both fail
-    emergencySpeakFallback(cleanText, options.accent, key);
+    // Seamless fallback to browser speechSynthesis when /api/tts fails or exceeds 4s
+    speakWithBrowserFallback(cleanText, options.accent, key);
     return;
   }
 
@@ -350,13 +408,17 @@ export async function playPronunciation(options: {
     if (currentAudio === audio) {
       currentAudio = null;
     }
-    emergencySpeakFallback(cleanText, options.accent, key);
+    if (requestId === activePlayRequestId) {
+      speakWithBrowserFallback(cleanText, options.accent, key);
+    }
   };
 
   try {
     setAudioState({ loadingKey: null, playingKey: key });
     await audio.play();
   } catch {
-    emergencySpeakFallback(cleanText, options.accent, key);
+    if (requestId === activePlayRequestId) {
+      speakWithBrowserFallback(cleanText, options.accent, key);
+    }
   }
 }

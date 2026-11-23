@@ -22,7 +22,6 @@ import { PronunciationText } from "@/components/ui/PronunciationText";
 import { ShimmerWordSkeleton } from "@/components/ui/ShimmerWordSkeleton";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
-import { usePronunciation } from "@/hooks/usePronunciation";
 import {
   IOS_SPRING,
   STAGGER_CONTAINER,
@@ -49,13 +48,11 @@ export function DiscoverView() {
     user,
     todayStr,
     words,
-    accent,
     isHydrated,
     saveDiscoveryItemToVault,
     launchPractice,
   } = useLexiVault();
   const { lang, t } = useLanguage();
-  const { prefetchMany } = usePronunciation();
 
   const [pack, setPack] = useState<DailyDiscoveryPack | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,17 +121,6 @@ export function DiscoverView() {
       cancelled = true;
     };
   }, [isHydrated, todayStr, user]);
-
-  // Background pre-fetch audio for the latest unsaved discovery items
-  useEffect(() => {
-    if (!pack?.items.length) return;
-    prefetchMany(
-      pack.items.slice(0, 6).map((item) => ({
-        text: item.term,
-        accent,
-      }))
-    );
-  }, [pack, accent, prefetchMany]);
 
   // 0ms optimistic single save
   const handleSaveOne = (item: DiscoveryItem) => {
@@ -277,14 +263,6 @@ export function DiscoverView() {
         setHideSaved(true);
       }
       await saveDailyDiscovery(updatedPack, user.id);
-
-      // Prefetch audio for the newly appended batch
-      prefetchMany(
-        uniqueFresh.slice(0, 6).map((item) => ({
-          text: item.term,
-          accent,
-        }))
-      );
     } catch (err) {
       console.error("[DiscoverView] Generate more failed:", err);
       setLoadMoreError(t.discover.errorLoadMore);

@@ -39,6 +39,7 @@ export function AudioButton({
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (loading) return;
     void play({
       text,
       accent: targetAccent,
@@ -55,7 +56,9 @@ export function AudioButton({
   return (
     <motion.button
       type="button"
-      whileTap={TAP_SCALE}
+      whileTap={loading ? undefined : TAP_SCALE}
+      disabled={loading}
+      aria-busy={loading}
       onClick={handleClick}
       aria-label={
         lang === "en"
@@ -63,7 +66,8 @@ export function AudioButton({
           : `Putar pengucapan ${targetAccent} untuk ${text}`
       }
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-full transition-colors cursor-pointer select-none",
+        "inline-flex items-center justify-center gap-1.5 rounded-full transition-colors select-none",
+        loading ? "cursor-wait opacity-85" : "cursor-pointer",
         "border border-white/[0.14] shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]",
         playing
           ? "bg-[#0A84FF]/25 border-[#0A84FF]/50 text-[#64B5FF]"

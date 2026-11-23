@@ -28,7 +28,6 @@ import { HighlightedText } from "@/components/ui/HighlightedText";
 import { PronunciationText } from "@/components/ui/PronunciationText";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
-import { usePronunciation } from "@/hooks/usePronunciation";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   buildSmartFlashcardQueue,
@@ -399,14 +398,12 @@ export function FlashcardsView() {
     words,
     studyLogs,
     todayStr,
-    accent,
     isHydrated,
     selectedWord,
     recordSm2Review,
     setActiveTab,
   } = useLexiVault();
   const { lang, t } = useLanguage();
-  const { prefetchMany } = usePronunciation();
 
   const [filter, setFilter] = useState<DeckFilter>("due");
   const [extraPracticeMode, setExtraPracticeMode] = useState(false);
@@ -570,40 +567,6 @@ export function FlashcardsView() {
     () => (currentCard ? previewSm2IntervalLabels(currentCard, lang) : null),
     [currentCard, lang]
   );
-
-  // Zero-lag background audio pre-fetching for current + next card
-  useEffect(() => {
-    if (!currentCard) return;
-    const targets = [
-      {
-        text: currentCard.term,
-        accent,
-        remoteUrl:
-          accent === "UK" ? currentCard.audio_uk_url : currentCard.audio_us_url,
-        wordId: currentCard.id,
-      },
-      {
-        text: currentCard.term,
-        accent: (accent === "US" ? "UK" : "US") as "US" | "UK",
-        remoteUrl:
-          accent === "US" ? currentCard.audio_uk_url : currentCard.audio_us_url,
-        wordId: currentCard.id,
-      },
-    ];
-
-    const nextCard = deck[currentIndex + 1];
-    if (nextCard) {
-      targets.push({
-        text: nextCard.term,
-        accent,
-        remoteUrl:
-          accent === "UK" ? nextCard.audio_uk_url : nextCard.audio_us_url,
-        wordId: nextCard.id,
-      });
-    }
-
-    prefetchMany(targets);
-  }, [currentCard, currentIndex, deck, accent, prefetchMany]);
 
   const handleGradeSm2 = useCallback(
     (rating: Sm2Rating) => {

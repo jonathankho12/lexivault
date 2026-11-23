@@ -22,7 +22,6 @@ import { HighlightedText } from "@/components/ui/HighlightedText";
 import { PronunciationText } from "@/components/ui/PronunciationText";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
-import { usePronunciation } from "@/hooks/usePronunciation";
 import { COMMUTE_MINI_CLIPS } from "@/lib/ieltsMockData";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import { getDueWords, previewSm2IntervalLabels } from "@/lib/sm2";
@@ -66,7 +65,6 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
     grantXpAndSyncLog,
   } = useLexiVault();
   const { lang, t } = useLanguage();
-  const { prefetchMany } = usePronunciation();
 
   const [stage, setStage] = useState<CommuteStage>("flashcards");
   const [cards, setCards] = useState<WordEntry[]>([]);
@@ -136,31 +134,6 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
     () => (currentCard ? previewSm2IntervalLabels(currentCard, lang) : null),
     [currentCard, lang]
   );
-
-  // Pre-fetch pronunciation for current & next card
-  useEffect(() => {
-    if (stage !== "flashcards" || !currentCard) return;
-    const nextCard = cards[cardIndex + 1];
-    const targets = [
-      {
-        text: currentCard.term,
-        accent,
-        remoteUrl:
-          accent === "UK" ? currentCard.audio_uk_url : currentCard.audio_us_url,
-        wordId: currentCard.id,
-      },
-    ];
-    if (nextCard) {
-      targets.push({
-        text: nextCard.term,
-        accent,
-        remoteUrl:
-          accent === "UK" ? nextCard.audio_uk_url : nextCard.audio_us_url,
-        wordId: nextCard.id,
-      });
-    }
-    prefetchMany(targets);
-  }, [stage, currentCard, cards, cardIndex, accent, prefetchMany]);
 
   const handleGradeCard = useCallback(
     (rating: Sm2Rating) => {

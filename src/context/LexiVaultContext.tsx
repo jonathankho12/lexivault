@@ -19,7 +19,6 @@ import {
   signUpWithUsername,
   subscribeAuthChanges,
 } from "@/lib/auth";
-import { prefetchPronunciation } from "@/lib/audioCache";
 import {
   computeDailyRings,
   DAILY_RING_TARGETS,
@@ -486,22 +485,6 @@ export function LexiVaultProvider({
     [user]
   );
 
-  const preGenerateDualAudio = useCallback(
-    (entry: WordEntry) => {
-      for (const acc of ["US", "UK"] as const) {
-        void prefetchPronunciation({
-          text: entry.term,
-          accent: acc,
-          wordId: entry.id,
-          onRemoteUrlDiscovered: (url) => {
-            updateWordAudioUrl(entry.id, acc, url);
-          },
-        });
-      }
-    },
-    [updateWordAudioUrl]
-  );
-
   // Serialize XP + vocab ring increments so rapid 0ms optimistic saves never race
   const enqueueWordsAddedLog = useCallback(
     (userId: string, count = 1) => {
@@ -819,7 +802,6 @@ export function LexiVaultProvider({
           savedEntry!,
           ...prev.filter((w) => w.id !== savedEntry!.id),
         ]);
-        preGenerateDualAudio(savedEntry);
       }
 
       // Persist Daily Pack completion progress
@@ -863,7 +845,7 @@ export function LexiVaultProvider({
 
       return savedEntry;
     },
-    [preGenerateDualAudio, runCloudMutation, todayStr]
+    [runCloudMutation, todayStr]
   );
 
   const recordDailyPackWrongAttempt = useCallback(async () => {
@@ -1100,7 +1082,6 @@ export function LexiVaultProvider({
             ? `"${draft.term}" saved (${draft.type} · ${draft.register})`
             : `"${draft.term}" tersimpan (${draft.type} · ${draft.register})`,
         });
-        preGenerateDualAudio(draft);
 
         const targetUserId = user.id;
         void runCloudMutation(() => saveWordEntry(draft, targetUserId))
@@ -1131,13 +1112,7 @@ export function LexiVaultProvider({
         setIsCapturing(false);
       }
     },
-    [
-      enqueueWordsAddedLog,
-      lang,
-      preGenerateDualAudio,
-      runCloudMutation,
-      user,
-    ]
+    [enqueueWordsAddedLog, lang, runCloudMutation, user]
   );
 
   const addExtractedWordsBatch = useCallback(
@@ -1201,7 +1176,6 @@ export function LexiVaultProvider({
           ...drafts,
           ...prev.filter((w) => !draftIds.has(w.id)),
         ]);
-        drafts.forEach((d) => preGenerateDualAudio(d));
         setCaptureToast({
           type: "success",
           message: isEn
@@ -1227,7 +1201,7 @@ export function LexiVaultProvider({
 
       return drafts.length;
     },
-    [enqueueWordsAddedLog, lang, preGenerateDualAudio, runCloudMutation, user]
+    [enqueueWordsAddedLog, lang, runCloudMutation, user]
   );
 
   // 0ms optimistic save from AI Suggest (NEVER calls /api/autofill before insert)
@@ -1286,7 +1260,6 @@ export function LexiVaultProvider({
           ? `"${draft.term}" added to your Vault`
           : `"${draft.term}" ditambahkan ke Vault`,
       });
-      preGenerateDualAudio(draft);
 
       // Background persistence + silent optional-field enrichment
       const targetUserId = user.id;
@@ -1312,7 +1285,6 @@ export function LexiVaultProvider({
     [
       enqueueWordsAddedLog,
       lang,
-      preGenerateDualAudio,
       runCloudMutation,
       silentlyEnrichWordIfNeeded,
       user,
@@ -1474,7 +1446,6 @@ export function LexiVaultProvider({
         ...wordsRef.current.filter((w) => w.id !== draft.id),
       ];
       setWords((prev) => [draft, ...prev.filter((w) => w.id !== draft.id)]);
-      preGenerateDualAudio(draft);
 
       // Background persistence + silent enrichment if optional fields are missing
       const targetUserId = user.id;
@@ -1499,7 +1470,6 @@ export function LexiVaultProvider({
     },
     [
       enqueueWordsAddedLog,
-      preGenerateDualAudio,
       runCloudMutation,
       silentlyEnrichWordIfNeeded,
       user,

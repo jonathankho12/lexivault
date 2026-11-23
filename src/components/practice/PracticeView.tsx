@@ -22,7 +22,6 @@ import { FlashcardRecallCard } from "@/components/practice/FlashcardRecallCard";
 import { SentenceMakerCard } from "@/components/practice/SentenceMakerCard";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
-import { usePronunciation } from "@/hooks/usePronunciation";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   buildDailyMiniQuizSession,
@@ -50,7 +49,6 @@ interface SessionResultItem {
 export function PracticeView() {
   const {
     words,
-    accent,
     dueWordsCount,
     recordAnswer,
     practiceLaunch,
@@ -60,7 +58,6 @@ export function PracticeView() {
     isHydrated,
   } = useLexiVault();
   const { lang, t } = useLanguage();
-  const { prefetchMany } = usePronunciation();
 
   const [phase, setPhase] = useState<"launcher" | "active" | "summary" | "commute">(
     "launcher"
@@ -112,21 +109,6 @@ export function PracticeView() {
     setPhase("commute");
     clearCommuteLaunch();
   }, [commuteLaunchNonce, clearCommuteLaunch]);
-
-  // Zero-lag pre-fetch: current card AND next card audio in background
-  useEffect(() => {
-    if (phase !== "active" || questions.length === 0) return;
-    const targets = [questions[currentIndex], questions[currentIndex + 1]]
-      .filter((q): q is PracticeQuestion => Boolean(q))
-      .map((q) => ({
-        text: q.word.term,
-        accent,
-        remoteUrl:
-          accent === "UK" ? q.word.audio_uk_url : q.word.audio_us_url,
-        wordId: q.word.id,
-      }));
-    prefetchMany(targets);
-  }, [phase, questions, currentIndex, accent, prefetchMany]);
 
   const handleQuestionComplete = async (isCorrect: boolean) => {
     const currentQuestion = questions[currentIndex];

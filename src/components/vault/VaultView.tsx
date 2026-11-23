@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookMarked,
@@ -22,7 +22,6 @@ import { TextExtractorSheet } from "@/components/vault/TextExtractorSheet";
 import { VaultWordCard } from "@/components/vault/VaultWordCard";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
-import { usePronunciation } from "@/hooks/usePronunciation";
 import { IOS_SPRING, STAGGER_CONTAINER, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
 import {
@@ -39,7 +38,6 @@ type RegisterFilter = "all" | RegisterType;
 export function VaultView() {
   const {
     words,
-    accent,
     todayStr,
     isCapturing,
     isHydrated,
@@ -49,7 +47,6 @@ export function VaultView() {
     launchCommuteMode,
   } = useLexiVault();
   const { lang, t } = useLanguage();
-  const { prefetchMany } = usePronunciation();
 
   const dailyPackSummary = useMemo(() => {
     const quotaTotal = dailyQuota.wordsPerDay + dailyQuota.idiomsPerDay;
@@ -112,18 +109,6 @@ export function VaultView() {
       );
     });
   }, [words, search, typeFilter, registerFilter, sourceFilter]);
-
-  // Background pre-fetch audio for top visible cards so tapping Play is 0ms lag
-  useEffect(() => {
-    if (!isHydrated || filteredWords.length === 0) return;
-    const topVisible = filteredWords.slice(0, 6).map((w) => ({
-      text: w.term,
-      accent,
-      remoteUrl: accent === "UK" ? w.audio_uk_url : w.audio_us_url,
-      wordId: w.id,
-    }));
-    prefetchMany(topVisible);
-  }, [filteredWords, accent, isHydrated, prefetchMany]);
 
   return (
     <div className="space-y-5">

@@ -18,7 +18,6 @@ import { HighlightedText } from "@/components/ui/HighlightedText";
 import { PronunciationText } from "@/components/ui/PronunciationText";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
-import { usePronunciation } from "@/hooks/usePronunciation";
 import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   cn,
@@ -33,7 +32,6 @@ export function WordDetailSheet() {
   const { selectedWord, setSelectedWord, removeWord, refreshWordWithAI } =
     useLexiVault();
   const { lang, t } = useLanguage();
-  const { prefetchMany } = usePronunciation();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [refreshingAI, setRefreshingAI] = useState(false);
   const [aiStatusMsg, setAiStatusMsg] = useState<{
@@ -44,23 +42,7 @@ export function WordDetailSheet() {
   useEffect(() => {
     setConfirmDelete(false);
     setAiStatusMsg(null);
-    if (!selectedWord) return;
-
-    prefetchMany([
-      {
-        text: selectedWord.term,
-        accent: "US",
-        remoteUrl: selectedWord.audio_us_url,
-        wordId: selectedWord.id,
-      },
-      {
-        text: selectedWord.term,
-        accent: "UK",
-        remoteUrl: selectedWord.audio_uk_url,
-        wordId: selectedWord.id,
-      },
-    ]);
-  }, [selectedWord, prefetchMany]);
+  }, [selectedWord]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
