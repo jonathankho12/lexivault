@@ -291,8 +291,9 @@ term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Ca
         "Fast C1-C2 English lexicographer. Output complete, compact valid JSON only with zero duplicates.",
       contents: prompt,
       maxOutputTokens: 3072,
+      fallbackMaxTokens: 1800,
       temperature: 0.7,
-      timeoutMs: 12000,
+      timeoutMs: 9500,
       validate: (parsed) => {
         if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
           return "empty items array";

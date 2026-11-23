@@ -1376,6 +1376,9 @@ export function LexiVaultProvider({
         const updated = await runCloudMutation(() =>
           updateWordEntry(merged, user.id)
         );
+        wordsRef.current = wordsRef.current.map((w) =>
+          w.id === wordId ? updated : w
+        );
         setWords((prev) =>
           prev.map((w) => (w.id === wordId ? updated : w))
         );

@@ -35,9 +35,18 @@ export const DEFAULT_GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
 const MODEL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown for 503/429/404 models
 const MODEL_DISCOVERY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes per Worker isolate
 const MODEL_DISCOVERY_TIMEOUT_MS = 3500;
-const DEFAULT_ATTEMPT_TIMEOUT_MS = 12000;
-const SINGLE_RETRY_DELAY_MS = 450;
-const MAX_FALLBACK_MODELS = 2;
+const DEFAULT_ATTEMPT_TIMEOUT_MS = 9500;
+const MAX_FALLBACK_MODELS = 1;
+
+// Backup providers (Tier 2: Groq, Tier 3: Cloudflare Workers AI)
+const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_DEFAULT_MODEL = "llama-3.1-8b-instant";
+const GROQ_TIMEOUT_MS = 6000;
+const CF_AI_MODELS = [
+  "@cf/meta/llama-3.1-8b-instruct-fast",
+  "@cf/meta/llama-3.1-8b-instruct",
+] as const;
+const CF_AI_TIMEOUT_MS = 8000;
 
 interface DiscoveredModelsCache {
   fetchedAt: number;
@@ -59,11 +68,6 @@ function cleanEnvValue(raw: unknown): string {
     .trim()
     .replace(/^["']|["']$/g, "")
     .trim();
-}
-
-function sleepWithJitter(baseMs: number): Promise<void> {
-  const jitter = Math.floor(Math.random() * 120);
-  return new Promise((resolve) => setTimeout(resolve, baseMs + jitter));
 }
 
 function hashKeyFingerprint(value: string): number {
@@ -706,10 +710,8 @@ export function isTransientGeminiError(err: ClassifiedGeminiError): boolean {
 }
 
 function isFallbackEligibleError(err: ClassifiedGeminiError): boolean {
+  // Transient errors (503/429/timeout/network) skip slow Gemini model hopping and go straight to Groq / Workers AI
   return (
-    err.code === "overload" ||
-    err.code === "rate_limit" ||
-    err.code === "network" ||
     err.code === "model" ||
     err.code === "empty_response" ||
     err.code === "parse_error" ||
@@ -744,9 +746,173 @@ export function logGeminiRouteError(
   );
 }
 
+export type AiProviderName = "gemini" | "groq" | "cf-workers-ai";
+
+export interface StructuredGenerationOptions<T> {
+  tier?: "flash" | "pro";
+  contents: string;
+  responseSchema: Schema;
+  routeName?: string;
+  maxOutputTokens?: number;
+  fallbackMaxTokens?: number;
+  systemInstruction?: string;
+  temperature?: number;
+  timeoutMs?: number;
+  disableThinking?: boolean;
+  validate?: (data: T) => string | null;
+}
+
 export type HybridModelResult<T> =
-  | { ok: true; data: T; modelUsed: string; attempts: number }
+  | {
+      ok: true;
+      data: T;
+      modelUsed: string;
+      providerUsed: AiProviderName;
+      attempts: number;
+    }
   | { ok: false; error: ClassifiedGeminiError; attempts: number };
+
+function extractOutermostJsonSlice(raw: string): string {
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const firstBrace = cleaned.indexOf("{");
+  const firstBracket = cleaned.indexOf("[");
+  let start = -1;
+  if (firstBrace !== -1 && firstBracket !== -1) {
+    start = Math.min(firstBrace, firstBracket);
+  } else {
+    start = firstBrace !== -1 ? firstBrace : firstBracket;
+  }
+  if (start === -1) return cleaned;
+
+  const openChar = cleaned[start];
+  const closeChar = openChar === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = start; i < cleaned.length; i += 1) {
+    const ch = cleaned[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === openChar) depth += 1;
+    else if (ch === closeChar) {
+      depth -= 1;
+      if (depth === 0) {
+        return cleaned.slice(start, i + 1);
+      }
+    }
+  }
+  return cleaned.slice(start);
+}
+
+function parseStructuredJson<T>(
+  rawText: string,
+  model: string,
+  finishReason: string | undefined,
+  maxOutputTokens: number | undefined,
+  validate?: (data: T) => string | null
+): { ok: true; data: T } | { ok: false; error: ClassifiedGeminiError } {
+  const stripped = rawText
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  let parsed: T;
+  try {
+    parsed = JSON.parse(stripped) as T;
+  } catch (firstErr) {
+    const extracted = extractOutermostJsonSlice(stripped);
+    try {
+      parsed = JSON.parse(extracted) as T;
+    } catch {
+      return {
+        ok: false,
+        error: parseGeminiJsonError(
+          model,
+          firstErr,
+          finishReason,
+          stripped.length,
+          maxOutputTokens
+        ),
+      };
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return {
+      ok: false,
+      error: parseGeminiJsonError(
+        model,
+        new Error("Parsed JSON root is not an object"),
+        finishReason,
+        stripped.length,
+        maxOutputTokens
+      ),
+    };
+  }
+
+  if (validate) {
+    const validationReason = validate(parsed);
+    if (validationReason) {
+      return {
+        ok: false,
+        error: incompleteGeminiResponseError(model, validationReason, finishReason),
+      };
+    }
+  }
+
+  return { ok: true, data: parsed };
+}
+
+function formatSchemaSkeleton(schema: Schema, depth = 0): string {
+  if (!schema || depth > 5) return "any";
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    return schema.enum.map((v) => JSON.stringify(v)).join("|");
+  }
+  const t = String(schema.type ?? "").toUpperCase();
+  if (t === "OBJECT" && schema.properties) {
+    const entries = Object.entries(schema.properties).map(
+      ([k, v]) => `${JSON.stringify(k)}:${formatSchemaSkeleton(v, depth + 1)}`
+    );
+    return `{${entries.join(",")}}`;
+  }
+  if (t === "ARRAY" && schema.items) {
+    return `[${formatSchemaSkeleton(schema.items, depth + 1)}]`;
+  }
+  if (t === "BOOLEAN") return "boolean";
+  if (t === "NUMBER" || t === "INTEGER") return "number";
+  return "string";
+}
+
+function buildBackupSystemPrompt(
+  systemInstruction: string | undefined,
+  schema: Schema
+): string {
+  const skeleton = formatSchemaSkeleton(schema);
+  const base =
+    systemInstruction?.trim() ||
+    "Precise bilingual English-Indonesian lexicographer.";
+  return `${base}
+CRITICAL: Return ONLY a single valid raw JSON object matching this exact schema (no markdown fences, no commentary, no placeholders):
+${skeleton}`;
+}
 
 async function invokeModelStructuredOnce<T>(
   ai: GoogleGenAI,
@@ -810,42 +976,14 @@ async function invokeModelStructuredOnce<T>(
         };
       }
 
-      const cleanedText = rawText
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
-
-      let parsed: T;
-      try {
-        parsed = JSON.parse(cleanedText) as T;
-      } catch (parseErr) {
-        return {
-          ok: false as const,
-          error: parseGeminiJsonError(
-            model,
-            parseErr,
-            finishReason,
-            cleanedText.length,
-            options.maxOutputTokens
-          ),
-        };
-      }
-
-      if (options.validate) {
-        const validationReason = options.validate(parsed);
-        if (validationReason) {
-          return {
-            ok: false as const,
-            error: incompleteGeminiResponseError(
-              model,
-              validationReason,
-              finishReason
-            ),
-          };
-        }
-      }
-
-      return { ok: true as const, data: parsed };
+      const cleanedText = rawText;
+      return parseStructuredJson<T>(
+        cleanedText,
+        model,
+        finishReason,
+        options.maxOutputTokens,
+        options.validate
+      );
     } catch (err) {
       if (didTimeout) {
         return {
@@ -883,10 +1021,10 @@ async function invokeModelStructuredOnce<T>(
  * Fast, resilient structured JSON Gemini execution:
  * 1. Uses generation-correct minimal thinking config (Gemini 3.x -> `thinkingLevel: MINIMAL`; Gemini 2.5 Flash -> `thinkingBudget: 0`), auto-retrying the SAME model without `thinkingConfig` if rejected with HTTP 400.
  * 2. Smart 5-minute circuit-breaker: skips models currently in 503/429/404 cooldown immediately (0ms delay).
- * 3. Balanced 12s per-attempt AbortController timeout and capped 2-model fallback so valid generations finish and failed requests never stall.
+ * 3. Balanced 6.5s/9.5s per-attempt AbortController timeout and capped 1-model Gemini fallback before failing over to Groq / Cloudflare Workers AI.
  * 4. Explicitly classifies & logs timeout, MAX_TOKENS JSON truncation, JSON parse errors, incomplete output, HTTP 400, and HTTP 503.
  */
-export async function generateStructuredWithHybridModel<T>({
+async function runGeminiTier<T>({
   tier = "flash",
   contents,
   responseSchema,
@@ -897,18 +1035,7 @@ export async function generateStructuredWithHybridModel<T>({
   timeoutMs = DEFAULT_ATTEMPT_TIMEOUT_MS,
   disableThinking = true,
   validate,
-}: {
-  tier?: "flash" | "pro";
-  contents: string;
-  responseSchema: Schema;
-  routeName?: string;
-  maxOutputTokens?: number;
-  systemInstruction?: string;
-  temperature?: number;
-  timeoutMs?: number;
-  disableThinking?: boolean;
-  validate?: (data: T) => string | null;
-}): Promise<HybridModelResult<T>> {
+}: StructuredGenerationOptions<T>): Promise<HybridModelResult<T>> {
   const apiKey = await resolveGeminiApiKey();
   if (!apiKey) {
     const missingErr = missingGeminiKeyError();
@@ -945,29 +1072,36 @@ export async function generateStructuredWithHybridModel<T>({
       invokeOptions
     );
     if (res.ok) {
-      return { ok: true, data: res.data, modelUsed: primaryModel, attempts };
+      return {
+        ok: true,
+        data: res.data,
+        modelUsed: primaryModel,
+        providerUsed: "gemini",
+        attempts,
+      };
     }
 
     primaryError = res.error;
     console.warn(
       `[LexiVault][${routeName}] Primary "${primaryModel}" failed (${res.error.shortReason})`
     );
-    if (shouldCooldownModelForError(res.error)) {
+    if (
+      shouldCooldownModelForError(res.error) ||
+      res.error.code === "network"
+    ) {
       markModelCooldown(primaryModel, res.error.shortReason);
     }
 
-    // Immediate bailout for auth errors — retrying/failing over won't fix an invalid key
     if (res.error.code === "auth") {
-      logGeminiRouteError(routeName, res.error, { model: primaryModel, attempts });
       return { ok: false, error: res.error, attempts };
     }
   } else {
     console.info(
-      `[LexiVault][${routeName}] Circuit-breaker skipped "${primaryModel}" (in 5m cooldown) -> jumping directly to healthy Flash model`
+      `[LexiVault][${routeName}] Circuit-breaker skipped "${primaryModel}" (in 5m cooldown)`
     );
   }
 
-  // Build ordered healthy fallback pool (manual GEMINI_FALLBACK_MODELS + dynamically discovered active Flash models)
+  // Only try at most 1 healthy Gemini fallback if primary was already in cooldown or rejected schema/model
   const shouldUseFallbacks =
     primaryInCooldown ||
     (primaryError !== null && isFallbackEligibleError(primaryError));
@@ -985,7 +1119,6 @@ export async function generateStructuredWithHybridModel<T>({
 
     const seen = new Set<string>([primaryModel.toLowerCase()]);
     const healthyFallbacks: string[] = [];
-    const cooledFallbacks: string[] = [];
 
     for (const candidate of [
       ...proFlashFallback,
@@ -995,55 +1128,12 @@ export async function generateStructuredWithHybridModel<T>({
       const k = candidate.toLowerCase();
       if (seen.has(k)) continue;
       seen.add(k);
-      if (isModelInCooldown(candidate)) {
-        cooledFallbacks.push(candidate);
-      } else {
+      if (!isModelInCooldown(candidate)) {
         healthyFallbacks.push(candidate);
       }
     }
 
     const candidatesToTry = healthyFallbacks.slice(0, MAX_FALLBACK_MODELS);
-
-    // If no healthy fallback exists and primary wasn't retried yet on a transient error, do 1 short retry
-    if (
-      candidatesToTry.length === 0 &&
-      !primaryInCooldown &&
-      primaryError &&
-      isTransientGeminiError(primaryError)
-    ) {
-      await sleepWithJitter(SINGLE_RETRY_DELAY_MS);
-      attempts += 1;
-      const retryRes = await invokeModelStructuredOnce<T>(
-        ai,
-        primaryModel,
-        contents,
-        responseSchema,
-        invokeOptions
-      );
-      if (retryRes.ok) {
-        modelCooldownUntil.delete(primaryModel.toLowerCase());
-        return { ok: true, data: retryRes.data, modelUsed: primaryModel, attempts };
-      }
-      primaryError = retryRes.error;
-    }
-
-    // If primary was skipped by circuit-breaker and NO healthy fallbacks exist, probe once
-    if (candidatesToTry.length === 0 && primaryInCooldown) {
-      const probeModel = cooledFallbacks[0] || primaryModel;
-      attempts += 1;
-      const probeRes = await invokeModelStructuredOnce<T>(
-        ai,
-        probeModel,
-        contents,
-        responseSchema,
-        invokeOptions
-      );
-      if (probeRes.ok) {
-        modelCooldownUntil.delete(probeModel.toLowerCase());
-        return { ok: true, data: probeRes.data, modelUsed: probeModel, attempts };
-      }
-      primaryError = probeRes.error;
-    }
 
     for (const fallbackModel of candidatesToTry) {
       attempts += 1;
@@ -1056,37 +1146,345 @@ export async function generateStructuredWithHybridModel<T>({
       );
 
       if (res.ok) {
-        console.info(
-          `[LexiVault][${routeName}] Fast failover succeeded with "${fallbackModel}" (primary "${primaryModel}" ${
-            primaryInCooldown ? "in cooldown" : primaryError?.shortReason
-          }, attempts=${attempts})`
-        );
-        return { ok: true, data: res.data, modelUsed: fallbackModel, attempts };
+        return {
+          ok: true,
+          data: res.data,
+          modelUsed: fallbackModel,
+          providerUsed: "gemini",
+          attempts,
+        };
       }
 
-      if (shouldCooldownModelForError(res.error)) {
+      if (
+        shouldCooldownModelForError(res.error) ||
+        res.error.code === "network"
+      ) {
         markModelCooldown(fallbackModel, res.error.shortReason);
       }
       if (!primaryError) {
         primaryError = res.error;
       }
-
       console.warn(
-        `[LexiVault][${routeName}] Fallback "${fallbackModel}" failed (${res.error.shortReason}); continuing`
+        `[LexiVault][${routeName}] Gemini fallback "${fallbackModel}" failed (${res.error.shortReason})`
       );
     }
   }
 
   const finalError = primaryError ?? emptyGeminiResponseError(primaryModel);
-  logGeminiRouteError(routeName, finalError, {
-    model: primaryModel,
-    attempts,
-  });
-
   return {
     ok: false,
     error: finalError,
     attempts,
+  };
+}
+
+/**
+ * Tier 2 — Groq optional ultra-fast backup (`llama-3.1-8b-instant` / `llama-3.3-70b-versatile`).
+ * Skipped in 0ms whenever `GROQ_API_KEY` is not set.
+ */
+async function runGroqTier<T>(
+  options: StructuredGenerationOptions<T>
+): Promise<HybridModelResult<T> | null> {
+  const groqKey = await resolveRuntimeEnvVar("GROQ_API_KEY");
+  if (!groqKey) return null;
+
+  const routeName = options.routeName ?? "gemini-structured";
+  const configuredModel =
+    (await resolveRuntimeEnvVar("GROQ_MODEL")) || GROQ_DEFAULT_MODEL;
+  const modelsToTry =
+    configuredModel === "llama-3.3-70b-versatile"
+      ? [configuredModel]
+      : [configuredModel, "llama-3.3-70b-versatile"];
+  const maxTokens =
+    options.fallbackMaxTokens ??
+    Math.min(options.maxOutputTokens ?? 1600, 2400);
+  const sysPrompt = buildBackupSystemPrompt(
+    options.systemInstruction,
+    options.responseSchema
+  );
+
+  let attempts = 0;
+  let lastError: ClassifiedGeminiError | null = null;
+
+  for (const model of modelsToTry) {
+    attempts += 1;
+    const controller = new AbortController();
+    let didTimeout = false;
+    const timer = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, GROQ_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(GROQ_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${groqKey}`,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: sysPrompt },
+            { role: "user", content: options.contents },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: maxTokens,
+          temperature: 0.2,
+        }),
+      });
+
+      if (!res.ok) {
+        const bodySnippet = (await res.text().catch(() => "")).slice(0, 200);
+        lastError = classifyGeminiError(
+          new Error(`Groq HTTP ${res.status}: ${bodySnippet}`)
+        );
+        console.warn(
+          `[LexiVault][${routeName}] Tier 2 groq (${model}) failed (${lastError.shortReason})`
+        );
+        if (res.status === 401 || res.status === 403) break;
+        continue;
+      }
+
+      const json = (await res.json()) as {
+        choices?: Array<{
+          finish_reason?: string;
+          message?: { content?: string };
+        }>;
+      };
+      const content = json.choices?.[0]?.message?.content?.trim() ?? "";
+      const finishReason = json.choices?.[0]?.finish_reason?.toUpperCase();
+      if (!content) {
+        lastError = emptyGeminiResponseError(model, finishReason);
+        continue;
+      }
+
+      const parsed = parseStructuredJson<T>(
+        content,
+        model,
+        finishReason === "LENGTH" ? "MAX_TOKENS" : finishReason,
+        maxTokens,
+        options.validate
+      );
+      if (parsed.ok) {
+        return {
+          ok: true,
+          data: parsed.data,
+          modelUsed: model,
+          providerUsed: "groq",
+          attempts,
+        };
+      }
+      lastError = parsed.error;
+      console.warn(
+        `[LexiVault][${routeName}] Tier 2 groq (${model}) invalid JSON (${parsed.error.shortReason})`
+      );
+    } catch (err) {
+      lastError = didTimeout
+        ? timeoutGeminiError(model, GROQ_TIMEOUT_MS)
+        : classifyGeminiError(err);
+      console.warn(
+        `[LexiVault][${routeName}] Tier 2 groq (${model}) error (${lastError.shortReason})`
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return lastError ? { ok: false, error: lastError, attempts } : null;
+}
+
+async function resolveWorkersAiBinding(): Promise<
+  CloudflareEnv["AI"] | undefined
+> {
+  try {
+    const ctx = await getCloudflareContext({ async: true });
+    return ctx?.env?.AI;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractWorkersAiOutput(result: unknown): {
+  text?: string;
+  object?: unknown;
+} {
+  if (typeof result === "string") return { text: result };
+  if (result && typeof result === "object") {
+    const record = result as {
+      response?: unknown;
+      choices?: Array<{ message?: { content?: unknown } }>;
+    };
+    if (typeof record.response === "string") {
+      return { text: record.response };
+    }
+    if (record.response && typeof record.response === "object") {
+      return { object: record.response };
+    }
+    const choiceText = record.choices?.[0]?.message?.content;
+    if (typeof choiceText === "string") {
+      return { text: choiceText };
+    }
+  }
+  return {};
+}
+
+/**
+ * Tier 3 — Cloudflare Workers AI zero-account native binding backup
+ * (`@cf/meta/llama-3.1-8b-instruct-fast` -> `@cf/meta/llama-3.1-8b-instruct`).
+ */
+async function runWorkersAiTier<T>(
+  options: StructuredGenerationOptions<T>
+): Promise<HybridModelResult<T> | null> {
+  const aiBinding = await resolveWorkersAiBinding();
+  if (!aiBinding || typeof aiBinding.run !== "function") {
+    return null;
+  }
+
+  const routeName = options.routeName ?? "gemini-structured";
+  const maxTokens =
+    options.fallbackMaxTokens ??
+    Math.min(options.maxOutputTokens ?? 1500, 2048);
+  const sysPrompt = buildBackupSystemPrompt(
+    options.systemInstruction,
+    options.responseSchema
+  );
+
+  let attempts = 0;
+  let lastError: ClassifiedGeminiError | null = null;
+
+  for (const cfModel of CF_AI_MODELS) {
+    attempts += 1;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      const runPromise = aiBinding.run(cfModel, {
+        messages: [
+          { role: "system", content: sysPrompt },
+          { role: "user", content: options.contents },
+        ],
+        max_tokens: maxTokens,
+        temperature: 0.2,
+      });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Workers AI timeout after ${CF_AI_TIMEOUT_MS}ms`)),
+          CF_AI_TIMEOUT_MS
+        );
+      });
+
+      const rawResult = await Promise.race([runPromise, timeoutPromise]);
+      const extracted = extractWorkersAiOutput(rawResult);
+
+      const rawText =
+        extracted.text ??
+        (extracted.object ? JSON.stringify(extracted.object) : "");
+      if (!rawText.trim()) {
+        lastError = emptyGeminiResponseError(cfModel);
+        continue;
+      }
+
+      const parsed = parseStructuredJson<T>(
+        rawText,
+        cfModel,
+        undefined,
+        maxTokens,
+        options.validate
+      );
+      if (parsed.ok) {
+        return {
+          ok: true,
+          data: parsed.data,
+          modelUsed: cfModel,
+          providerUsed: "cf-workers-ai",
+          attempts,
+        };
+      }
+
+      lastError = parsed.error;
+      console.warn(
+        `[LexiVault][${routeName}] Tier 3 cf-workers-ai (${cfModel}) invalid JSON (${parsed.error.shortReason})`
+      );
+    } catch (err) {
+      lastError = classifyGeminiError(err);
+      console.warn(
+        `[LexiVault][${routeName}] Tier 3 cf-workers-ai (${cfModel}) failed (${lastError.shortReason})`
+      );
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  return lastError ? { ok: false, error: lastError, attempts } : null;
+}
+
+/**
+ * 3-Tier Multi-Provider Structured JSON Orchestrator:
+ * Tier 1: Gemini (Primary, fast circuit-breaker + generation-aware thinkingConfig)
+ * Tier 2: Groq (`llama-3.1-8b-instant`, optional if `GROQ_API_KEY` is configured)
+ * Tier 3: Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct-fast` via native `env.AI` binding)
+ */
+export async function generateStructuredWithHybridModel<T>(
+  options: StructuredGenerationOptions<T>
+): Promise<HybridModelResult<T>> {
+  const routeName = options.routeName ?? "gemini-structured";
+  const startedAt = Date.now();
+  let totalAttempts = 0;
+
+  // Tier 1: Gemini (Primary)
+  const geminiRes = await runGeminiTier<T>(options);
+  totalAttempts += geminiRes.attempts;
+  if (geminiRes.ok) {
+    console.info(
+      `[LexiVault][${routeName}] Served by gemini (${geminiRes.modelUsed}) in ${
+        Date.now() - startedAt
+      }ms`
+    );
+    return { ...geminiRes, attempts: totalAttempts };
+  }
+
+  // Tier 2: Groq (Optional fast backup — skipped in 0ms if GROQ_API_KEY unset)
+  const groqRes = await runGroqTier<T>(options);
+  if (groqRes) {
+    totalAttempts += groqRes.attempts;
+    if (groqRes.ok) {
+      console.info(
+        `[LexiVault][${routeName}] Served by groq (${groqRes.modelUsed}) in ${
+          Date.now() - startedAt
+        }ms (after gemini ${geminiRes.error.shortReason})`
+      );
+      return { ...groqRes, attempts: totalAttempts };
+    }
+  }
+
+  // Tier 3: Cloudflare Workers AI (Zero-account native `env.AI` backup)
+  const cfRes = await runWorkersAiTier<T>(options);
+  if (cfRes) {
+    totalAttempts += cfRes.attempts;
+    if (cfRes.ok) {
+      console.info(
+        `[LexiVault][${routeName}] Served by cf-workers-ai (${cfRes.modelUsed}) in ${
+          Date.now() - startedAt
+        }ms (after gemini ${geminiRes.error.shortReason})`
+      );
+      return { ...cfRes, attempts: totalAttempts };
+    }
+  }
+
+  // All available tiers failed — log primary Gemini failure with full context
+  logGeminiRouteError(routeName, geminiRes.error, {
+    totalAttempts,
+    groqAttempted: Boolean(groqRes),
+    cfWorkersAiAttempted: Boolean(cfRes),
+    elapsedMs: Date.now() - startedAt,
+  });
+
+  return {
+    ok: false,
+    error: geminiRes.error,
+    attempts: totalAttempts,
   };
 }
 

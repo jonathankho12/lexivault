@@ -197,8 +197,14 @@ term, type (vocab|idiom), cefr (C1|C2), register (Academic|Formal|Casual), pronu
         "Fast C1-C2 English lexicographer. Output compact valid JSON only with zero duplicates.",
       contents: prompt,
       maxOutputTokens: Math.min(6144, Math.max(2048, totalNeeded * 360)),
+      fallbackMaxTokens: Math.min(3000, Math.max(1500, totalNeeded * 240)),
       temperature: 0.65,
-      timeoutMs: 12000,
+      timeoutMs: 9500,
+      validate: (parsed) =>
+        Array.isArray(parsed.items) &&
+        parsed.items.some((it, idx) => normalizeDailyPackItem(it, dateStr, idx) !== null)
+          ? null
+          : "no valid complete daily-pack items",
       responseSchema: {
         type: Type.OBJECT,
         properties: {

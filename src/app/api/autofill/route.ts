@@ -286,8 +286,9 @@ Required fields (never leave blank when not a duplicate):
       systemInstruction,
       contents: prompt,
       maxOutputTokens: 2048,
-      temperature: 0.25,
-      timeoutMs: 12000,
+      fallbackMaxTokens: 900,
+      temperature: 0.2,
+      timeoutMs: 6500,
       responseSchema,
       validate: (raw) => {
         if (hasExisting && raw.duplicate === true) {

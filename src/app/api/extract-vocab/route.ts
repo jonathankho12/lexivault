@@ -61,8 +61,21 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
         "Fast English-Indonesian vocabulary extractor. Return compact valid JSON only.",
       contents: prompt,
       maxOutputTokens: 4096,
+      fallbackMaxTokens: 2200,
       temperature: 0.25,
-      timeoutMs: 12000,
+      timeoutMs: 9500,
+      validate: (parsed) =>
+        Array.isArray(parsed.items) &&
+        parsed.items.some(
+          (it) =>
+            Boolean(it?.term?.trim()) &&
+            Boolean(it?.meaning_en?.trim()) &&
+            Boolean(it?.meaning_id?.trim()) &&
+            Array.isArray(it?.examples) &&
+            it.examples.length > 0
+        )
+          ? null
+          : "no valid complete extracted items",
       responseSchema: {
         type: Type.OBJECT,
         properties: {

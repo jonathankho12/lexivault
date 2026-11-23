@@ -1066,10 +1066,10 @@ export async function updateWordEntry(
         const hydrated = hydrateWordMetadata(
           {
             ...(data as WordEntry),
-            pronunciation: (data as WordEntry).pronunciation || word.pronunciation,
-            ipa: (data as WordEntry).ipa || word.ipa,
-            meaning_en: (data as WordEntry).meaning_en || word.meaning_en,
-            cefr: (data as WordEntry).cefr || word.cefr,
+            pronunciation: word.pronunciation || (data as WordEntry).pronunciation,
+            ipa: word.ipa || (data as WordEntry).ipa,
+            meaning_en: word.meaning_en || (data as WordEntry).meaning_en,
+            cefr: word.cefr || (data as WordEntry).cefr,
           },
           userId
         );

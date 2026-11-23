@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["msedge-tts", "ws"],
 };
 
-initOpenNextCloudflareForDev();
+if (process.env.NODE_ENV === "development") {
+  initOpenNextCloudflareForDev({
+    remoteBindings: Boolean(process.env.CLOUDFLARE_API_TOKEN),
+  });
+}
 
 export default nextConfig;
