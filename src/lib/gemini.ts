@@ -22,8 +22,19 @@ export interface ClassifiedGeminiError {
 export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 export const DEFAULT_GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
 
-// Up to 2 automatic retries on primary model for transient 503/429/network spikes (~700ms, then ~1500ms + small jitter)
-const RETRY_BASE_DELAYS_MS = [700, 1500] as const;
+// Retry primary model once after ~600ms short jittered backoff on 503/429/network before failing over
+const PRIMARY_RETRY_BASE_MS = 600;
+const MAX_FALLBACK_MODELS = 3;
+const MODEL_DISCOVERY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes per Worker isolate
+const MODEL_DISCOVERY_TIMEOUT_MS = 4000;
+
+interface DiscoveredModelsCache {
+  fetchedAt: number;
+  keyHash: number;
+  models: string[];
+}
+
+let discoveredModelsCache: DiscoveredModelsCache | null = null;
 
 function cleanEnvValue(raw: unknown): string {
   if (typeof raw !== "string") return "";
@@ -34,8 +45,17 @@ function cleanEnvValue(raw: unknown): string {
 }
 
 function sleepWithJitter(baseMs: number): Promise<void> {
-  const jitter = Math.floor(Math.random() * Math.min(250, Math.round(baseMs * 0.2)));
+  const jitter = Math.floor(Math.random() * 150);
   return new Promise((resolve) => setTimeout(resolve, baseMs + jitter));
+}
+
+function hashKeyFingerprint(value: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
 }
 
 /**
@@ -110,7 +130,6 @@ export async function getGeminiProModel(): Promise<string> {
 
 /**
  * Optional comma-separated fallback model list from Cloudflare runtime binding or env var.
- * Only attempted after retries on the primary model still return 503/429.
  */
 export async function getGeminiFallbackModels(
   excludeModels: string[] = []
@@ -122,7 +141,7 @@ export async function getGeminiFallbackModels(
   const list: string[] = [];
 
   for (const part of raw.split(",")) {
-    const cleaned = cleanEnvValue(part);
+    const cleaned = cleanEnvValue(part).replace(/^models\//i, "");
     if (!cleaned) continue;
     const key = cleaned.toLowerCase();
     if (excluded.has(key) || seen.has(key)) continue;
@@ -137,6 +156,158 @@ export async function getGeminiTtsModel(): Promise<string> {
     (await resolveRuntimeEnvVar("GEMINI_TTS_MODEL")) ||
     DEFAULT_GEMINI_TTS_MODEL
   );
+}
+
+const EXCLUDED_MODEL_PATTERNS = [
+  "embed",
+  "tts",
+  "image",
+  "imagen",
+  "veo",
+  "lyria",
+  "audio",
+  "vision",
+  "robotics",
+  "computer-use",
+  "deep-research",
+  "aqa",
+  "bison",
+  "gecko",
+  "learnlm",
+  "gemma",
+  "nano",
+] as const;
+
+function isEligibleTextFallbackModel(modelId: string): boolean {
+  const lower = modelId.toLowerCase();
+  if (!lower.includes("gemini")) return false;
+  return !EXCLUDED_MODEL_PATTERNS.some((pat) => lower.includes(pat));
+}
+
+function scoreDiscoveredModel(modelId: string): number {
+  const lower = modelId.toLowerCase();
+  let score = 0;
+
+  // Strongly prioritize fast/lightweight flash and flash-lite models
+  if (lower.includes("flash-lite")) {
+    score += 1060;
+  } else if (lower.includes("flash")) {
+    score += 1080;
+  } else if (lower.includes("pro")) {
+    score += 400;
+  } else {
+    score += 200;
+  }
+
+  // Prefer newer Gemini generations (e.g. 3.8 > 3.5 > 3.0 > 2.5 > 2.0 > 1.5)
+  const verMatch = /gemini-(\d+)(?:\.(\d+))?/i.exec(lower);
+  if (verMatch) {
+    const major = Number(verMatch[1]) || 0;
+    const minor = Number(verMatch[2]) || 0;
+    score += major * 100 + minor * 10;
+  }
+
+  // Prefer stable aliases over experimental, thinking-only, or dated snapshot versions
+  if (lower.includes("-latest")) score += 25;
+  if (!lower.includes("preview") && !lower.includes("exp")) score += 20;
+  if (lower.includes("-exp")) score -= 45;
+  if (lower.includes("thinking")) score -= 40;
+  if (/-\d{3}$/.test(lower) || /-\d{2}-\d{2,4}/.test(lower)) score -= 15;
+
+  return score;
+}
+
+/**
+ * Dynamically discovers active Gemini text models available to the configured API key
+ * via `GET /v1beta/models` and caches the ranked list in memory for 10 minutes per Worker isolate.
+ */
+async function discoverAvailableFallbackModels(
+  apiKey: string,
+  excludeModels: string[]
+): Promise<string[]> {
+  const excluded = new Set(excludeModels.map((m) => m.toLowerCase()));
+  const keyHash = hashKeyFingerprint(apiKey);
+  const now = Date.now();
+
+  if (
+    discoveredModelsCache &&
+    discoveredModelsCache.keyHash === keyHash &&
+    now - discoveredModelsCache.fetchedAt < MODEL_DISCOVERY_CACHE_TTL_MS
+  ) {
+    return discoveredModelsCache.models.filter(
+      (m) => !excluded.has(m.toLowerCase())
+    );
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MODEL_DISCOVERY_TIMEOUT_MS);
+
+  try {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
+      apiKey
+    )}&pageSize=100`;
+    const res = await fetch(endpoint, {
+      method: "GET",
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      console.warn(
+        `[LexiVault][gemini-discovery] Model list fetch failed (HTTP ${res.status})`
+      );
+      return [];
+    }
+
+    const json = (await res.json()) as {
+      models?: Array<{
+        name?: string;
+        supportedGenerationMethods?: string[];
+      }>;
+    };
+
+    const rawModels = Array.isArray(json.models) ? json.models : [];
+    const seen = new Set<string>();
+    const eligible: string[] = [];
+
+    for (const entry of rawModels) {
+      if (!entry?.name) continue;
+      const methods = Array.isArray(entry.supportedGenerationMethods)
+        ? entry.supportedGenerationMethods
+        : [];
+      if (!methods.includes("generateContent")) continue;
+
+      const cleanId = entry.name.replace(/^models\//i, "").trim();
+      if (!cleanId) continue;
+      if (!isEligibleTextFallbackModel(cleanId)) continue;
+
+      const lowerKey = cleanId.toLowerCase();
+      if (seen.has(lowerKey)) continue;
+      seen.add(lowerKey);
+      eligible.push(cleanId);
+    }
+
+    eligible.sort((a, b) => scoreDiscoveredModel(b) - scoreDiscoveredModel(a));
+
+    discoveredModelsCache = {
+      fetchedAt: now,
+      keyHash,
+      models: eligible,
+    };
+
+    console.info(
+      `[LexiVault][gemini-discovery] Cached ${eligible.length} active generateContent models (top: ${eligible
+        .slice(0, 5)
+        .join(", ")})`
+    );
+
+    return eligible.filter((m) => !excluded.has(m.toLowerCase()));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err ?? "");
+    console.warn("[LexiVault][gemini-discovery] Discovery skipped:", msg.slice(0, 160));
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function missingGeminiKeyError(): ClassifiedGeminiError {
@@ -323,6 +494,15 @@ export function isTransientGeminiError(err: ClassifiedGeminiError): boolean {
   );
 }
 
+function isFallbackEligibleError(err: ClassifiedGeminiError): boolean {
+  return (
+    err.code === "overload" ||
+    err.code === "rate_limit" ||
+    err.code === "network" ||
+    err.code === "model"
+  );
+}
+
 export function logGeminiRouteError(
   route: string,
   classified: ClassifiedGeminiError,
@@ -370,10 +550,12 @@ async function invokeModelStructuredOnce<T>(
 
 /**
  * Executes a structured JSON Gemini generation with:
- * 1. Primary model + up to 2 automatic retries with short jittered backoff (~700ms, ~1500ms)
- *    for transient 503 UNAVAILABLE, 429 rate-limit, and network spikes.
- * 2. Optional comma-separated `GEMINI_FALLBACK_MODELS` runtime env/binding tried only after
- *    primary retries still fail with 503/429/network, gracefully skipping 404 fallback entries.
+ * 1. Primary model (`GEMINI_MODEL`, default `gemini-3.8-flash`) + 1 fast retry (~600ms backoff)
+ *    on transient 503 UNAVAILABLE / 429 / network errors.
+ * 2. Automatic failover on persistent 503 / 429 / 404 to:
+ *    - Optional manual `GEMINI_FALLBACK_MODELS` runtime env/binding, AND
+ *    - Dynamically discovered active `flash` / `flash-lite` models via `/v1beta/models`
+ *      (cached 10 min per Worker isolate), trying up to 3 fallback models.
  */
 export async function generateStructuredWithHybridModel<T>({
   tier = "flash",
@@ -386,13 +568,14 @@ export async function generateStructuredWithHybridModel<T>({
   responseSchema: Schema;
   routeName?: string;
 }): Promise<HybridModelResult<T>> {
-  const ai = await getGeminiClient();
-  if (!ai) {
+  const apiKey = await resolveGeminiApiKey();
+  if (!apiKey) {
     const missingErr = missingGeminiKeyError();
     logGeminiRouteError(routeName, missingErr);
     return { ok: false, error: missingErr, attempts: 0 };
   }
 
+  const ai = new GoogleGenAI({ apiKey });
   const flashModel = await getGeminiModel();
   const proModel = await getGeminiProModel();
   const primaryModel = tier === "pro" ? proModel : flashModel;
@@ -400,8 +583,8 @@ export async function generateStructuredWithHybridModel<T>({
   let attempts = 0;
   let primaryError: ClassifiedGeminiError | null = null;
 
-  // Attempt 1 + up to 2 retries on primary model for transient 503/429/network errors
-  for (let attemptIdx = 0; attemptIdx <= RETRY_BASE_DELAYS_MS.length; attemptIdx += 1) {
+  // Attempt 1 on primary model + 1 fast retry (~600ms) on 503/429/network
+  for (let attemptIdx = 0; attemptIdx <= 1; attemptIdx += 1) {
     attempts += 1;
     const res = await invokeModelStructuredOnce<T>(
       ai,
@@ -415,16 +598,11 @@ export async function generateStructuredWithHybridModel<T>({
     }
 
     primaryError = res.error;
-    const canRetry =
-      attemptIdx < RETRY_BASE_DELAYS_MS.length &&
-      isTransientGeminiError(res.error);
-
-    if (canRetry) {
-      const baseDelay = RETRY_BASE_DELAYS_MS[attemptIdx];
+    if (attemptIdx === 0 && isTransientGeminiError(res.error)) {
       console.warn(
-        `[LexiVault][${routeName}] Transient Gemini ${res.error.code} (${res.error.upstreamStatus ?? res.error.status}) on ${primaryModel}; retrying (${attemptIdx + 1}/${RETRY_BASE_DELAYS_MS.length}) after ~${baseDelay}ms`
+        `[LexiVault][${routeName}] Primary model "${primaryModel}" returned ${res.error.code} (HTTP ${res.error.upstreamStatus ?? res.error.status}); retrying once after ~${PRIMARY_RETRY_BASE_MS}ms`
       );
-      await sleepWithJitter(baseDelay);
+      await sleepWithJitter(PRIMARY_RETRY_BASE_MS);
       continue;
     }
 
@@ -435,20 +613,34 @@ export async function generateStructuredWithHybridModel<T>({
     break;
   }
 
-  // Only try fallback models if primary exhausted retries due to 503/429/network (or Pro -> Flash)
-  const shouldTryFallbacks =
-    primaryError !== null &&
-    (isTransientGeminiError(primaryError) ||
-      (tier === "pro" && primaryModel !== flashModel));
+  // Fail over to manual GEMINI_FALLBACK_MODELS + dynamically discovered available Flash models
+  if (primaryError && isFallbackEligibleError(primaryError)) {
+    const excludeSoFar = [primaryModel];
+    const manualFallbacks = await getGeminiFallbackModels(excludeSoFar);
+    const proFlashFallback =
+      tier === "pro" && primaryModel !== flashModel ? [flashModel] : [];
 
-  if (shouldTryFallbacks) {
-    const envFallbacks = await getGeminiFallbackModels([primaryModel]);
-    const fallbackCandidates =
-      tier === "pro" && primaryModel !== flashModel
-        ? [flashModel, ...envFallbacks.filter((m) => m !== flashModel)]
-        : envFallbacks;
+    const discoveredFallbacks = await discoverAvailableFallbackModels(apiKey, [
+      ...excludeSoFar,
+      ...proFlashFallback,
+      ...manualFallbacks,
+    ]);
 
-    for (const fallbackModel of fallbackCandidates) {
+    const seen = new Set<string>([primaryModel.toLowerCase()]);
+    const orderedFallbacks: string[] = [];
+    for (const candidate of [
+      ...proFlashFallback,
+      ...manualFallbacks,
+      ...discoveredFallbacks,
+    ]) {
+      const k = candidate.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      orderedFallbacks.push(candidate);
+      if (orderedFallbacks.length >= MAX_FALLBACK_MODELS) break;
+    }
+
+    for (const fallbackModel of orderedFallbacks) {
       attempts += 1;
       const res = await invokeModelStructuredOnce<T>(
         ai,
@@ -459,19 +651,18 @@ export async function generateStructuredWithHybridModel<T>({
 
       if (res.ok) {
         console.info(
-          `[LexiVault][${routeName}] Recovered via fallback model ${fallbackModel} after ${primaryModel} ${primaryError?.code}`
+          `[LexiVault][${routeName}] Fallback succeeded with model "${fallbackModel}" (after primary "${primaryModel}" failed with ${primaryError.code}, HTTP ${primaryError.upstreamStatus ?? primaryError.status})`
         );
         return { ok: true, data: res.data, modelUsed: fallbackModel, attempts };
       }
 
-      // Gracefully ignore 404/model errors (and transient errors) on optional fallback models
       console.warn(
-        `[LexiVault][${routeName}] Fallback model ${fallbackModel} skipped (${res.error.code}, HTTP ${res.error.upstreamStatus ?? res.error.status})`
+        `[LexiVault][${routeName}] Fallback model "${fallbackModel}" failed (${res.error.code}, HTTP ${res.error.upstreamStatus ?? res.error.status}); trying next`
       );
     }
   }
 
-  // Always preserve and return the primary model's error (never mask a 503 overload with a fallback 404)
+  // Always preserve primary model's accurate error (never mask a 503 overload behind a fallback 404)
   return {
     ok: false,
     error: primaryError ?? emptyGeminiResponseError(primaryModel),
