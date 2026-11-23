@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
@@ -174,7 +175,12 @@ export function DailyPackModal() {
   const { lang, t } = useLanguage();
   const isEn = lang === "en";
 
+  const [mounted, setMounted] = useState(false);
   const [stage, setStage] = useState<ModalStage>("memorize");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [activeChunk, setActiveChunk] = useState<DailyPackItem[]>([]);
   const [roundNumber, setRoundNumber] = useState(1);
   const [memIndex, setMemIndex] = useState(0);
@@ -354,12 +360,14 @@ export function DailyPackModal() {
   const currentMemItem = activeChunk[memIndex] ?? null;
   const isPaused = dailyQuota.wordsPerDay + dailyQuota.idiomsPerDay === 0;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {dailyPackModalOpen && (
         <div
           key="daily-pack-modal-portal"
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6"
+          className="fixed inset-0 z-[90] flex items-end md:items-center justify-center p-0 md:p-6"
         >
           {/* Backdrop */}
           <motion.div
@@ -1005,6 +1013,7 @@ export function DailyPackModal() {
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

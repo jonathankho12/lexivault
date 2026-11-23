@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
@@ -36,6 +37,7 @@ export function TextExtractorSheet({
   const { words, addExtractedWordsBatch } = useLexiVault();
   const { lang, t } = useLanguage();
 
+  const [mounted, setMounted] = useState(false);
   const [rawText, setRawText] = useState("");
   const [sourceTag, setSourceTag] = useState<SourceTag>("article");
   const [extracting, setExtracting] = useState(false);
@@ -44,6 +46,10 @@ export function TextExtractorSheet({
   const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set());
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const existingVaultKeys = new Set(
     words.map((w) => normalizeTermKey(w.term))
@@ -66,7 +72,42 @@ export function TextExtractorSheet({
           lang,
         }),
       });
-      if (!res.ok) throw new Error("Extraction failed");
+      if (!res.ok) {
+        let apiCode = "";
+        let apiError = "";
+        try {
+          const errJson = (await res.json()) as {
+            error?: string;
+            code?: string;
+            detail?: string;
+          };
+          apiCode = errJson.code ?? "";
+          apiError = errJson.error ?? "";
+          console.error(
+            `[TextExtractorSheet] /api/extract-vocab failed (HTTP ${res.status}, code=${apiCode || "unknown"}):`,
+            errJson.detail || apiError || res.statusText
+          );
+        } catch {
+          // Non-JSON error body
+        }
+        const isEn = lang === "en";
+        const reason =
+          apiCode === "missing_key"
+            ? isEn
+              ? "GEMINI_API_KEY is not configured on the server."
+              : "GEMINI_API_KEY belum terkonfigurasi di server."
+            : apiCode === "quota"
+              ? isEn
+                ? "Gemini AI quota limit reached. Please retry shortly."
+                : "Batas kuota Gemini AI tercapai. Coba lagi sebentar lagi."
+              : apiCode === "auth"
+                ? isEn
+                  ? "Gemini API key authentication failed."
+                  : "Autentikasi Gemini API key gagal."
+                : apiError || `${t.extractor.genericErr} (HTTP ${res.status})`;
+        setErrorMsg(reason);
+        return;
+      }
       const json = (await res.json()) as { items?: ExtractedVocabItem[] };
       const extracted = Array.isArray(json.items) ? json.items : [];
       if (extracted.length === 0) {
@@ -121,12 +162,14 @@ export function TextExtractorSheet({
     setSavedCount(null);
   };
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div
           key="text-extractor-portal"
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6"
+          className="fixed inset-0 z-[90] flex items-end md:items-center justify-center p-0 md:p-6"
         >
           <motion.div
             initial={{ opacity: 0 }}
@@ -365,6 +408,7 @@ export function TextExtractorSheet({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

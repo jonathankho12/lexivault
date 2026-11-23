@@ -107,6 +107,7 @@ Return strictly valid JSON:
       Omit<SpeakingGradeResult, "modelUsed">
     >({
       tier: "pro",
+      routeName: "api/ielts/grade-speaking",
       contents: examinerPrompt,
       responseSchema: {
         type: Type.OBJECT,
@@ -150,7 +151,7 @@ Return strictly valid JSON:
       },
     });
 
-    if (aiRes?.data?.criteria) {
+    if (aiRes.ok && aiRes.data?.criteria) {
       const fc = roundToHalfBand(aiRes.data.criteria.fluency_coherence || 5);
       const lr = roundToHalfBand(aiRes.data.criteria.lexical_resource || 5);
       const gr = roundToHalfBand(aiRes.data.criteria.grammatical_range || 5);

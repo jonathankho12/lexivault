@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
-import { generateStructuredWithHybridModel } from "@/lib/gemini";
 import {
-  buildFallbackAutofill,
-  OFFLINE_AUTOFILL_DICTIONARY,
-} from "@/lib/mockData";
+  classifyGeminiError,
+  emptyGeminiResponseError,
+  generateStructuredWithHybridModel,
+  logGeminiRouteError,
+} from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { normalizeTermKey } from "@/lib/utils";
 import type {
@@ -13,90 +14,6 @@ import type {
   RegisterType,
   WordType,
 } from "@/types/lexivault";
-
-const STOPWORDS = new Set([
-  "about",
-  "above",
-  "after",
-  "again",
-  "against",
-  "although",
-  "always",
-  "among",
-  "another",
-  "around",
-  "because",
-  "before",
-  "being",
-  "between",
-  "could",
-  "during",
-  "every",
-  "first",
-  "found",
-  "great",
-  "however",
-  "large",
-  "other",
-  "people",
-  "place",
-  "quite",
-  "right",
-  "should",
-  "since",
-  "small",
-  "still",
-  "study",
-  "their",
-  "there",
-  "these",
-  "thing",
-  "think",
-  "those",
-  "three",
-  "through",
-  "under",
-  "until",
-  "using",
-  "where",
-  "which",
-  "while",
-  "without",
-  "would",
-  "years",
-]);
-
-function extractFallbackFromText(rawText: string): ExtractedVocabItem[] {
-  const lower = rawText.toLowerCase();
-  const results: ExtractedVocabItem[] = [];
-  const seen = new Set<string>();
-
-  for (const [key, entry] of Object.entries(OFFLINE_AUTOFILL_DICTIONARY)) {
-    if (lower.includes(key) && !seen.has(key)) {
-      seen.add(key);
-      const builtInPron = BUILT_IN_PRONUNCIATIONS[key];
-      const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
-      results.push({
-        ...entry,
-        pronunciation: entry.pronunciation || builtInPron?.pronunciation,
-        ipa: entry.ipa || builtInPron?.ipa,
-        meaning_en: entry.meaning_en || builtInBilingual?.meaning_en,
-        cefr: entry.cefr || builtInBilingual?.cefr,
-      });
-    }
-  }
-
-  const tokens = rawText.match(/\b[a-zA-Z]{7,18}\b/g) ?? [];
-  for (const tok of tokens) {
-    const norm = tok.toLowerCase();
-    if (STOPWORDS.has(norm) || seen.has(norm)) continue;
-    seen.add(norm);
-    results.push(buildFallbackAutofill(norm));
-    if (results.length >= 10) break;
-  }
-
-  return results.slice(0, 10);
-}
 
 export async function POST(request: Request) {
   try {
@@ -115,6 +32,7 @@ export async function POST(request: Request) {
             lang === "en"
               ? "Please paste at least 15 characters of English text to extract."
               : "Tempelkan teks minimal 15 karakter untuk diekstrak.",
+          code: "invalid_input",
         },
         { status: 400 }
       );
@@ -147,6 +65,7 @@ For EACH extracted item return strictly valid JSON matching the schema:
       items: Partial<ExtractedVocabItem>[];
     }>({
       tier: "flash",
+      routeName: "api/extract-vocab",
       contents: prompt,
       responseSchema: {
         type: Type.OBJECT,
@@ -217,73 +136,95 @@ For EACH extracted item return strictly valid JSON matching the schema:
       },
     });
 
-    if (
-      aiRes?.data &&
-      Array.isArray(aiRes.data.items) &&
-      aiRes.data.items.length > 0
-    ) {
-      const validTypes = new Set<WordType>(["vocab", "idiom", "collocation"]);
-      const validRegisters = new Set<RegisterType>([
-        "Formal",
-        "Academic",
-        "Casual",
-        "Slang",
-      ]);
-
-      const normalized: ExtractedVocabItem[] = aiRes.data.items
-        .filter((it) => it && typeof it.term === "string" && it.term.trim())
-        .slice(0, 12)
-        .map((it) => {
-          const cleanTerm = it.term!.trim();
-          const key = normalizeTermKey(cleanTerm);
-          const builtIn = BUILT_IN_PRONUNCIATIONS[key];
-          const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
-          const meaning_en =
-            (it.meaning_en || "").trim() ||
-            builtInBilingual?.meaning_en ||
-            undefined;
-          const meaning_id = (it.meaning_id || "").trim() || meaning_en || "";
-
-          return {
-            term: cleanTerm,
-            pronunciation:
-              (it.pronunciation || "").trim() ||
-              builtIn?.pronunciation ||
-              undefined,
-            ipa: (it.ipa || "").trim() || builtIn?.ipa || undefined,
-            cefr: it.cefr || builtInBilingual?.cefr,
-            type: it.type && validTypes.has(it.type) ? it.type : "vocab",
-            register:
-              it.register && validRegisters.has(it.register)
-                ? it.register
-                : "Academic",
-            meaning_en,
-            meaning_id,
-            examples: Array.isArray(it.examples) ? it.examples.slice(0, 2) : [],
-            synonyms: Array.isArray(it.synonyms) ? it.synonyms.slice(0, 4) : [],
-            antonyms: Array.isArray(it.antonyms) ? it.antonyms.slice(0, 3) : [],
-            word_families: Array.isArray(it.word_families)
-              ? it.word_families
-              : [],
-          };
-        });
-
-      return NextResponse.json({
-        items: normalized,
-        source: "gemini-flash",
-        modelUsed: aiRes.modelUsed,
-      });
+    if (!aiRes.ok) {
+      return NextResponse.json(
+        {
+          error: aiRes.error.detail,
+          code: aiRes.error.code,
+          detail: aiRes.error.rawMessage,
+          upstreamStatus: aiRes.error.upstreamStatus,
+        },
+        { status: aiRes.error.status }
+      );
     }
 
+    if (!Array.isArray(aiRes.data.items) || aiRes.data.items.length === 0) {
+      const emptyErr = emptyGeminiResponseError(aiRes.modelUsed);
+      logGeminiRouteError("api/extract-vocab", emptyErr, {
+        model: aiRes.modelUsed,
+      });
+      return NextResponse.json(
+        {
+          error: emptyErr.detail,
+          code: emptyErr.code,
+          detail: emptyErr.rawMessage,
+        },
+        { status: emptyErr.status }
+      );
+    }
+
+    const validTypes = new Set<WordType>(["vocab", "idiom", "collocation"]);
+    const validRegisters = new Set<RegisterType>([
+      "Formal",
+      "Academic",
+      "Casual",
+      "Slang",
+    ]);
+
+    const normalized: ExtractedVocabItem[] = aiRes.data.items
+      .filter((it) => it && typeof it.term === "string" && it.term.trim())
+      .slice(0, 12)
+      .map((it) => {
+        const cleanTerm = it.term!.trim();
+        const key = normalizeTermKey(cleanTerm);
+        const builtIn = BUILT_IN_PRONUNCIATIONS[key];
+        const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
+        const meaning_en =
+          (it.meaning_en || "").trim() ||
+          builtInBilingual?.meaning_en ||
+          undefined;
+        const meaning_id = (it.meaning_id || "").trim() || meaning_en || "";
+
+        return {
+          term: cleanTerm,
+          pronunciation:
+            (it.pronunciation || "").trim() ||
+            builtIn?.pronunciation ||
+            undefined,
+          ipa: (it.ipa || "").trim() || builtIn?.ipa || undefined,
+          cefr: it.cefr || builtInBilingual?.cefr,
+          type: it.type && validTypes.has(it.type) ? it.type : "vocab",
+          register:
+            it.register && validRegisters.has(it.register)
+              ? it.register
+              : "Academic",
+          meaning_en,
+          meaning_id,
+          examples: Array.isArray(it.examples) ? it.examples.slice(0, 2) : [],
+          synonyms: Array.isArray(it.synonyms) ? it.synonyms.slice(0, 4) : [],
+          antonyms: Array.isArray(it.antonyms) ? it.antonyms.slice(0, 3) : [],
+          word_families: Array.isArray(it.word_families)
+            ? it.word_families
+            : [],
+        };
+      });
+
     return NextResponse.json({
-      items: extractFallbackFromText(rawText),
-      source: "fallback",
+      items: normalized,
+      source: "gemini-flash",
+      modelUsed: aiRes.modelUsed,
     });
   } catch (err) {
-    console.error("[api/extract-vocab] Error:", err);
+    const classified = classifyGeminiError(err);
+    logGeminiRouteError("api/extract-vocab", classified);
     return NextResponse.json(
-      { error: "Failed to extract vocabulary from text" },
-      { status: 500 }
+      {
+        error: classified.detail,
+        code: classified.code,
+        detail: classified.rawMessage,
+        upstreamStatus: classified.upstreamStatus,
+      },
+      { status: classified.status }
     );
   }
 }

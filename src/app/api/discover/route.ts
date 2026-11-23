@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
-import { getGeminiClient, getGeminiFlashModel } from "@/lib/gemini";
+import {
+  classifyGeminiError,
+  getGeminiClient,
+  getGeminiFlashModel,
+  logGeminiRouteError,
+  missingGeminiKeyError,
+} from "@/lib/gemini";
 import { FALLBACK_DISCOVERY_PACKS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { normalizeTermKey } from "@/lib/utils";
@@ -86,8 +92,12 @@ export async function POST(request: Request) {
       : [];
     const lang = body.lang === "en" ? "en" : "id";
 
-    const ai = getGeminiClient();
+    const ai = await getGeminiClient();
+    if (!ai) {
+      logGeminiRouteError("api/discover", missingGeminiKeyError(), { dateStr });
+    }
     if (ai) {
+      const model = await getGeminiFlashModel();
       try {
         const prompt = `Generate today's curated English Daily Discovery Pack for date ${dateStr} (active learner UI language: ${lang}).
 Provide EXACTLY 7 items in this exact order:
@@ -112,7 +122,7 @@ For EVERY item return BOTH bilingual meanings and rich linguistic details:
 - "ipa": IPA transcription enclosed in slashes (e.g. "/æmˈbɪv.ə.lənt/")`;
 
         const response = await ai.models.generateContent({
-          model: getGeminiFlashModel(),
+          model,
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -207,7 +217,10 @@ For EVERY item return BOTH bilingual meanings and rich linguistic details:
           }
         }
       } catch (err) {
-        console.error("[api/discover] Gemini fallback triggered:", err);
+        logGeminiRouteError("api/discover", classifyGeminiError(err), {
+          model,
+          dateStr,
+        });
       }
     }
 

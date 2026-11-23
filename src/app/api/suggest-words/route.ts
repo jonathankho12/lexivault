@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
-import { getGeminiClient, getGeminiFlashModel } from "@/lib/gemini";
+import {
+  classifyGeminiError,
+  emptyGeminiResponseError,
+  getGeminiClient,
+  getGeminiFlashModel,
+  logGeminiRouteError,
+  missingGeminiKeyError,
+} from "@/lib/gemini";
 import { FALLBACK_SUGGESTED_WORDS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { normalizeSourceTag, normalizeTermKey } from "@/lib/utils";
@@ -243,19 +250,34 @@ export async function POST(request: Request) {
       : [];
     const excludeKeys = new Set(rawExisting.map(normalizeTermKey));
 
-    const ai = getGeminiClient();
-    if (ai) {
-      try {
-        const categoryInstruction =
-          category === "mix"
-            ? 'Return a rich C1–C2 mix: 2 idiomatic expressions ("idiom"), 1 advanced single word ("vocab"), and 1 natural collocation ("collocation").'
-            : `Every single item MUST have type "${category}".`;
-        const registerInstruction =
-          register === "any"
-            ? 'Balance natural registers across "Academic", "Formal", and "Casual".'
-            : `Every single item MUST fit register "${register}".`;
+    const ai = await getGeminiClient();
+    if (!ai) {
+      const missingErr = missingGeminiKeyError();
+      logGeminiRouteError("api/suggest-words", missingErr, {
+        category,
+        register,
+      });
+      return NextResponse.json(
+        {
+          error: missingErr.detail,
+          code: missingErr.code,
+          detail: missingErr.rawMessage,
+        },
+        { status: missingErr.status }
+      );
+    }
 
-        const prompt = `You are a master C1–C2 English lexicographer & IELTS Band 8.5+ vocabulary coach.
+    const model = await getGeminiFlashModel();
+    const categoryInstruction =
+      category === "mix"
+        ? 'Return a rich C1–C2 mix: 2 idiomatic expressions ("idiom"), 1 advanced single word ("vocab"), and 1 natural collocation ("collocation").'
+        : `Every single item MUST have type "${category}".`;
+    const registerInstruction =
+      register === "any"
+        ? 'Balance natural registers across "Academic", "Formal", and "Casual".'
+        : `Every single item MUST fit register "${register}".`;
+
+    const prompt = `You are a master C1–C2 English lexicographer & IELTS Band 8.5+ vocabulary coach.
 Generate EXACTLY 4 fresh, high-utility, authentic C1 or C2 English expressions for an ambitious learner whose current UI language is "${lang}".
 
 STRICT RULES:
@@ -279,150 +301,150 @@ STRICT RULES:
    - "word_families": array of { "word": string, "pos": string }
    - "source_tag": best canonical source key from "film", "book", "lecture", "article", "general"`;
 
-        const response = await ai.models.generateContent({
-          model: getGeminiFlashModel(),
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                items: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      term: { type: Type.STRING },
-                      pronunciation: { type: Type.STRING },
-                      ipa: { type: Type.STRING },
-                      cefr: { type: Type.STRING, enum: ["C1", "C2"] },
-                      type: {
-                        type: Type.STRING,
-                        enum: ["vocab", "idiom", "collocation"],
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            items: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  term: { type: Type.STRING },
+                  pronunciation: { type: Type.STRING },
+                  ipa: { type: Type.STRING },
+                  cefr: { type: Type.STRING, enum: ["C1", "C2"] },
+                  type: {
+                    type: Type.STRING,
+                    enum: ["vocab", "idiom", "collocation"],
+                  },
+                  register: {
+                    type: Type.STRING,
+                    enum: ["Academic", "Formal", "Casual"],
+                  },
+                  meaning_en: { type: Type.STRING },
+                  meaning_id: { type: Type.STRING },
+                  examples: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        sentence: { type: Type.STRING },
+                        translation_id: { type: Type.STRING },
+                        context: { type: Type.STRING },
                       },
-                      register: {
-                        type: Type.STRING,
-                        enum: ["Academic", "Formal", "Casual"],
-                      },
-                      meaning_en: { type: Type.STRING },
-                      meaning_id: { type: Type.STRING },
-                      examples: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            sentence: { type: Type.STRING },
-                            translation_id: { type: Type.STRING },
-                            context: { type: Type.STRING },
-                          },
-                          required: ["sentence", "translation_id", "context"],
-                        },
-                      },
-                      synonyms: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                      },
-                      antonyms: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                      },
-                      word_families: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            word: { type: Type.STRING },
-                            pos: { type: Type.STRING },
-                          },
-                          required: ["word", "pos"],
-                        },
-                      },
-                      source_tag: {
-                        type: Type.STRING,
-                        enum: ["film", "book", "lecture", "article", "general"],
-                      },
+                      required: ["sentence", "translation_id", "context"],
                     },
-                    required: [
-                      "term",
-                      "pronunciation",
-                      "ipa",
-                      "cefr",
-                      "type",
-                      "register",
-                      "meaning_en",
-                      "meaning_id",
-                      "examples",
-                      "synonyms",
-                      "antonyms",
-                      "word_families",
-                      "source_tag",
-                    ],
+                  },
+                  synonyms: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  antonyms: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  word_families: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        word: { type: Type.STRING },
+                        pos: { type: Type.STRING },
+                      },
+                      required: ["word", "pos"],
+                    },
+                  },
+                  source_tag: {
+                    type: Type.STRING,
+                    enum: ["film", "book", "lecture", "article", "general"],
                   },
                 },
+                required: [
+                  "term",
+                  "pronunciation",
+                  "ipa",
+                  "cefr",
+                  "type",
+                  "register",
+                  "meaning_en",
+                  "meaning_id",
+                  "examples",
+                  "synonyms",
+                  "antonyms",
+                  "word_families",
+                  "source_tag",
+                ],
               },
-              required: ["items"],
             },
           },
-        });
+          required: ["items"],
+        },
+      },
+    });
 
-        const parsedText = response.text?.trim() ?? "";
-        if (parsedText) {
-          const parsed = JSON.parse(parsedText) as {
-            items?: Partial<SuggestedWordItem>[];
-          };
-          if (Array.isArray(parsed.items)) {
-            const seenBatch = new Set<string>(excludeKeys);
-            const uniqueItems: SuggestedWordItem[] = [];
+    const parsedText = response.text?.trim() ?? "";
+    if (!parsedText) {
+      const emptyErr = emptyGeminiResponseError(model);
+      logGeminiRouteError("api/suggest-words", emptyErr, { model });
+      return NextResponse.json(
+        {
+          error: emptyErr.detail,
+          code: emptyErr.code,
+          detail: emptyErr.rawMessage,
+        },
+        { status: emptyErr.status }
+      );
+    }
 
-            for (const rawItem of parsed.items) {
-              const normalized = normalizeSuggestedItem(rawItem);
-              if (!normalized) continue;
-              const key = normalizeTermKey(normalized.term);
-              if (seenBatch.has(key)) continue;
-              seenBatch.add(key);
-              uniqueItems.push(normalized);
-              if (uniqueItems.length >= 4) break;
-            }
+    const parsed = JSON.parse(parsedText) as {
+      items?: Partial<SuggestedWordItem>[];
+    };
+    const seenBatch = new Set<string>(excludeKeys);
+    const uniqueItems: SuggestedWordItem[] = [];
 
-            if (uniqueItems.length < 4) {
-              const topUp = pickFallbackSuggestions(
-                seenBatch,
-                category,
-                register,
-                4 - uniqueItems.length
-              );
-              uniqueItems.push(...topUp);
-            }
-
-            if (uniqueItems.length > 0) {
-              return NextResponse.json({
-                items: uniqueItems,
-                source: "gemini",
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.error("[api/suggest-words] Gemini generation failed:", err);
+    if (Array.isArray(parsed.items)) {
+      for (const rawItem of parsed.items) {
+        const normalized = normalizeSuggestedItem(rawItem);
+        if (!normalized) continue;
+        const key = normalizeTermKey(normalized.term);
+        if (seenBatch.has(key)) continue;
+        seenBatch.add(key);
+        uniqueItems.push(normalized);
+        if (uniqueItems.length >= 4) break;
       }
     }
 
-    const fallbackItems = pickFallbackSuggestions(
-      excludeKeys,
-      category,
-      register,
-      4
-    );
+    if (uniqueItems.length < 4) {
+      const topUp = pickFallbackSuggestions(
+        seenBatch,
+        category,
+        register,
+        4 - uniqueItems.length
+      );
+      uniqueItems.push(...topUp);
+    }
 
     return NextResponse.json({
-      items: fallbackItems,
-      source: "fallback",
+      items: uniqueItems,
+      source: "gemini",
+      modelUsed: model,
     });
   } catch (err) {
-    console.error("[api/suggest-words] Request error:", err);
+    const classified = classifyGeminiError(err);
+    logGeminiRouteError("api/suggest-words", classified);
     return NextResponse.json(
-      { error: "Failed to generate word suggestions" },
-      { status: 500 }
+      {
+        error: classified.detail,
+        code: classified.code,
+        detail: classified.rawMessage,
+        upstreamStatus: classified.upstreamStatus,
+      },
+      { status: classified.status }
     );
   }
 }

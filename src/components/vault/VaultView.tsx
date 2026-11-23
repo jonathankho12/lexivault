@@ -142,7 +142,10 @@ export function VaultView() {
           <motion.button
             type="button"
             whileTap={TAP_SCALE}
-            onClick={() => setSuggestOpen(true)}
+            onClick={() => {
+              playGlassClick();
+              setSuggestOpen(true);
+            }}
             className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#5E5CE6] to-[#0A84FF] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_4px_16px_rgba(94,92,230,0.38)] hover:brightness-110 transition-all cursor-pointer"
           >
             <Sparkles className="h-3.5 w-3.5" />
@@ -152,7 +155,10 @@ export function VaultView() {
           <motion.button
             type="button"
             whileTap={TAP_SCALE}
-            onClick={() => setExtractorOpen(true)}
+            onClick={() => {
+              playGlassClick();
+              setExtractorOpen(true);
+            }}
             className="liquid-glass-pill inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-[#70BCFF] border-[#0A84FF]/35 hover:bg-[#0A84FF]/15 cursor-pointer"
           >
             <FileText className="h-3.5 w-3.5" />

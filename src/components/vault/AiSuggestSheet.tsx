@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
@@ -43,18 +44,26 @@ export function AiSuggestSheet({
 }) {
   const { words, addSuggestedWordToVault } = useLexiVault();
   const { lang, t } = useLanguage();
+  const isEn = lang === "en";
 
+  const [mounted, setMounted] = useState(false);
   const [category, setCategory] = useState<SuggestCategory>("mix");
   const [register, setRegister] = useState<SuggestRegister>("any");
   const [items, setItems] = useState<SuggestedWordItem[]>([]);
   const [source, setSource] = useState<"gemini" | "fallback" | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hasSettledForOpen, setHasSettledForOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [addingTermKey, setAddingTermKey] = useState<string | null>(null);
 
   const seenTermsRef = useRef<Set<string>>(new Set());
   const wordsRef = useRef(words);
   wordsRef.current = words;
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const vaultTermKeys = useMemo(
     () => new Set(words.map((w) => normalizeTermKey(w.term))),
@@ -67,6 +76,10 @@ export function AiSuggestSheet({
       nextRegister: SuggestRegister,
       appendSeen: boolean
     ) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setLoading(true);
       setErrorMsg(null);
       try {
@@ -80,6 +93,7 @@ export function AiSuggestSheet({
         const res = await fetch("/api/suggest-words", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             existingTerms: Array.from(excludeList),
             category: nextCategory,
@@ -89,7 +103,49 @@ export function AiSuggestSheet({
         });
 
         if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+          let apiCode = "";
+          let apiError = "";
+          let apiDetail = "";
+          try {
+            const errJson = (await res.json()) as {
+              error?: string;
+              code?: string;
+              detail?: string;
+            };
+            apiCode = errJson.code ?? "";
+            apiError = errJson.error ?? "";
+            apiDetail = errJson.detail ?? "";
+          } catch {
+            // Non-JSON error response
+          }
+          console.error(
+            `[AiSuggestSheet] /api/suggest-words failed (HTTP ${res.status}, code=${apiCode || "unknown"}):`,
+            apiDetail || apiError || res.statusText
+          );
+
+          const reason =
+            apiCode === "missing_key"
+              ? isEn
+                ? "GEMINI_API_KEY is not configured on the server."
+                : "GEMINI_API_KEY belum terkonfigurasi di server."
+              : apiCode === "quota"
+                ? isEn
+                  ? "Gemini AI quota limit reached. Please retry in a moment."
+                  : "Batas kuota Gemini AI tercapai. Coba lagi sebentar lagi."
+                : apiCode === "auth"
+                  ? isEn
+                    ? "Gemini API key authentication failed."
+                    : "Autentikasi Gemini API key gagal."
+                  : apiCode === "network"
+                    ? isEn
+                      ? "Network timeout contacting Gemini AI."
+                      : "Koneksi ke Gemini AI timeout."
+                    : apiError || `${t.suggest.errorFallback} (HTTP ${res.status})`;
+
+          setErrorMsg(reason);
+          setItems([]);
+          setSource(null);
+          return;
         }
 
         const json = (await res.json()) as {
@@ -101,19 +157,33 @@ export function AiSuggestSheet({
         setItems(list);
         setSource(json.source ?? null);
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         console.error("[AiSuggestSheet] Failed to load suggestions:", err);
         setErrorMsg(t.suggest.errorFallback);
+        setItems([]);
       } finally {
-        setLoading(false);
+        if (abortRef.current === controller) {
+          setLoading(false);
+          setHasSettledForOpen(true);
+        }
       }
     },
-    [lang, t.suggest.errorFallback]
+    [isEn, lang, t.suggest.errorFallback]
   );
 
-  // Initial fetch whenever the modal opens
+  // Immediately kick off suggestion fetch when modal opens; abort on close
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      abortRef.current?.abort();
+      setHasSettledForOpen(false);
+      return;
+    }
     seenTermsRef.current = new Set();
+    setHasSettledForOpen(false);
+    setErrorMsg(null);
+    setItems([]);
     void fetchSuggestions(category, register, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -140,6 +210,12 @@ export function AiSuggestSheet({
     playGlassClick();
     setRegister(next);
     void fetchSuggestions(category, next, false);
+  };
+
+  const handleRetry = () => {
+    if (loading) return;
+    playGlassClick();
+    void fetchSuggestions(category, register, false);
   };
 
   const handleGenerateMore = () => {
@@ -176,12 +252,17 @@ export function AiSuggestSheet({
     { id: "Casual", label: t.suggest.regCasual },
   ];
 
-  return (
+  const showLoadingSkeleton =
+    loading || (open && !hasSettledForOpen && !errorMsg && items.length === 0);
+
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div
           key="ai-suggest-portal"
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6"
+          className="fixed inset-0 z-[90] flex items-end md:items-center justify-center p-0 md:p-6"
         >
           <motion.div
             initial={{ opacity: 0 }}
@@ -290,26 +371,7 @@ export function AiSuggestSheet({
 
             {/* Scrollable Body */}
             <div className="flex-1 overflow-y-auto no-scrollbar p-5 sm:p-6 space-y-3.5">
-              {errorMsg && (
-                <div
-                  role="alert"
-                  className="flex items-center justify-between gap-3 rounded-2xl bg-red-500/10 border border-red-500/30 px-4 py-3 text-xs text-red-400"
-                >
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span>{errorMsg}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleGenerateMore}
-                    className="shrink-0 rounded-full bg-red-500/20 px-3 py-1 font-semibold text-red-300 hover:bg-red-500/30 cursor-pointer"
-                  >
-                    {t.suggest.retryBtn}
-                  </button>
-                </div>
-              )}
-
-              {loading ? (
+              {showLoadingSkeleton ? (
                 <div className="space-y-3">
                   <p className="text-xs font-medium text-[#A7A5FF] flex items-center gap-2">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -317,6 +379,25 @@ export function AiSuggestSheet({
                   </p>
                   <ShimmerWordSkeleton />
                   <ShimmerWordSkeleton />
+                </div>
+              ) : errorMsg ? (
+                <div
+                  role="alert"
+                  className="rounded-2xl bg-red-500/10 border border-red-500/30 p-5 text-center space-y-3"
+                >
+                  <AlertCircle className="mx-auto h-7 w-7 text-red-400" />
+                  <p className="text-xs sm:text-sm font-medium text-red-300 leading-relaxed">
+                    {errorMsg}
+                  </p>
+                  <motion.button
+                    type="button"
+                    whileTap={TAP_SCALE}
+                    onClick={handleRetry}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-red-500/20 border border-red-500/40 px-4 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/30 cursor-pointer"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span>{t.suggest.retryBtn}</span>
+                  </motion.button>
                 </div>
               ) : items.length === 0 ? (
                 <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-6 text-center space-y-1.5">
@@ -474,7 +555,7 @@ export function AiSuggestSheet({
                 type="button"
                 whileTap={TAP_SCALE}
                 disabled={loading}
-                onClick={handleGenerateMore}
+                onClick={errorMsg ? handleRetry : handleGenerateMore}
                 className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#5E5CE6] to-[#0A84FF] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_6px_22px_rgba(94,92,230,0.35)] hover:brightness-110 cursor-pointer disabled:opacity-60"
               >
                 {loading ? (
@@ -485,7 +566,9 @@ export function AiSuggestSheet({
                 ) : (
                   <>
                     <RefreshCw className="h-4 w-4" />
-                    <span>{t.suggest.generateMore}</span>
+                    <span>
+                      {errorMsg ? t.suggest.retryBtn : t.suggest.generateMore}
+                    </span>
                   </>
                 )}
               </motion.button>
@@ -493,6 +576,7 @@ export function AiSuggestSheet({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

@@ -55,6 +55,7 @@ Each question MUST include "answer", "acceptedAnswers" (lowercase variants), "ex
 
       const aiRes = await generateStructuredWithHybridModel<ReadingPassagePack>({
         tier: "flash",
+        routeName: "api/ielts/generate:reading",
         contents: prompt,
         responseSchema: {
           type: Type.OBJECT,
@@ -107,7 +108,7 @@ Each question MUST include "answer", "acceptedAnswers" (lowercase variants), "ex
       });
 
       if (
-        aiRes &&
+        aiRes.ok &&
         Array.isArray(aiRes.data?.paragraphs) &&
         aiRes.data.paragraphs.length >= 3 &&
         Array.isArray(aiRes.data.questions) &&
@@ -143,6 +144,7 @@ Return strictly valid JSON:
       const aiRes = await generateStructuredWithHybridModel<ListeningSectionPack>(
         {
           tier: "flash",
+          routeName: "api/ielts/generate:listening",
           contents: prompt,
           responseSchema: {
             type: Type.OBJECT,
@@ -204,7 +206,7 @@ Return strictly valid JSON:
       );
 
       if (
-        aiRes &&
+        aiRes.ok &&
         Array.isArray(aiRes.data?.segments) &&
         aiRes.data.segments.length >= 3 &&
         Array.isArray(aiRes.data.questions) &&
@@ -244,6 +246,7 @@ Return strictly valid JSON with "id", "part": "${part}", "topic", "question", "c
 
       const aiRes = await generateStructuredWithHybridModel<SpeakingPromptPack>({
         tier: "flash",
+        routeName: "api/ielts/generate:speaking",
         contents: prompt,
         responseSchema: {
           type: Type.OBJECT,
@@ -275,7 +278,7 @@ Return strictly valid JSON with "id", "part": "${part}", "topic", "question", "c
         },
       });
 
-      if (aiRes?.data?.question && aiRes.data.fallbackBand85Sample) {
+      if (aiRes.ok && aiRes.data?.question && aiRes.data.fallbackBand85Sample) {
         return NextResponse.json({
           pack: {
             ...aiRes.data,
@@ -305,6 +308,7 @@ Return strictly valid JSON with "id", "taskType": "task2", "title", "prompt", "m
 
     const aiRes = await generateStructuredWithHybridModel<WritingTaskPack>({
       tier: "flash",
+      routeName: "api/ielts/generate:writing",
       contents: prompt,
       responseSchema: {
         type: Type.OBJECT,
@@ -350,7 +354,7 @@ Return strictly valid JSON with "id", "taskType": "task2", "title", "prompt", "m
       },
     });
 
-    if (aiRes?.data?.prompt && aiRes.data.fallbackBand85Sample) {
+    if (aiRes.ok && aiRes.data?.prompt && aiRes.data.fallbackBand85Sample) {
       return NextResponse.json({
         pack: {
           ...aiRes.data,

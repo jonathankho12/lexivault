@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
-import { getGeminiClient, getGeminiFlashModel } from "@/lib/gemini";
+import {
+  classifyGeminiError,
+  getGeminiClient,
+  getGeminiFlashModel,
+  logGeminiRouteError,
+} from "@/lib/gemini";
 import type {
   SentenceGradeResult,
   SentenceGradeVerdict,
@@ -419,7 +424,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const ai = getGeminiClient();
+    const ai = await getGeminiClient();
     if (!ai) {
       return NextResponse.json({
         result: buildFallbackGrade(
@@ -434,6 +439,7 @@ export async function POST(request: Request) {
       });
     }
 
+    const model = await getGeminiFlashModel();
     const verdictEnum = isEn
       ? ["Natural", "Good", "Needs Work", "No Valid Attempt"]
       : [
@@ -492,7 +498,7 @@ Return strictly valid JSON:
 - "tip": 1 short actionable tip in Indonesian on register, collocation, or phrasing.`;
 
     const response = await ai.models.generateContent({
-      model: getGeminiFlashModel(),
+      model,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -591,10 +597,16 @@ Return strictly valid JSON:
       source: "gemini",
     });
   } catch (err) {
-    console.error("[api/grade-sentence] Error:", err);
+    const classified = classifyGeminiError(err);
+    logGeminiRouteError("api/grade-sentence", classified);
     return NextResponse.json(
-      { error: "Failed to grade sentence" },
-      { status: 500 }
+      {
+        error: classified.detail,
+        code: classified.code,
+        detail: classified.rawMessage,
+        upstreamStatus: classified.upstreamStatus,
+      },
+      { status: classified.status }
     );
   }
 }

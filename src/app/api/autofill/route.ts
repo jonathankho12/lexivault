@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
-import { getGeminiClient, getGeminiFlashModel } from "@/lib/gemini";
-import { buildFallbackAutofill } from "@/lib/mockData";
+import {
+  classifyGeminiError,
+  emptyGeminiResponseError,
+  getGeminiClient,
+  getGeminiFlashModel,
+  logGeminiRouteError,
+  missingGeminiKeyError,
+} from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { normalizeTermKey } from "@/lib/utils";
 import type {
@@ -103,31 +109,8 @@ function normalizeAutofillPayload(
   };
 }
 
-function classifyApiError(err: unknown): {
-  status: number;
-  code: string;
-  detail: string;
-} {
-  const msg = err instanceof Error ? err.message : String(err ?? "");
-  const lower = msg.toLowerCase();
-  if (lower.includes("429") || lower.includes("quota") || lower.includes("rate")) {
-    return { status: 429, code: "quota", detail: "AI rate limit or quota exceeded" };
-  }
-  if (
-    lower.includes("401") ||
-    lower.includes("403") ||
-    lower.includes("api key") ||
-    lower.includes("permission")
-  ) {
-    return { status: 401, code: "auth", detail: "AI API key authentication error" };
-  }
-  if (lower.includes("network") || lower.includes("fetch") || lower.includes("timeout")) {
-    return { status: 503, code: "network", detail: "AI network timeout" };
-  }
-  return { status: 500, code: "server", detail: "Failed to process autofill request" };
-}
-
 export async function POST(request: Request) {
+  let model = "gemini-2.5-flash";
   try {
     const body = (await request.json()) as {
       term?: string;
@@ -144,15 +127,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const ai = getGeminiClient();
+    const ai = await getGeminiClient();
     if (!ai) {
-      const fallback = buildFallbackAutofill(term);
-      return NextResponse.json({
-        data: fallback,
-        meaning: lang === "en" ? fallback.meaning_en || fallback.meaning_id : fallback.meaning_id,
-        source: "fallback",
-      });
+      const missingErr = missingGeminiKeyError();
+      logGeminiRouteError("api/autofill", missingErr, { term });
+      return NextResponse.json(
+        {
+          error: missingErr.detail,
+          code: missingErr.code,
+          detail: missingErr.rawMessage,
+        },
+        { status: missingErr.status }
+      );
     }
+
+    model = await getGeminiFlashModel();
 
     const prompt = `You are an expert bilingual English-Indonesian lexicographer and C1–C2 ESL linguistic coach.
 Analyze the English expression: "${term}".
@@ -176,12 +165,12 @@ You MUST accurately perform Auto-Categorization and return strictly valid JSON m
 7. "examples": exactly 2 natural English example sentences (1 "Daily" conversation/scenario, 1 "Academic" or professional scenario) wrapping the target expression (or its inflected form) in **double asterisks** like **${term}**, each paired with a natural Indonesian "translation_id".
 8. "synonyms": 2-4 natural English synonyms or equivalent expressions matching the same register.
 9. "antonyms": 1-3 natural English antonyms or contrasting expressions.
-10. "word_families": morphological derivatives or closely related expressions with part-of-speech tags ("n", "v", "adj", "adv", "idiom", "collocation").
+10. "word_families": real morphological derivatives or closely related expressions with part-of-speech tags ("n", "v", "adj", "adv", "idiom", "collocation"). NEVER invent nonexistent words.
 11. "pronunciation": easy-to-read Google "Sounds like" phonetic respelling separating syllables with middle dots "·" and putting the primary STRESSED syllable in ALL CAPS (e.g., "am·BIV·uh·luhnt", "JEN·truh·fyd", "bair thuh BRUHNT").
 12. "ipa": standard IPA transcription enclosed in slashes (e.g., "/æmˈbɪv.ə.lənt/").`;
 
     const response = await ai.models.generateContent({
-      model: getGeminiFlashModel(),
+      model,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -254,12 +243,16 @@ You MUST accurately perform Auto-Categorization and return strictly valid JSON m
 
     const parsedText = response.text?.trim() ?? "";
     if (!parsedText) {
-      const fallback = buildFallbackAutofill(term);
-      return NextResponse.json({
-        data: fallback,
-        meaning: lang === "en" ? fallback.meaning_en || fallback.meaning_id : fallback.meaning_id,
-        source: "fallback",
-      });
+      const emptyErr = emptyGeminiResponseError(model);
+      logGeminiRouteError("api/autofill", emptyErr, { term, model });
+      return NextResponse.json(
+        {
+          error: emptyErr.detail,
+          code: emptyErr.code,
+          detail: emptyErr.rawMessage,
+        },
+        { status: emptyErr.status }
+      );
     }
 
     const parsed = JSON.parse(parsedText) as Partial<AutofillPayload>;
@@ -271,12 +264,18 @@ You MUST accurately perform Auto-Categorization and return strictly valid JSON m
           ? normalized.meaning_en || normalized.meaning_id
           : normalized.meaning_id,
       source: "gemini",
+      modelUsed: model,
     });
   } catch (err) {
-    console.error("[api/autofill] Error:", err);
-    const classified = classifyApiError(err);
+    const classified = classifyGeminiError(err);
+    logGeminiRouteError("api/autofill", classified, { model });
     return NextResponse.json(
-      { error: classified.detail, code: classified.code },
+      {
+        error: classified.detail,
+        code: classified.code,
+        detail: classified.rawMessage,
+        upstreamStatus: classified.upstreamStatus,
+      },
       { status: classified.status }
     );
   }

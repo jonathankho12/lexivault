@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import { pickFallbackDailyPack } from "@/lib/dailyPackFallback";
-import { getGeminiClient, getGeminiFlashModel } from "@/lib/gemini";
+import {
+  classifyGeminiError,
+  emptyGeminiResponseError,
+  getGeminiClient,
+  getGeminiFlashModel,
+  logGeminiRouteError,
+  missingGeminiKeyError,
+} from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { getLocalDateString, normalizeTermKey } from "@/lib/utils";
 import type {
@@ -171,10 +178,26 @@ export async function POST(request: Request) {
       : [];
     const excludeKeys = new Set(rawExisting.map(normalizeTermKey));
 
-    const ai = getGeminiClient();
-    if (ai) {
-      try {
-        const prompt = `You are a master C1–C2 English lexicographer and IELTS Band 8.5+ coach designing a fresh Daily Learning Pack for date ${dateStr}.
+    const ai = await getGeminiClient();
+    if (!ai) {
+      const missingErr = missingGeminiKeyError();
+      logGeminiRouteError("api/daily-pack", missingErr, {
+        dateStr,
+        wordsQuota,
+        idiomsQuota,
+      });
+      return NextResponse.json(
+        {
+          error: missingErr.detail,
+          code: missingErr.code,
+          detail: missingErr.rawMessage,
+        },
+        { status: missingErr.status }
+      );
+    }
+
+    const model = await getGeminiFlashModel();
+    const prompt = `You are a master C1–C2 English lexicographer and IELTS Band 8.5+ coach designing a fresh Daily Learning Pack for date ${dateStr}.
 
 Generate EXACTLY ${wordsQuota} advanced C1–C2 single-word vocabulary items (type: "vocab") AND EXACTLY ${idiomsQuota} authentic C1–C2 idiomatic expressions (type: "idiom"), for a total of ${totalNeeded} unique items.
 
@@ -197,164 +220,161 @@ STRICT RULES:
    - "antonyms": 1-2 contrasting expressions
    - "word_families": array of { "word": string, "pos": string }`;
 
-        const response = await ai.models.generateContent({
-          model: getGeminiFlashModel(),
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                items: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      term: { type: Type.STRING },
-                      pronunciation: { type: Type.STRING },
-                      ipa: { type: Type.STRING },
-                      cefr: { type: Type.STRING, enum: ["C1", "C2"] },
-                      type: { type: Type.STRING, enum: ["vocab", "idiom"] },
-                      register: {
-                        type: Type.STRING,
-                        enum: ["Academic", "Formal", "Casual"],
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            items: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  term: { type: Type.STRING },
+                  pronunciation: { type: Type.STRING },
+                  ipa: { type: Type.STRING },
+                  cefr: { type: Type.STRING, enum: ["C1", "C2"] },
+                  type: { type: Type.STRING, enum: ["vocab", "idiom"] },
+                  register: {
+                    type: Type.STRING,
+                    enum: ["Academic", "Formal", "Casual"],
+                  },
+                  meaning_en: { type: Type.STRING },
+                  meaning_id: { type: Type.STRING },
+                  examples: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        sentence: { type: Type.STRING },
+                        translation_id: { type: Type.STRING },
+                        context: { type: Type.STRING },
                       },
-                      meaning_en: { type: Type.STRING },
-                      meaning_id: { type: Type.STRING },
-                      examples: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            sentence: { type: Type.STRING },
-                            translation_id: { type: Type.STRING },
-                            context: { type: Type.STRING },
-                          },
-                          required: ["sentence", "translation_id", "context"],
-                        },
-                      },
-                      synonyms: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                      },
-                      antonyms: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                      },
-                      word_families: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            word: { type: Type.STRING },
-                            pos: { type: Type.STRING },
-                          },
-                          required: ["word", "pos"],
-                        },
-                      },
+                      required: ["sentence", "translation_id", "context"],
                     },
-                    required: [
-                      "term",
-                      "pronunciation",
-                      "ipa",
-                      "cefr",
-                      "type",
-                      "register",
-                      "meaning_en",
-                      "meaning_id",
-                      "examples",
-                      "synonyms",
-                      "antonyms",
-                      "word_families",
-                    ],
+                  },
+                  synonyms: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  antonyms: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  word_families: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        word: { type: Type.STRING },
+                        pos: { type: Type.STRING },
+                      },
+                      required: ["word", "pos"],
+                    },
                   },
                 },
+                required: [
+                  "term",
+                  "pronunciation",
+                  "ipa",
+                  "cefr",
+                  "type",
+                  "register",
+                  "meaning_en",
+                  "meaning_id",
+                  "examples",
+                  "synonyms",
+                  "antonyms",
+                  "word_families",
+                ],
               },
-              required: ["items"],
             },
           },
-        });
+          required: ["items"],
+        },
+      },
+    });
 
-        const parsedText = response.text?.trim() ?? "";
-        if (parsedText) {
-          const parsed = JSON.parse(parsedText) as {
-            items?: Partial<DailyPackItem>[];
-          };
-          if (Array.isArray(parsed.items)) {
-            const seenKeys = new Set<string>(excludeKeys);
-            const pickedWords: DailyPackItem[] = [];
-            const pickedIdioms: DailyPackItem[] = [];
+    const parsedText = response.text?.trim() ?? "";
+    if (!parsedText) {
+      const emptyErr = emptyGeminiResponseError(model);
+      logGeminiRouteError("api/daily-pack", emptyErr, { model, dateStr });
+      return NextResponse.json(
+        {
+          error: emptyErr.detail,
+          code: emptyErr.code,
+          detail: emptyErr.rawMessage,
+        },
+        { status: emptyErr.status }
+      );
+    }
 
-            for (let i = 0; i < parsed.items.length; i += 1) {
-              const normalized = normalizeDailyPackItem(parsed.items[i], dateStr, i);
-              if (!normalized) continue;
-              const key = normalizeTermKey(normalized.term);
-              if (seenKeys.has(key)) continue;
+    const parsed = JSON.parse(parsedText) as {
+      items?: Partial<DailyPackItem>[];
+    };
+    const seenKeys = new Set<string>(excludeKeys);
+    const pickedWords: DailyPackItem[] = [];
+    const pickedIdioms: DailyPackItem[] = [];
 
-              if (normalized.type === "vocab" && pickedWords.length < wordsQuota) {
-                seenKeys.add(key);
-                pickedWords.push(normalized);
-              } else if (
-                normalized.type === "idiom" &&
-                pickedIdioms.length < idiomsQuota
-              ) {
-                seenKeys.add(key);
-                pickedIdioms.push(normalized);
-              }
-            }
+    if (Array.isArray(parsed.items)) {
+      for (let i = 0; i < parsed.items.length; i += 1) {
+        const normalized = normalizeDailyPackItem(parsed.items[i], dateStr, i);
+        if (!normalized) continue;
+        const key = normalizeTermKey(normalized.term);
+        if (seenKeys.has(key)) continue;
 
-            // Seamlessly top up any shortfall from curated C1-C2 fallback pool
-            const missingWords = Math.max(0, wordsQuota - pickedWords.length);
-            const missingIdioms = Math.max(0, idiomsQuota - pickedIdioms.length);
-            if (missingWords > 0 || missingIdioms > 0) {
-              const topUp = pickFallbackDailyPack(
-                dateStr,
-                missingWords,
-                missingIdioms,
-                seenKeys
-              );
-              for (const item of topUp) {
-                if (item.type === "vocab") pickedWords.push(item);
-                else pickedIdioms.push(item);
-              }
-            }
-
-            const finalItems = interleavePack(pickedWords, pickedIdioms);
-            if (finalItems.length > 0) {
-              return NextResponse.json({
-                pack_date: dateStr,
-                words_quota: wordsQuota,
-                idioms_quota: idiomsQuota,
-                items: finalItems,
-                source: "gemini",
-              });
-            }
-          }
+        if (normalized.type === "vocab" && pickedWords.length < wordsQuota) {
+          seenKeys.add(key);
+          pickedWords.push(normalized);
+        } else if (
+          normalized.type === "idiom" &&
+          pickedIdioms.length < idiomsQuota
+        ) {
+          seenKeys.add(key);
+          pickedIdioms.push(normalized);
         }
-      } catch (err) {
-        console.error("[api/daily-pack] Gemini generation failed:", err);
       }
     }
 
-    const fallbackItems = pickFallbackDailyPack(
-      dateStr,
-      wordsQuota,
-      idiomsQuota,
-      excludeKeys
-    );
+    // If Gemini succeeded but produced fewer unique items after deduplication, top up the remaining slots
+    const missingWords = Math.max(0, wordsQuota - pickedWords.length);
+    const missingIdioms = Math.max(0, idiomsQuota - pickedIdioms.length);
+    if (missingWords > 0 || missingIdioms > 0) {
+      const topUp = pickFallbackDailyPack(
+        dateStr,
+        missingWords,
+        missingIdioms,
+        seenKeys
+      );
+      for (const item of topUp) {
+        if (item.type === "vocab") pickedWords.push(item);
+        else pickedIdioms.push(item);
+      }
+    }
 
+    const finalItems = interleavePack(pickedWords, pickedIdioms);
     return NextResponse.json({
       pack_date: dateStr,
       words_quota: wordsQuota,
       idioms_quota: idiomsQuota,
-      items: fallbackItems,
-      source: "fallback",
+      items: finalItems,
+      source: "gemini",
+      modelUsed: model,
     });
   } catch (err) {
-    console.error("[api/daily-pack] Request error:", err);
+    const classified = classifyGeminiError(err);
+    logGeminiRouteError("api/daily-pack", classified);
     return NextResponse.json(
-      { error: "Failed to generate Daily Pack" },
-      { status: 500 }
+      {
+        error: classified.detail,
+        code: classified.code,
+        detail: classified.rawMessage,
+        upstreamStatus: classified.upstreamStatus,
+      },
+      { status: classified.status }
     );
   }
 }

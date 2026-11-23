@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
-import { pcmToWav } from "@/lib/gemini";
+import { pcmToWav, resolveGeminiApiKey } from "@/lib/gemini";
 import { getSupabaseClient } from "@/lib/supabase";
 import { normalizeTermKey } from "@/lib/utils";
 import type { AccentType } from "@/types/lexivault";
@@ -31,7 +31,7 @@ async function generateGeminiTtsWav(
   text: string,
   accent: AccentType
 ): Promise<Buffer | null> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
+  const apiKey = await resolveGeminiApiKey();
   if (!apiKey) return null;
 
   const voiceName = accent === "UK" ? "Charon" : "Kore";

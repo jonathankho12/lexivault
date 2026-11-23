@@ -50,6 +50,7 @@ Return strictly valid JSON:
       Omit<WritingGradeResult, "modelUsed">
     >({
       tier: "pro",
+      routeName: "api/ielts/grade-writing",
       contents: examinerPrompt,
       responseSchema: {
         type: Type.OBJECT,
@@ -95,7 +96,7 @@ Return strictly valid JSON:
       },
     });
 
-    if (aiRes?.data?.criteria) {
+    if (aiRes.ok && aiRes.data?.criteria) {
       const tr = roundToHalfBand(aiRes.data.criteria.task_response || 5);
       const cc = roundToHalfBand(aiRes.data.criteria.coherence_cohesion || 5);
       const lr = roundToHalfBand(aiRes.data.criteria.lexical_resource || 5);

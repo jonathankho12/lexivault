@@ -1478,15 +1478,7 @@ export function buildFallbackAutofill(rawTerm: string): AutofillPayload {
         ? "collocation"
         : "vocab";
 
-  const stem = cleanTerm.replace(/(ed|ing|ly|es|s)$/i, "");
-  const families =
-    inferredType === "vocab" && stem.length >= 3
-      ? [
-          { word: cleanTerm, pos: cleanTerm.endsWith("ly") ? "adv" : "n/v" },
-          { word: `${stem}ed`, pos: "adj" },
-          { word: `${stem}tion`, pos: "n" },
-        ]
-      : [{ word: cleanTerm, pos: inferredType }];
+  const families = [{ word: cleanTerm, pos: inferredType }];
 
   const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
   const meaningEn =
