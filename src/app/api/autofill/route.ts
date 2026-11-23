@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { Type, type Schema } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
+  AUTOFILL_SYSTEM_INSTRUCTION,
+  buildAutofillPrompt,
   classifyGeminiError,
   formatCompactExistingTerms,
   generateStructuredWithHybridModel,
@@ -13,6 +15,7 @@ import { checkAiRateLimit } from "@/lib/rate-limit";
 import {
   normalizeCefrLevel,
   normalizeDuplicateKey,
+  normalizeRegister,
   normalizeTermKey,
 } from "@/lib/utils";
 import type {
@@ -25,12 +28,6 @@ import type {
 } from "@/types/lexivault";
 
 const VALID_TYPES = new Set<WordType>(["vocab", "idiom", "collocation"]);
-const VALID_REGISTERS = new Set<RegisterType>([
-  "Formal",
-  "Academic",
-  "Casual",
-  "Slang",
-]);
 
 interface AutofillModelOutput extends Partial<AutofillPayload> {
   duplicate?: boolean;
@@ -110,8 +107,7 @@ function validateAndNormalizeAutofillPayload(
   const key = normalizeTermKey(cleanTerm);
   const type: WordType =
     raw.type && VALID_TYPES.has(raw.type) ? raw.type : "vocab";
-  const register: RegisterType =
-    raw.register && VALID_REGISTERS.has(raw.register) ? raw.register : "Formal";
+  const register: RegisterType = normalizeRegister(raw.register, "Casual");
 
   const builtInPron = BUILT_IN_PRONUNCIATIONS[key];
   const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
@@ -229,7 +225,13 @@ export async function POST(request: Request) {
       }
     }
 
-    const rateLimit = checkAiRateLimit(request, lang);
+    const rateLimit = checkAiRateLimit(
+      request,
+      lang,
+      body.skipDuplicateCheck
+        ? { bucket: "ai-refresh", limit: 300 }
+        : undefined
+    );
     if (!rateLimit.allowed) {
       return rateLimit.response;
     }
@@ -237,32 +239,13 @@ export async function POST(request: Request) {
     const existingCsv = formatCompactExistingTerms(existingList, 140);
     const hasExisting = existingCsv !== "none";
 
-    const systemInstruction =
-      "Precise English-Indonesian lexicographer. Return complete, valid JSON matching the exact schema. Never invent fake derivatives or placeholder text.";
-
-    const duplicateBlock = hasExisting
-      ? `Existing Vault terms: ${existingCsv}
-First check if "${term}" is an exact, inflectional, morphological, or phrase variant of ANY existing Vault term (e.g. "spilling the tea" matches "spill the tea", "gentrify" matches "gentrified").
-- If YES: set duplicate=true and existing_term="<exact matched term from list>".
-- If NO: set duplicate=false, existing_term="", and populate ALL dictionary fields below completely and accurately.`
-      : `Populate ALL dictionary fields below completely and accurately.`;
-
-    const prompt = `Create a complete bilingual English-Indonesian dictionary card for "${term}" (source: ${body.sourceTag || "general"}, ui: ${lang}).
-${duplicateBlock}
-
-Required fields (never leave blank when not a duplicate):
-- term: canonical English spelling/casing
-- pronunciation: Google "Sounds like" phonetic spelling with "·" syllable dots & ALL CAPS primary stress (e.g. "am·BIV·uh·luhnt")
-- ipa: standard IPA inside slashes (e.g. "/æmˈbɪv.ə.lənt/")
-- cefr: true, objective CEFR level ("A1", "A2", "B1", "B2", "C1", or "C2") — classify honestly across the full spectrum (e.g. "hi", "hello", "apple", "good" = A1; "holiday", "weather" = A2; "achieve", "opinion" = B1; "sustainable" = B2; "ubiquitous", "pragmatic" = C1; "ephemeral", "obfuscate" = C2); NEVER inflate beginner words to B2 or C1
-- type: vocab, idiom, or collocation
-- register: Academic, Formal, Casual, or Slang
-- meaning_en: 1 clear, natural English definition (figurative meaning for idioms)
-- meaning_id: 1 clear, natural Indonesian definition (figurative meaning for idioms, never literal word-by-word)
-- examples: 2 natural example sentences (1 Daily, 1 Academic) wrapping the target term in **bold**, each with natural Indonesian translation_id and context
-- synonyms: 2–4 register-matched English synonyms
-- antonyms: 1–3 contrasting English antonyms (or contextual opposites)
-- word_families: 1–4 real {word, pos} morphological forms (for idioms, use base form or key lemma; never invent fake words)`;
+    const systemInstruction = AUTOFILL_SYSTEM_INSTRUCTION;
+    const prompt = buildAutofillPrompt({
+      term,
+      sourceTag: body.sourceTag,
+      lang,
+      existingCsv,
+    });
 
     const responseSchema: Schema = hasExisting
       ? {

@@ -901,6 +901,45 @@ function formatSchemaSkeleton(schema: Schema, depth = 0): string {
   return "string";
 }
 
+export const AUTOFILL_SYSTEM_INSTRUCTION =
+  "Precise English-Indonesian lexicographer. Return complete, valid JSON matching the exact schema. Classify CEFR (A1-C2) and register (Casual, Formal, Academic, Slang) honestly without inflating basic or conversational words. Never invent fake derivatives or placeholder text.";
+
+export const REGISTER_CLASSIFICATION_RULE =
+  'Strict register rule: "Formal" is STRICTLY reserved for elevated formal, official, diplomatic, legal, or polished business/written vocabulary (e.g. "furthermore", "commence", "notwithstanding"); "Academic" is strictly for scholarly, scientific, research, or analytical discourse (e.g. "hypothesis", "empirical", "corroborate"); "Slang" is for very informal street/youth/internet colloquialisms (e.g. "spill the tea", "ghosting", "rizz"); tag all everyday greetings, basic/neutral concrete nouns/verbs/adjectives, and conversational expressions (e.g. "hi", "hello", "apple", "good", "break the ice") as "Casual" — NEVER classify basic or everyday words as "Formal".';
+
+export function buildAutofillPrompt(params: {
+  term: string;
+  sourceTag?: string;
+  lang: "en" | "id";
+  existingCsv: string;
+}): string {
+  const { term, sourceTag, lang, existingCsv } = params;
+  const hasExisting = existingCsv !== "none";
+  const duplicateBlock = hasExisting
+    ? `Existing Vault terms: ${existingCsv}
+First check if "${term}" is an exact, inflectional, morphological, or phrase variant of ANY existing Vault term (e.g. "spilling the tea" matches "spill the tea", "gentrify" matches "gentrified").
+- If YES: set duplicate=true and existing_term="<exact matched term from list>".
+- If NO: set duplicate=false, existing_term="", and populate ALL dictionary fields below completely and accurately.`
+    : `Populate ALL dictionary fields below completely and accurately.`;
+
+  return `Create a complete bilingual English-Indonesian dictionary card for "${term}" (source: ${sourceTag || "general"}, ui: ${lang}).
+${duplicateBlock}
+
+Required fields (never leave blank when not a duplicate):
+- term: canonical English spelling/casing
+- pronunciation: Google "Sounds like" phonetic spelling with "·" syllable dots & ALL CAPS primary stress (e.g. "am·BIV·uh·luhnt")
+- ipa: standard IPA inside slashes (e.g. "/æmˈbɪv.ə.lənt/")
+- cefr: true, objective CEFR level ("A1", "A2", "B1", "B2", "C1", or "C2") — classify honestly across the full spectrum (e.g. "hi", "hello", "apple", "good" = A1; "holiday", "weather" = A2; "achieve", "opinion" = B1; "sustainable" = B2; "ubiquitous", "pragmatic" = C1; "ephemeral", "obfuscate" = C2); NEVER inflate beginner words to B2 or C1
+- type: vocab, idiom, or collocation
+- register: "Casual", "Formal", "Academic", or "Slang" — ${REGISTER_CLASSIFICATION_RULE}
+- meaning_en: 1 clear, natural English definition (figurative meaning for idioms)
+- meaning_id: 1 clear, natural Indonesian definition (figurative meaning for idioms, never literal word-by-word)
+- examples: 2 natural example sentences (1 Daily, 1 Academic) wrapping the target term in **bold**, each with natural Indonesian translation_id and context
+- synonyms: 2–4 register-matched English synonyms
+- antonyms: 1–3 contrasting English antonyms (or contextual opposites)
+- word_families: 1–4 real {word, pos} morphological forms (for idioms, use base form or key lemma; never invent fake words)`;
+}
+
 function buildBackupSystemPrompt(
   systemInstruction: string | undefined,
   schema: Schema
@@ -909,7 +948,10 @@ function buildBackupSystemPrompt(
   const base =
     systemInstruction?.trim() ||
     "Precise bilingual English-Indonesian lexicographer.";
-  return `${base}
+  const registerHint = skeleton.includes('"register":')
+    ? `\n${REGISTER_CLASSIFICATION_RULE}`
+    : "";
+  return `${base}${registerHint}
 CRITICAL: Return ONLY a single valid raw JSON object matching this exact schema (no markdown fences, no commentary, no placeholders):
 ${skeleton}`;
 }

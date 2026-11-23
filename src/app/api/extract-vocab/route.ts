@@ -7,13 +7,17 @@ import {
   generateStructuredWithHybridModel,
   incompleteGeminiResponseError,
   logGeminiRouteError,
+  REGISTER_CLASSIFICATION_RULE,
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { checkAiRateLimit } from "@/lib/rate-limit";
-import { normalizeCefrLevel, normalizeTermKey } from "@/lib/utils";
+import {
+  normalizeCefrLevel,
+  normalizeRegister,
+  normalizeTermKey,
+} from "@/lib/utils";
 import type {
   ExtractedVocabItem,
-  RegisterType,
   WordType,
 } from "@/types/lexivault";
 
@@ -46,11 +50,12 @@ export async function POST(request: Request) {
     }
 
     const prompt = `Extract 6–10 notable English vocab, idioms, or collocations from this text (ui: ${lang}). Assign each expression its true objective CEFR level (A1|A2|B1|B2|C1|C2) without inflating basic words.
+${REGISTER_CLASSIFICATION_RULE}
 Text:
 """
 ${rawText}
 """
-Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|collocation), register (Academic|Formal|Casual|Slang), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural Indonesian sentence), examples (2 short sentences with **bold** term + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-3 real {word,pos}).`;
+Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|collocation), register (Casual|Formal|Academic|Slang), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural Indonesian sentence), examples (2 short sentences with **bold** term + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-3 real {word,pos}).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items: Partial<ExtractedVocabItem>[];
@@ -176,12 +181,6 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
     }
 
     const validTypes = new Set<WordType>(["vocab", "idiom", "collocation"]);
-    const validRegisters = new Set<RegisterType>([
-      "Formal",
-      "Academic",
-      "Casual",
-      "Slang",
-    ]);
 
     const normalized: ExtractedVocabItem[] = aiRes.data.items
       .filter((it) => it && typeof it.term === "string" && it.term.trim())
@@ -222,10 +221,7 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
           ipa: (it.ipa || "").trim() || builtIn?.ipa || undefined,
           cefr: normalizeCefrLevel(it.cefr) ?? builtInBilingual?.cefr,
           type: it.type && validTypes.has(it.type) ? it.type : "vocab",
-          register:
-            it.register && validRegisters.has(it.register)
-              ? it.register
-              : "Academic",
+          register: normalizeRegister(it.register, "Casual"),
           meaning_en,
           meaning_id,
           examples,

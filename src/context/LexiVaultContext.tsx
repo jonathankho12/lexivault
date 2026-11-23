@@ -31,6 +31,7 @@ import {
 import { getDueWords } from "@/lib/sm2";
 import {
   isSfxMuted,
+  playCorrectChime,
   playRingCompleteChord,
   setSfxMuted as persistSfxMuted,
 } from "@/lib/soundEffects";
@@ -103,7 +104,46 @@ interface AddWordResult {
 interface RefreshWordResult {
   ok: boolean;
   source?: "gemini" | "fallback";
+  aborted?: boolean;
   error?: string;
+}
+
+export interface BatchRefreshState {
+  status: "idle" | "running" | "done" | "cancelled";
+  currentIndex: number;
+  completedCount: number;
+  total: number;
+  currentTerm: string;
+  updatedCount: number;
+  failedCount: number;
+}
+
+const INITIAL_BATCH_REFRESH_STATE: BatchRefreshState = {
+  status: "idle",
+  currentIndex: 0,
+  completedCount: 0,
+  total: 0,
+  currentTerm: "",
+  updatedCount: 0,
+  failedCount: 0,
+};
+
+const BATCH_REFRESH_DELAY_MS = 400;
+
+function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 interface AuthActionResult {
@@ -169,7 +209,14 @@ interface LexiVaultContextValue {
     sourceTag: string
   ) => Promise<number>;
   addSuggestedWordToVault: (item: SuggestedWordItem) => Promise<WordEntry | null>;
-  refreshWordWithAI: (wordId: string) => Promise<RefreshWordResult>;
+  refreshWordWithAI: (
+    wordId: string,
+    options?: { signal?: AbortSignal }
+  ) => Promise<RefreshWordResult>;
+  batchRefresh: BatchRefreshState;
+  startBatchRefreshAllWords: () => Promise<void>;
+  cancelBatchRefreshAllWords: () => void;
+  resetBatchRefreshStatus: () => void;
   saveDiscoveryItemToVault: (item: DiscoveryItem) => Promise<WordEntry | null>;
   removeWord: (id: string) => Promise<void>;
   recordAnswer: (wordId: string, isCorrect: boolean) => Promise<void>;
@@ -244,8 +291,13 @@ export function LexiVaultProvider({
     useState<PracticeLaunchRequest | null>(null);
   const [streakFocusNonce, setStreakFocusNonce] = useState(0);
   const [commuteLaunchNonce, setCommuteLaunchNonce] = useState(0);
+  const [batchRefresh, setBatchRefresh] = useState<BatchRefreshState>(
+    INITIAL_BATCH_REFRESH_STATE
+  );
 
   const launchNonceRef = useRef(0);
+  const batchRefreshAbortRef = useRef<AbortController | null>(null);
+  const batchRefreshRunningRef = useRef(false);
   const wordsRef = useRef<WordEntry[]>([]);
   wordsRef.current = words;
   const ringTargetsRef = useRef<DailyRingTargets>(ringTargets);
@@ -1292,8 +1344,14 @@ export function LexiVaultProvider({
   );
 
   const refreshWordWithAI = useCallback(
-    async (wordId: string): Promise<RefreshWordResult> => {
+    async (
+      wordId: string,
+      options?: { signal?: AbortSignal }
+    ): Promise<RefreshWordResult> => {
       const isEn = lang === "en";
+      if (options?.signal?.aborted) {
+        return { ok: false, aborted: true };
+      }
       if (!user) {
         return {
           ok: false,
@@ -1312,6 +1370,7 @@ export function LexiVaultProvider({
         const res = await fetch("/api/autofill", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: options?.signal,
           body: JSON.stringify({
             term: target.term,
             sourceTag: normalizeSourceTag(target.source_tag),
@@ -1355,17 +1414,22 @@ export function LexiVaultProvider({
           data: AutofillPayload;
           source: "gemini" | "fallback";
         };
+        if (options?.signal?.aborted) {
+          return { ok: false, aborted: true };
+        }
         const aiData = json.data;
+        const latestTarget =
+          wordsRef.current.find((w) => w.id === wordId) ?? target;
 
         const merged: WordEntry = {
-          ...target,
+          ...latestTarget,
           term: aiData.term,
-          pronunciation: aiData.pronunciation || target.pronunciation,
-          ipa: aiData.ipa || target.ipa,
-          cefr: aiData.cefr || target.cefr,
+          pronunciation: aiData.pronunciation || latestTarget.pronunciation,
+          ipa: aiData.ipa || latestTarget.ipa,
+          cefr: aiData.cefr || latestTarget.cefr,
           type: aiData.type,
           meaning_id: aiData.meaning_id,
-          meaning_en: aiData.meaning_en || target.meaning_en,
+          meaning_en: aiData.meaning_en || latestTarget.meaning_en,
           examples_json: aiData.examples,
           synonyms: aiData.synonyms,
           antonyms: aiData.antonyms,
@@ -1388,6 +1452,15 @@ export function LexiVaultProvider({
 
         return { ok: true, source: json.source };
       } catch (err) {
+        if (
+          options?.signal?.aborted ||
+          (err &&
+            typeof err === "object" &&
+            "name" in err &&
+            (err as { name?: string }).name === "AbortError")
+        ) {
+          return { ok: false, aborted: true };
+        }
         console.error("[LexiVault] refreshWordWithAI failed:", err);
         return {
           ok: false,
@@ -1399,6 +1472,99 @@ export function LexiVaultProvider({
     },
     [lang, runCloudMutation, user]
   );
+
+  const cancelBatchRefreshAllWords = useCallback(() => {
+    batchRefreshAbortRef.current?.abort();
+  }, []);
+
+  const resetBatchRefreshStatus = useCallback(() => {
+    if (batchRefreshRunningRef.current) return;
+    setBatchRefresh(INITIAL_BATCH_REFRESH_STATE);
+  }, []);
+
+  const startBatchRefreshAllWords = useCallback(async () => {
+    if (batchRefreshRunningRef.current || !userRef.current) return;
+    const queue = [...wordsRef.current];
+    if (queue.length === 0) return;
+
+    const abortController = new AbortController();
+    batchRefreshAbortRef.current = abortController;
+    batchRefreshRunningRef.current = true;
+
+    let updatedCount = 0;
+    let failedCount = 0;
+
+    setBatchRefresh({
+      status: "running",
+      currentIndex: 1,
+      completedCount: 0,
+      total: queue.length,
+      currentTerm: queue[0].term,
+      updatedCount: 0,
+      failedCount: 0,
+    });
+
+    try {
+      for (let i = 0; i < queue.length; i += 1) {
+        if (abortController.signal.aborted) break;
+        const item = queue[i];
+
+        setBatchRefresh({
+          status: "running",
+          currentIndex: i + 1,
+          completedCount: i,
+          total: queue.length,
+          currentTerm: item.term,
+          updatedCount,
+          failedCount,
+        });
+
+        const res = await refreshWordWithAI(item.id, {
+          signal: abortController.signal,
+        });
+
+        if (abortController.signal.aborted || res.aborted) {
+          break;
+        }
+
+        if (res.ok) {
+          updatedCount += 1;
+        } else {
+          failedCount += 1;
+        }
+
+        setBatchRefresh({
+          status: "running",
+          currentIndex: i + 1,
+          completedCount: i + 1,
+          total: queue.length,
+          currentTerm: item.term,
+          updatedCount,
+          failedCount,
+        });
+
+        if (i < queue.length - 1 && !abortController.signal.aborted) {
+          await sleepAbortable(BATCH_REFRESH_DELAY_MS, abortController.signal);
+        }
+      }
+    } finally {
+      const wasCancelled = abortController.signal.aborted;
+      batchRefreshRunningRef.current = false;
+      batchRefreshAbortRef.current = null;
+
+      if (!wasCancelled && updatedCount > 0) {
+        playCorrectChime(2);
+      }
+
+      setBatchRefresh((prev) => ({
+        ...prev,
+        status: wasCancelled ? "cancelled" : "done",
+        completedCount: wasCancelled ? prev.completedCount : queue.length,
+        updatedCount,
+        failedCount,
+      }));
+    }
+  }, [refreshWordWithAI]);
 
   // 0ms optimistic save from Discover (NEVER calls /api/autofill before insert)
   const saveDiscoveryItemToVault = useCallback(
@@ -1768,6 +1934,10 @@ export function LexiVaultProvider({
   );
 
   const logout = useCallback(async () => {
+    batchRefreshAbortRef.current?.abort();
+    batchRefreshAbortRef.current = null;
+    batchRefreshRunningRef.current = false;
+    setBatchRefresh(INITIAL_BATCH_REFRESH_STATE);
     await signOutUser();
     setAuthInitialMode("login");
     setUser(null);
@@ -1832,6 +2002,10 @@ export function LexiVaultProvider({
     addExtractedWordsBatch,
     addSuggestedWordToVault,
     refreshWordWithAI,
+    batchRefresh,
+    startBatchRefreshAllWords,
+    cancelBatchRefreshAllWords,
+    resetBatchRefreshStatus,
     saveDiscoveryItemToVault,
     removeWord,
     recordAnswer,

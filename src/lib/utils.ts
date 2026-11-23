@@ -1,6 +1,7 @@
 import type { AppLanguage } from "@/lib/i18n";
 import type {
   CefrLevel,
+  RegisterType,
   SourceTag,
   StudyLog,
   WordEntry,
@@ -21,6 +22,38 @@ export function normalizeCefrLevel(raw?: unknown): CefrLevel | undefined {
   if (typeof raw !== "string") return undefined;
   const cleaned = raw.trim().toUpperCase();
   return VALID_CEFR_SET.has(cleaned) ? (cleaned as CefrLevel) : undefined;
+}
+
+export function normalizeRegister(
+  raw?: unknown,
+  fallback: RegisterType = "Casual"
+): RegisterType {
+  if (typeof raw !== "string") return fallback;
+  const lower = raw.trim().toLowerCase();
+  switch (lower) {
+    case "academic":
+    case "scholarly":
+    case "scientific":
+      return "Academic";
+    case "formal":
+    case "official":
+    case "professional":
+      return "Formal";
+    case "slang":
+    case "colloquial":
+    case "street":
+      return "Slang";
+    case "casual":
+    case "everyday":
+    case "neutral":
+    case "conversational":
+    case "informal":
+    case "general":
+    case "daily":
+      return "Casual";
+    default:
+      return fallback;
+  }
 }
 
 export function formatCefrBadgeClass(level?: CefrLevel | string | null): string {

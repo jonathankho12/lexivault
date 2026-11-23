@@ -453,6 +453,14 @@ export interface TranslationDictionary {
       connLocal: string;
       connGuest: string;
       savedExpressions: string;
+      refreshAllBtn: string;
+      refreshAllDesc: string;
+      refreshAllEmpty: string;
+      refreshConfirmPromptPrefix: string;
+      refreshConfirmPromptSuffix: string;
+      refreshConfirmStartBtn: string;
+      refreshCancelBtn: string;
+      refreshingProgressPrefix: string;
       exportBtn: string;
       exportedMsg: string;
       clearAudioBtn: string;
@@ -975,6 +983,16 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         connLocal: "Local Vault (Perangkat)",
         connGuest: "Mode Tamu · LocalStorage Perangkat",
         savedExpressions: "Total Kosakata",
+        refreshAllBtn: "Refresh All AI Details",
+        refreshAllDesc:
+          "Perbarui ulang CEFR (A1–C2), register, fonetik, arti & contoh kalimat satu per satu (~400ms jeda aman).",
+        refreshAllEmpty: "Belum ada kata tersimpan di Vault.",
+        refreshConfirmPromptPrefix:
+          "Perbarui ulang detail AI (CEFR & register) untuk seluruh",
+        refreshConfirmPromptSuffix: "item tersimpan secara berurutan?",
+        refreshConfirmStartBtn: "Mulai Refresh",
+        refreshCancelBtn: "Batal",
+        refreshingProgressPrefix: "Memperbarui",
         exportBtn: "Export Vault ke JSON",
         exportedMsg: "Backup JSON berhasil diunduh.",
         clearAudioBtn: "Bersihkan Cache Audio (IndexedDB)",
@@ -1495,6 +1513,16 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         connLocal: "Local Vault (Device)",
         connGuest: "Guest Mode · Device LocalStorage",
         savedExpressions: "Saved Expressions",
+        refreshAllBtn: "Refresh All AI Details",
+        refreshAllDesc:
+          "Sequentially re-analyze CEFR (A1–C2), register, phonetics, definitions & examples (~400ms safe delay).",
+        refreshAllEmpty: "No saved expressions in Vault yet.",
+        refreshConfirmPromptPrefix:
+          "Re-analyze AI details (CEFR & register) for all",
+        refreshConfirmPromptSuffix: "saved Vault items sequentially?",
+        refreshConfirmStartBtn: "Start Refresh",
+        refreshCancelBtn: "Cancel",
+        refreshingProgressPrefix: "Refreshing",
         exportBtn: "Export Vault to JSON",
         exportedMsg: "JSON backup downloaded.",
         clearAudioBtn: "Clear Audio Cache (IndexedDB)",
