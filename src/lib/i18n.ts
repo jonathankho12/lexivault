@@ -49,6 +49,7 @@ export interface TranslationDictionary {
     itemsSuffix: string;
     syncLabel: string;
     syncSupabase: string;
+    syncing: string;
     syncLocal: string;
     syncGuest: string;
     cloudAccount: string;
@@ -58,6 +59,53 @@ export interface TranslationDictionary {
     createAccountSync: string;
     logout: string;
     settings: string;
+  };
+  dailyPack: {
+    eyebrow: string;
+    modalTitle: string;
+    readyPrefix: string;
+    readySuffix: string;
+    resumePrefix: string;
+    completedTitle: string;
+    pausedTitle: string;
+    pausedSubtitle: string;
+    startBtn: string;
+    resumeBtn: string;
+    reviewBtn: string;
+    doLaterBtn: string;
+    close: string;
+    loadingTitle: string;
+    loadingSubtitle: string;
+    errorFallback: string;
+    retryBtn: string;
+    roundLabel: string;
+    ofLabel: string;
+    stageMemorize: string;
+    stageQuiz: string;
+    memorizeHint: string;
+    prevCard: string;
+    nextCard: string;
+    startRecallQuiz: string;
+    quizSubtitle: string;
+    promptMeaning: string;
+    promptFillBlank: string;
+    correctFeedback: string;
+    wrongFeedback: string;
+    requeuedBadge: string;
+    continueBtn: string;
+    roundCompleteTitle: string;
+    roundCompleteBody: string;
+    nextRoundBtn: string;
+    allDoneEyebrow: string;
+    allDoneTitle: string;
+    allDoneSubtitle: string;
+    learnedListTitle: string;
+    doneBtn: string;
+    openFlashcardsBtn: string;
+    wordsCountLabel: string;
+    idiomsCountLabel: string;
+    progressLabel: string;
+    quotaHintPrefix: string;
   };
   vault: {
     eyebrow: string;
@@ -182,6 +230,17 @@ export interface TranslationDictionary {
     exampleTitle: string;
     swipeGood: string;
     swipeAgain: string;
+    filterUnreviewed: string;
+    allCaughtUpTitle: string;
+    allCaughtUpSubtitle: string;
+    reviewedTodayStat: string;
+    accuracyTodayStat: string;
+    xpTodayStat: string;
+    extraPracticeBtn: string;
+    extraPracticeBanner: string;
+    exitExtraPractice: string;
+    requeuedToast: string;
+    brandNewBadge: string;
   };
   practice: {
     eyebrow: string;
@@ -309,8 +368,26 @@ export interface TranslationDictionary {
     sections: {
       account: string;
       language: string;
+      dailyPack: string;
       audioStudy: string;
       dataStorage: string;
+    };
+    dailyPack: {
+      wordsPerDay: string;
+      wordsPerDayDesc: string;
+      idiomsPerDay: string;
+      idiomsPerDayDesc: string;
+      autoShowPopup: string;
+      autoShowOnDesc: string;
+      autoShowOffDesc: string;
+      totalPerDayPrefix: string;
+      totalPerDaySuffix: string;
+      pausedHint: string;
+      applyTodayBtn: string;
+      applyingTodayBtn: string;
+      appliedTodayMsg: string;
+      cloudSyncNote: string;
+      guestLocalNote: string;
     };
     account: {
       username: string;
@@ -449,9 +526,10 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       cumulativePool: "Pool Kumulatif",
       itemsSuffix: "item",
       syncLabel: "Sync",
-      syncSupabase: "Supabase Live",
+      syncSupabase: "Cloud Tersinkron",
+      syncing: "Menyinkronkan...",
       syncLocal: "Local Vault",
-      syncGuest: "Lokal (Tamu)",
+      syncGuest: "Local Vault (Tamu)",
       cloudAccount: "Cloud Akun",
       localAccount: "Akun Lokal",
       guestModeLabel: "Mode Tamu (Lokal)",
@@ -459,6 +537,53 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       createAccountSync: "Buat Akun untuk Sync",
       logout: "Keluar",
       settings: "Settings",
+    },
+    dailyPack: {
+      eyebrow: "Tantangan Belajar Harian",
+      modalTitle: "Target Harian",
+      readyPrefix: "Target Harian:",
+      readySuffix: "Siap",
+      resumePrefix: "Lanjutkan Target Harian",
+      completedTitle: "Target Harian Selesai ✓",
+      pausedTitle: "Target Harian Dijeda",
+      pausedSubtitle: "Atur kuota Kata/Idiom di Settings untuk mengaktifkan lagi.",
+      startBtn: "Mulai Target Harian",
+      resumeBtn: "Lanjutkan",
+      reviewBtn: "Lihat Materi Hari Ini",
+      doLaterBtn: "Nanti aja",
+      close: "Tutup",
+      loadingTitle: "Menyiapkan Target Harian C1–C2...",
+      loadingSubtitle: "Meracik kosakata & idiom baru tanpa duplikat dari Vault-mu.",
+      errorFallback: "Gagal memuat Target Harian hari ini. Silakan coba lagi.",
+      retryBtn: "Coba Lagi",
+      roundLabel: "Ronde",
+      ofLabel: "dari",
+      stageMemorize: "Tahap 1 · Hafalkan Cepat",
+      stageQuiz: "Tahap 2 · Kuis Recall Wajib",
+      memorizeHint: "Pelajari pelafalan, arti & contoh kalimat, lalu lanjut ke kuis recall.",
+      prevCard: "Sebelumnya",
+      nextCard: "Berikutnya",
+      startRecallQuiz: "Mulai Kuis Recall →",
+      quizSubtitle: "Jawab benar untuk menyimpan otomatis ke Vault (+20 XP).",
+      promptMeaning: "Pilih arti yang paling tepat:",
+      promptFillBlank: "Lengkapi kalimat konteks berikut:",
+      correctFeedback: "Benar! Otomatis tersimpan ke Vault (+20 XP) ✓",
+      wrongFeedback: "Belum tepat — kartu ini akan diulang di akhir ronde ini.",
+      requeuedBadge: "Dijadwalkan Ulang",
+      continueBtn: "Lanjut →",
+      roundCompleteTitle: "Ronde Tuntas! 🔥",
+      roundCompleteBody: "Semua item ronde ini sudah tersimpan di Vault & siap di Flashcards.",
+      nextRoundBtn: "Lanjut Ronde Berikutnya →",
+      allDoneEyebrow: "Tantangan Hari Ini Tuntas",
+      allDoneTitle: "Target Harian Selesai! 🎉",
+      allDoneSubtitle: "Seluruh kata & idiom hari ini telah tersimpan di Vault dan siap diulas di Flashcards.",
+      learnedListTitle: "Materi yang Dipelajari Hari Ini",
+      doneBtn: "Selesai",
+      openFlashcardsBtn: "Buka Flashcards",
+      wordsCountLabel: "kata",
+      idiomsCountLabel: "idiom",
+      progressLabel: "Progres Hari Ini",
+      quotaHintPrefix: "Target harian:",
     },
     vault: {
       eyebrow: "Leksikon Pribadi",
@@ -551,7 +676,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       eyebrow: "Deck Spaced Repetition SM-2",
       title: "Flashcards",
       shuffleDeck: "Acak Deck",
-      filterDue: "Jatuh Tempo Hari Ini",
+      filterDue: "Antrean Cerdas",
       filterAll: "Semua Kata",
       filterWeakest: "Belum Hafal / Weakest",
       filterRecent: "Baru Ditambahkan",
@@ -595,6 +720,20 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       exampleTitle: "Contoh Kalimat",
       swipeGood: "Good",
       swipeAgain: "Again",
+      filterUnreviewed: "Belum Diulas Hari Ini",
+      allCaughtUpTitle: "Semua flashcard hari ini sudah selesai! 🎉",
+      allCaughtUpSubtitle:
+        "Tidak ada kartu tersisa untuk hari ini. Kartu baru yang kamu simpan di Vault atau Target Harian otomatis muncul di sini.",
+      reviewedTodayStat: "Diulas Hari Ini",
+      accuracyTodayStat: "Akurasi Hari Ini",
+      xpTodayStat: "XP Hari Ini",
+      extraPracticeBtn: "Latihan Ekstra (Ulangi Kartu Selesai)",
+      extraPracticeBanner:
+        "Mode Latihan Ekstra · Mengulas ulang kartu yang sudah selesai hari ini",
+      exitExtraPractice: "Kembali ke Antrean Harian",
+      requeuedToast:
+        "Dijadwalkan ulang di akhir sesi ini agar lebih melekat",
+      brandNewBadge: "Baru · Belum Diulas",
     },
     practice: {
       eyebrow: "Mesin Recall Kumulatif",
@@ -726,13 +865,34 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       sections: {
         account: "Akun & Keamanan",
         language: "Bahasa Interface",
+        dailyPack: "Target Harian (Daily Pack)",
         audioStudy: "Preferensi Audio & Belajar",
         dataStorage: "Data & Penyimpanan",
+      },
+      dailyPack: {
+        wordsPerDay: "Kata Baru / Hari",
+        wordsPerDayDesc: "Kosakata C1–C2 baru dalam paket harianmu (0–30)",
+        idiomsPerDay: "Idiom Baru / Hari",
+        idiomsPerDayDesc: "Idiom C1–C2 baru dalam paket harianmu (0–20)",
+        autoShowPopup: "Tampilkan Pop-up Otomatis Tiap Hari",
+        autoShowOnDesc:
+          "Aktif — pop-up Target Harian muncul otomatis sekali sehari saat membuka Vault",
+        autoShowOffDesc:
+          "Nonaktif — kamu tetap bisa memulai Target Harian secara manual dari banner Vault",
+        totalPerDayPrefix: "Total Target Harian:",
+        totalPerDaySuffix: "item / hari",
+        pausedHint:
+          "Target Harian sedang dijeda (0 kata & 0 idiom). Naikkan salah satu kuota untuk mengaktifkan kembali.",
+        applyTodayBtn: "Terapkan ke Paket Hari Ini",
+        applyingTodayBtn: "Memperbarui Paket...",
+        appliedTodayMsg: "Paket hari ini diperbarui sesuai kuota baru!",
+        cloudSyncNote: "Tersinkron ke Cloud Supabase",
+        guestLocalNote: "Tersimpan lokal di perangkat ini",
       },
       account: {
         username: "Username Aktif",
         status: "Status Akun",
-        statusCloud: "Cloud Sync",
+        statusCloud: "Cloud Tersinkron",
         statusLocal: "Akun Lokal",
         statusGuest: "Mode Tamu (Guest Mode)",
         rankXp: "Mastery Rank & XP",
@@ -869,9 +1029,10 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       cumulativePool: "Cumulative Pool",
       itemsSuffix: "items",
       syncLabel: "Sync",
-      syncSupabase: "Supabase Live",
+      syncSupabase: "Cloud Synced",
+      syncing: "Syncing...",
       syncLocal: "Local Vault",
-      syncGuest: "Local (Guest)",
+      syncGuest: "Local Vault (Guest)",
       cloudAccount: "Cloud Account",
       localAccount: "Local Account",
       guestModeLabel: "Guest Mode (Local)",
@@ -879,6 +1040,53 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       createAccountSync: "Create Account to Sync",
       logout: "Sign Out",
       settings: "Settings",
+    },
+    dailyPack: {
+      eyebrow: "Daily Learning Challenge",
+      modalTitle: "Daily Pack",
+      readyPrefix: "Daily Pack:",
+      readySuffix: "Ready",
+      resumePrefix: "Resume Daily Pack",
+      completedTitle: "Daily Pack Completed ✓",
+      pausedTitle: "Daily Pack Paused",
+      pausedSubtitle: "Increase Words or Idioms quota in Settings to re-enable.",
+      startBtn: "Start Daily Pack",
+      resumeBtn: "Resume",
+      reviewBtn: "Review Today's Pack",
+      doLaterBtn: "Do it later",
+      close: "Close",
+      loadingTitle: "Curating Today's C1–C2 Daily Pack...",
+      loadingSubtitle: "Selecting fresh vocabulary & idioms excluded from your Vault.",
+      errorFallback: "Failed to load today's Daily Pack. Please try again.",
+      retryBtn: "Try Again",
+      roundLabel: "Round",
+      ofLabel: "of",
+      stageMemorize: "Stage 1 · Quick Memorize",
+      stageQuiz: "Stage 2 · Mandatory Recall Quiz",
+      memorizeHint: "Review pronunciation, meaning & example, then prove recall to save.",
+      prevCard: "Previous",
+      nextCard: "Next",
+      startRecallQuiz: "Start Recall Quiz →",
+      quizSubtitle: "Pass each item to auto-save to your Vault (+20 XP).",
+      promptMeaning: "Choose the accurate meaning:",
+      promptFillBlank: "Complete the sentence in context:",
+      correctFeedback: "Correct! Auto-saved to your Vault (+20 XP) ✓",
+      wrongFeedback: "Not quite — this item will return at the end of this round.",
+      requeuedBadge: "Re-queued",
+      continueBtn: "Continue →",
+      roundCompleteTitle: "Round Complete! 🔥",
+      roundCompleteBody: "All items in this round are saved in your Vault & ready in Flashcards.",
+      nextRoundBtn: "Start Next Round →",
+      allDoneEyebrow: "Today's Challenge Complete",
+      allDoneTitle: "Daily Pack Completed! 🎉",
+      allDoneSubtitle: "All of today's words & idioms have been saved to your Vault and synced to Flashcards.",
+      learnedListTitle: "Items Learned Today",
+      doneBtn: "Done",
+      openFlashcardsBtn: "Open Flashcards",
+      wordsCountLabel: "words",
+      idiomsCountLabel: "idioms",
+      progressLabel: "Today's Progress",
+      quotaHintPrefix: "Daily quota:",
     },
     vault: {
       eyebrow: "Personal Lexicon",
@@ -970,7 +1178,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       eyebrow: "SM-2 Spaced Repetition Deck",
       title: "Flashcards",
       shuffleDeck: "Shuffle Deck",
-      filterDue: "Due Today",
+      filterDue: "Smart Queue",
       filterAll: "All Words",
       filterWeakest: "Weakest / Unmastered",
       filterRecent: "Recently Added",
@@ -1013,6 +1221,19 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       exampleTitle: "Example Sentence",
       swipeGood: "Good",
       swipeAgain: "Again",
+      filterUnreviewed: "Unreviewed Today",
+      allCaughtUpTitle: "All caught up for today! 🎉",
+      allCaughtUpSubtitle:
+        "Zero cards remaining for today. Any new words you save in Vault or Daily Pack will appear here automatically.",
+      reviewedTodayStat: "Reviewed Today",
+      accuracyTodayStat: "Today's Accuracy",
+      xpTodayStat: "XP Earned Today",
+      extraPracticeBtn: "Extra Practice (Review Completed Cards)",
+      extraPracticeBanner:
+        "Extra Practice Mode · Reviewing cards already completed today",
+      exitExtraPractice: "Back to Daily Queue",
+      requeuedToast: "Re-queued later in this session until recalled",
+      brandNewBadge: "New · Unreviewed",
     },
     practice: {
       eyebrow: "Cumulative Recall Engine",
@@ -1144,13 +1365,34 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       sections: {
         account: "Account & Security",
         language: "Interface Language",
+        dailyPack: "Daily Learning Pack",
         audioStudy: "Audio & Study Preferences",
         dataStorage: "Data & Storage",
+      },
+      dailyPack: {
+        wordsPerDay: "New Words / Day",
+        wordsPerDayDesc: "Fresh C1–C2 vocabulary in your daily pack (0–30)",
+        idiomsPerDay: "New Idioms / Day",
+        idiomsPerDayDesc: "Fresh C1–C2 idioms in your daily pack (0–20)",
+        autoShowPopup: "Auto-show Daily Pop-up",
+        autoShowOnDesc:
+          "Enabled — automatically opens once per new day when visiting Vault",
+        autoShowOffDesc:
+          "Disabled — start your Daily Pack manually anytime from the Vault banner",
+        totalPerDayPrefix: "Daily Total:",
+        totalPerDaySuffix: "items / day",
+        pausedHint:
+          "Daily Pack is paused (0 words & 0 idioms). Raise either quota to re-enable.",
+        applyTodayBtn: "Apply to Today's Pack",
+        applyingTodayBtn: "Updating Pack...",
+        appliedTodayMsg: "Today's pack refreshed with your new quota!",
+        cloudSyncNote: "Synced to Supabase Cloud",
+        guestLocalNote: "Saved locally on this device",
       },
       account: {
         username: "Active Username",
         status: "Account Status",
-        statusCloud: "Cloud Sync",
+        statusCloud: "Cloud Synced",
         statusLocal: "Local Account",
         statusGuest: "Guest Mode",
         rankXp: "Mastery Rank & XP",

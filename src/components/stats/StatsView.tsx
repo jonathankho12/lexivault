@@ -66,8 +66,13 @@ export function StatsView() {
   }, [streakFocusNonce]);
 
   const stats = useMemo(() => {
-    const totalCorrect = words.reduce((acc, w) => acc + w.correct_count, 0);
-    const totalWrong = words.reduce((acc, w) => acc + w.wrong_count, 0);
+    const wordCorrect = words.reduce((acc, w) => acc + (w.correct_count || 0), 0);
+    const wordWrong = words.reduce((acc, w) => acc + (w.wrong_count || 0), 0);
+    const logCorrect = studyLogs.reduce((acc, l) => acc + (l.correct_count || 0), 0);
+    const logWrong = studyLogs.reduce((acc, l) => acc + (l.wrong_count || 0), 0);
+
+    const totalCorrect = Math.max(wordCorrect, logCorrect);
+    const totalWrong = Math.max(wordWrong, logWrong);
     const totalReviews = totalCorrect + totalWrong;
     const accuracy =
       totalReviews > 0 ? Math.round((totalCorrect / totalReviews) * 100) : 0;
@@ -93,7 +98,7 @@ export function StatsView() {
       idiomCount,
       collocationCount,
     };
-  }, [words]);
+  }, [studyLogs, words]);
 
   const weeklyChart = useMemo(() => {
     const last7 = getLastNDays(7, todayStr);

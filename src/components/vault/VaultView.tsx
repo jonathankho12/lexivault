@@ -4,32 +4,75 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookMarked,
+  CheckCircle2,
   Clock,
   FileText,
+  Flame,
+  PauseCircle,
+  Play,
   Search,
   Sparkles,
   X,
 } from "lucide-react";
 import { ShimmerWordSkeleton } from "@/components/ui/ShimmerWordSkeleton";
 import { AiSuggestSheet } from "@/components/vault/AiSuggestSheet";
+import { DailyPackModal } from "@/components/vault/DailyPackModal";
 import { QuickCaptureBar } from "@/components/vault/QuickCaptureBar";
 import { TextExtractorSheet } from "@/components/vault/TextExtractorSheet";
 import { VaultWordCard } from "@/components/vault/VaultWordCard";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePronunciation } from "@/hooks/usePronunciation";
-import { STAGGER_CONTAINER, TAP_SCALE } from "@/lib/motion";
-import { cn, formatSourceTagLabel, normalizeSourceTag } from "@/lib/utils";
+import { IOS_SPRING, STAGGER_CONTAINER, TAP_SCALE } from "@/lib/motion";
+import { playGlassClick } from "@/lib/soundEffects";
+import {
+  cn,
+  formatSourceTagLabel,
+  normalizeSourceTag,
+  normalizeTermKey,
+} from "@/lib/utils";
 import type { RegisterType, WordType } from "@/types/lexivault";
 
 type TypeFilter = "all" | WordType;
 type RegisterFilter = "all" | RegisterType;
 
 export function VaultView() {
-  const { words, accent, isCapturing, isHydrated, launchCommuteMode } =
-    useLexiVault();
+  const {
+    words,
+    accent,
+    todayStr,
+    isCapturing,
+    isHydrated,
+    dailyPack,
+    dailyQuota,
+    openDailyPackModal,
+    launchCommuteMode,
+  } = useLexiVault();
   const { lang, t } = useLanguage();
   const { prefetchMany } = usePronunciation();
+
+  const dailyPackSummary = useMemo(() => {
+    const quotaTotal = dailyQuota.wordsPerDay + dailyQuota.idiomsPerDay;
+    const isPaused = quotaTotal === 0;
+    const todayPack =
+      dailyPack && dailyPack.pack_date === todayStr ? dailyPack : null;
+    const total =
+      todayPack && todayPack.items.length > 0
+        ? todayPack.items.length
+        : quotaTotal;
+    const completedSet = new Set(todayPack?.completed_terms ?? []);
+    const completed = todayPack
+      ? todayPack.items.filter((it) =>
+          completedSet.has(normalizeTermKey(it.term))
+        ).length
+      : 0;
+    const isComplete = total > 0 && todayPack !== null && completed >= total;
+    const inProgress = completed > 0 && !isComplete;
+    const pct =
+      total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+
+    return { isPaused, total, completed, isComplete, inProgress, pct };
+  }, [dailyPack, dailyQuota, todayStr]);
 
   const [pendingTerm, setPendingTerm] = useState("");
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -141,6 +184,105 @@ export function VaultView() {
         open={extractorOpen}
         onClose={() => setExtractorOpen(false)}
       />
+
+      <DailyPackModal />
+
+      {/* Persistent Daily Learning Pack CTA Card */}
+      {isHydrated && (
+        <div
+          className={cn(
+            "liquid-glass rounded-3xl p-4 sm:p-5 border transition-colors",
+            dailyPackSummary.isComplete
+              ? "border-[#30D158]/35 bg-[#30D158]/[0.06]"
+              : dailyPackSummary.isPaused
+                ? "border-white/[0.08]"
+                : "border-[#FF9F0A]/30 bg-gradient-to-r from-[#FF9F0A]/[0.09] via-white/[0.03] to-[#0A84FF]/[0.09]"
+          )}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3 min-w-0">
+              <div
+                className={cn(
+                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border",
+                  dailyPackSummary.isComplete
+                    ? "bg-[#30D158]/20 border-[#30D158]/40 text-[#7CF099]"
+                    : dailyPackSummary.isPaused
+                      ? "bg-white/[0.06] border-white/[0.1] text-[#8E8E93]"
+                      : "bg-gradient-to-br from-[#FF9F0A]/25 to-[#0A84FF]/25 border-[#FF9F0A]/35 text-[#FFD18C]"
+                )}
+              >
+                {dailyPackSummary.isComplete ? (
+                  <CheckCircle2 className="h-5 w-5" />
+                ) : dailyPackSummary.isPaused ? (
+                  <PauseCircle className="h-5 w-5" />
+                ) : (
+                  <Flame className="h-5 w-5" />
+                )}
+              </div>
+
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#FF9F0A]">
+                  {t.dailyPack.eyebrow}
+                </p>
+                <h3 className="text-sm sm:text-base font-bold text-white truncate">
+                  {dailyPackSummary.isPaused
+                    ? t.dailyPack.pausedTitle
+                    : dailyPackSummary.isComplete
+                      ? `${t.dailyPack.completedTitle} (${dailyPackSummary.completed}/${dailyPackSummary.total})`
+                      : dailyPackSummary.inProgress
+                        ? `${t.dailyPack.resumePrefix} (${dailyPackSummary.completed}/${dailyPackSummary.total})`
+                        : `${t.dailyPack.readyPrefix} ${dailyPackSummary.completed}/${dailyPackSummary.total} ${t.dailyPack.readySuffix}`}
+                </h3>
+                <p className="text-xs text-[#8E8E93] truncate">
+                  {dailyPackSummary.isPaused
+                    ? t.dailyPack.pausedSubtitle
+                    : `${dailyQuota.wordsPerDay} ${t.dailyPack.wordsCountLabel} · ${dailyQuota.idiomsPerDay} ${t.dailyPack.idiomsCountLabel} · C1–C2`}
+                </p>
+              </div>
+            </div>
+
+            {!dailyPackSummary.isPaused && (
+              <motion.button
+                type="button"
+                whileTap={TAP_SCALE}
+                onClick={() => {
+                  playGlassClick();
+                  openDailyPackModal();
+                }}
+                className={cn(
+                  "shrink-0 inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all cursor-pointer",
+                  dailyPackSummary.isComplete
+                    ? "bg-[#30D158]/20 border border-[#30D158]/40 text-[#7CF099] hover:bg-[#30D158]/28"
+                    : "bg-gradient-to-r from-[#FF9F0A] to-[#0A84FF] text-white shadow-[0_6px_20px_rgba(255,159,10,0.28)] hover:brightness-110"
+                )}
+              >
+                {!dailyPackSummary.isComplete && (
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                )}
+                <span>
+                  {dailyPackSummary.isComplete
+                    ? t.dailyPack.reviewBtn
+                    : dailyPackSummary.inProgress
+                      ? t.dailyPack.resumeBtn
+                      : t.dailyPack.startBtn}
+                </span>
+              </motion.button>
+            )}
+          </div>
+
+          {!dailyPackSummary.isPaused && dailyPackSummary.inProgress && (
+            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
+              <motion.div
+                className="h-full w-full rounded-full bg-gradient-to-r from-[#FF9F0A] via-[#30D158] to-[#0A84FF] transform-gpu will-change-transform"
+                style={{ transformOrigin: "left" }}
+                initial={false}
+                animate={{ scaleX: Math.max(0.05, dailyPackSummary.pct / 100) }}
+                transition={IOS_SPRING}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Floating Quick-Capture Input Bar */}
       <QuickCaptureBar onPendingTermChange={setPendingTerm} />

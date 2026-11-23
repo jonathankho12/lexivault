@@ -3,16 +3,19 @@
 import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertCircle,
   Check,
   Database,
   Download,
   Eye,
   EyeOff,
+  Flame,
   KeyRound,
   Loader2,
   LogOut,
   Minus,
   Plus,
+  RefreshCw,
   RotateCcw,
   Settings,
   ShieldCheck,
@@ -52,9 +55,15 @@ export function SettingsModal({
     ringTargets,
     updateRingTargets,
     resetRingTargets,
+    dailyQuota,
+    updateDailyQuota,
+    dailyPack,
+    todayStr,
+    applyQuotaToTodayPack,
     words,
     studyLogs,
     syncMode,
+    syncStatus,
     changePassword,
     openRegisterFromGuest,
     logout,
@@ -75,6 +84,8 @@ export function SettingsModal({
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [clearingAudio, setClearingAudio] = useState(false);
   const [clearAudioMsg, setClearAudioMsg] = useState<string | null>(null);
+  const [applyingPack, setApplyingPack] = useState(false);
+  const [applyPackMsg, setApplyPackMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -84,6 +95,7 @@ export function SettingsModal({
       setPwdFeedback(null);
       setExportMsg(null);
       setClearAudioMsg(null);
+      setApplyPackMsg(null);
     }
   }, [open]);
 
@@ -516,7 +528,248 @@ export function SettingsModal({
               </div>
             </section>
 
-            {/* 3. AUDIO & STUDY PREFERENCES */}
+            {/* 3. DAILY LEARNING PACK QUOTA */}
+            <section className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
+                  {t.settings.sections.dailyPack}
+                </h3>
+                <span className="text-[10px] font-medium text-[#70BCFF]">
+                  {isCloud
+                    ? t.settings.dailyPack.cloudSyncNote
+                    : t.settings.dailyPack.guestLocalNote}
+                </span>
+              </div>
+
+              <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] divide-y divide-white/[0.08]">
+                {/* New Words / Day (0 - 30) */}
+                <div className="p-4 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-white">
+                        {t.settings.dailyPack.wordsPerDay}
+                      </p>
+                      <p className="text-[11px] text-[#8E8E93]">
+                        {t.settings.dailyPack.wordsPerDayDesc}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playGlassClick();
+                          setApplyPackMsg(null);
+                          updateDailyQuota({
+                            wordsPerDay: Math.max(0, dailyQuota.wordsPerDay - 1),
+                          });
+                        }}
+                        aria-label="Decrease words per day"
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-white cursor-pointer"
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="w-8 text-center text-sm font-bold text-[#70BCFF] tabular-nums">
+                        {dailyQuota.wordsPerDay}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playGlassClick();
+                          setApplyPackMsg(null);
+                          updateDailyQuota({
+                            wordsPerDay: Math.min(30, dailyQuota.wordsPerDay + 1),
+                          });
+                        }}
+                        aria-label="Increase words per day"
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-white cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={30}
+                    step={1}
+                    value={dailyQuota.wordsPerDay}
+                    onChange={(e) => {
+                      setApplyPackMsg(null);
+                      updateDailyQuota({ wordsPerDay: Number(e.target.value) });
+                    }}
+                    className="w-full accent-[#0A84FF] cursor-pointer"
+                  />
+                </div>
+
+                {/* New Idioms / Day (0 - 20) */}
+                <div className="p-4 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-white">
+                        {t.settings.dailyPack.idiomsPerDay}
+                      </p>
+                      <p className="text-[11px] text-[#8E8E93]">
+                        {t.settings.dailyPack.idiomsPerDayDesc}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playGlassClick();
+                          setApplyPackMsg(null);
+                          updateDailyQuota({
+                            idiomsPerDay: Math.max(0, dailyQuota.idiomsPerDay - 1),
+                          });
+                        }}
+                        aria-label="Decrease idioms per day"
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-white cursor-pointer"
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="w-8 text-center text-sm font-bold text-[#FFD18C] tabular-nums">
+                        {dailyQuota.idiomsPerDay}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playGlassClick();
+                          setApplyPackMsg(null);
+                          updateDailyQuota({
+                            idiomsPerDay: Math.min(20, dailyQuota.idiomsPerDay + 1),
+                          });
+                        }}
+                        aria-label="Increase idioms per day"
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-white cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={20}
+                    step={1}
+                    value={dailyQuota.idiomsPerDay}
+                    onChange={(e) => {
+                      setApplyPackMsg(null);
+                      updateDailyQuota({ idiomsPerDay: Number(e.target.value) });
+                    }}
+                    className="w-full accent-[#FF9F0A] cursor-pointer"
+                  />
+                </div>
+
+                {/* Auto-show Daily Pop-up Toggle */}
+                <div className="flex items-center justify-between gap-3 p-4">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Flame className="h-4 w-4 text-[#FF9F0A] shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-white">
+                        {t.settings.dailyPack.autoShowPopup}
+                      </p>
+                      <p className="text-[11px] text-[#8E8E93]">
+                        {dailyQuota.autoShowPopup
+                          ? t.settings.dailyPack.autoShowOnDesc
+                          : t.settings.dailyPack.autoShowOffDesc}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={dailyQuota.autoShowPopup}
+                    onClick={() => {
+                      playGlassClick();
+                      updateDailyQuota({
+                        autoShowPopup: !dailyQuota.autoShowPopup,
+                      });
+                    }}
+                    className={cn(
+                      "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors cursor-pointer p-0.5",
+                      dailyQuota.autoShowPopup
+                        ? "bg-[#30D158] border-[#30D158]"
+                        : "bg-white/[0.1] border-white/[0.15]"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-5.5 w-5.5 rounded-full bg-white shadow transition-transform transform-gpu",
+                        dailyQuota.autoShowPopup ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {/* Summary / Paused Warning / Apply Today CTA */}
+                <div className="p-4 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-[#D1D1D6]">
+                      {t.settings.dailyPack.totalPerDayPrefix}{" "}
+                      <span className="text-white tabular-nums">
+                        {dailyQuota.wordsPerDay + dailyQuota.idiomsPerDay}{" "}
+                        {t.settings.dailyPack.totalPerDaySuffix}
+                      </span>
+                    </span>
+
+                    {dailyQuota.wordsPerDay + dailyQuota.idiomsPerDay > 0 &&
+                      (!dailyPack ||
+                        dailyPack.pack_date !== todayStr ||
+                        (dailyPack.completed_terms.length === 0 &&
+                          (dailyPack.words_quota !== dailyQuota.wordsPerDay ||
+                            dailyPack.idioms_quota !==
+                              dailyQuota.idiomsPerDay))) && (
+                        <motion.button
+                          type="button"
+                          whileTap={TAP_SCALE}
+                          disabled={applyingPack}
+                          onClick={async () => {
+                            playGlassClick();
+                            setApplyingPack(true);
+                            setApplyPackMsg(null);
+                            try {
+                              await applyQuotaToTodayPack();
+                              setApplyPackMsg(
+                                t.settings.dailyPack.appliedTodayMsg
+                              );
+                            } finally {
+                              setApplyingPack(false);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/20 border border-[#0A84FF]/40 px-3 py-1.5 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/30 cursor-pointer disabled:opacity-50"
+                        >
+                          {applyingPack ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                          <span>
+                            {applyingPack
+                              ? t.settings.dailyPack.applyingTodayBtn
+                              : t.settings.dailyPack.applyTodayBtn}
+                          </span>
+                        </motion.button>
+                      )}
+                  </div>
+
+                  {dailyQuota.wordsPerDay + dailyQuota.idiomsPerDay === 0 && (
+                    <div className="flex items-start gap-2 rounded-xl bg-[#FF9F0A]/12 border border-[#FF9F0A]/30 px-3 py-2 text-xs text-[#FFD18C]">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{t.settings.dailyPack.pausedHint}</span>
+                    </div>
+                  )}
+
+                  {applyPackMsg && (
+                    <div className="rounded-xl bg-[#30D158]/15 border border-[#30D158]/35 px-3 py-2 text-xs font-medium text-[#7CF099]">
+                      {applyPackMsg}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* 4. AUDIO & STUDY PREFERENCES */}
             <section className="space-y-2">
               <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
                 {t.settings.sections.audioStudy}
@@ -727,8 +980,12 @@ export function SettingsModal({
                     <span className="font-semibold text-white">
                       {isGuest
                         ? t.settings.dataStorage.connGuest
-                        : syncMode === "supabase"
-                          ? t.settings.dataStorage.connCloud
+                        : isCloud
+                          ? syncStatus === "syncing"
+                            ? t.nav.syncing
+                            : syncStatus === "synced" || syncMode === "supabase"
+                              ? t.settings.dataStorage.connCloud
+                              : t.settings.dataStorage.connLocal
                           : t.settings.dataStorage.connLocal}
                     </span>
                   </div>

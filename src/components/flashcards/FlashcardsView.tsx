@@ -10,14 +10,16 @@ import {
 } from "framer-motion";
 import {
   BookMarked,
-  CalendarClock,
   CheckCircle2,
+  Flame,
   Layers,
   RotateCcw,
   RotateCw,
   Shuffle,
   Sparkles,
   Tag,
+  Target,
+  Trophy,
   XCircle,
 } from "lucide-react";
 import { ComboBadge } from "@/components/gamification/ComboBadge";
@@ -28,10 +30,16 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePronunciation } from "@/hooks/usePronunciation";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
-import { getDueWords, previewSm2IntervalLabels } from "@/lib/sm2";
+import {
+  buildSmartFlashcardQueue,
+  getEffectiveReviewCount,
+  isReviewedToday,
+  previewSm2IntervalLabels,
+} from "@/lib/sm2";
 import {
   playCorrectChime,
   playGlassClick,
+  playRingCompleteChord,
   playWrongThud,
 } from "@/lib/soundEffects";
 import {
@@ -43,19 +51,28 @@ import {
 } from "@/lib/utils";
 import type { Sm2Rating, WordEntry } from "@/types/lexivault";
 
-type DeckFilter = "due" | "all" | "weakest" | "recent";
+type DeckFilter = "due" | "unreviewed" | "weakest";
 
 function buildDeckByFilter(
   words: WordEntry[],
+  todayStr: string,
   filter: DeckFilter,
   shuffle = false
 ): WordEntry[] {
   let base: WordEntry[] = [];
 
   if (filter === "due") {
-    base = getDueWords(words);
-  } else if (filter === "weakest") {
-    const candidates = words.filter(
+    base = buildSmartFlashcardQueue(words, todayStr, {
+      includeStudyAhead: false,
+    });
+  } else if (filter === "unreviewed") {
+    base = buildSmartFlashcardQueue(words, todayStr, {
+      includeStudyAhead: true,
+    });
+  } else {
+    // Weakest among cards not yet completed today
+    const unreviewed = words.filter((w) => !isReviewedToday(w, todayStr));
+    const candidates = unreviewed.filter(
       (w) => w.wrong_count > 0 || w.correct_count < 2
     );
     base = [...candidates].sort((a, b) => {
@@ -65,19 +82,10 @@ function buildDeckByFilter(
       if (b.wrong_count !== a.wrong_count) return b.wrong_count - a.wrong_count;
       return a.correct_count - b.correct_count;
     });
-  } else if (filter === "recent") {
-    base = [...words]
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )
-      .slice(0, 12);
-  } else {
-    base = [...words];
   }
 
   if (shuffle && base.length > 1) {
-    for (let i = base.length - 1; i > 0; i--) {
+    for (let i = base.length - 1; i > 0; i -= 1) {
       const j = Math.floor(Math.random() * (i + 1));
       [base[i], base[j]] = [base[j], base[i]];
     }
@@ -108,6 +116,7 @@ function SwipeableFlashcard({
   const isDraggingRef = useRef(false);
 
   const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
+  const isBrandNew = getEffectiveReviewCount(word) === 0;
 
   const handleDragStart = () => {
     isDraggingRef.current = true;
@@ -148,7 +157,7 @@ function SwipeableFlashcard({
       transition={IOS_SPRING}
       className="transform-gpu will-change-transform relative w-full touch-pan-y select-none cursor-grab active:cursor-grabbing"
     >
-      {/* Swipe Right Indicator ("Good / Hafal") */}
+      {/* Swipe Right Indicator ("Good") */}
       <motion.div
         style={{ opacity: rightBadgeOpacity }}
         className="pointer-events-none absolute top-5 left-5 z-30 inline-flex items-center gap-1.5 rounded-full bg-[#30D158]/30 border border-[#30D158]/70 px-3.5 py-1.5 text-xs font-bold text-[#7CF099]"
@@ -157,7 +166,7 @@ function SwipeableFlashcard({
         <span>{t.flashcards.swipeGood}</span>
       </motion.div>
 
-      {/* Swipe Left Indicator ("Again / Ulangi") */}
+      {/* Swipe Left Indicator ("Again") */}
       <motion.div
         style={{ opacity: leftBadgeOpacity }}
         className="pointer-events-none absolute top-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full bg-[#FF453A]/30 border border-[#FF453A]/70 px-3.5 py-1.5 text-xs font-bold text-[#FFB4AE]"
@@ -178,6 +187,11 @@ function SwipeableFlashcard({
           <div className="liquid-glass backface-hidden absolute inset-0 flex flex-col justify-between rounded-[32px] p-5 sm:p-7">
             <div className="flex items-start justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
+                {isBrandNew && (
+                  <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-[#30D158]/20 border border-[#30D158]/40 text-[#7CF099]">
+                    {t.flashcards.brandNewBadge}
+                  </span>
+                )}
                 <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-white/[0.08] border border-white/[0.12] text-[#F5F5F7]">
                   {formatTypeLabel(word.type)}
                 </span>
@@ -383,71 +397,178 @@ function SwipeableFlashcard({
 export function FlashcardsView() {
   const {
     words,
+    studyLogs,
+    todayStr,
     accent,
     isHydrated,
     selectedWord,
     recordSm2Review,
     setActiveTab,
   } = useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const { prefetchMany } = usePronunciation();
 
   const [filter, setFilter] = useState<DeckFilter>("due");
+  const [extraPracticeMode, setExtraPracticeMode] = useState(false);
   const [deck, setDeck] = useState<WordEntry[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [knownCount, setKnownCount] = useState(0);
   const [combo, setCombo] = useState(0);
-  const [repeatWords, setRepeatWords] = useState<WordEntry[]>([]);
+  const [againCount, setAgainCount] = useState(0);
+  const [requeueNotice, setRequeueNotice] = useState(false);
   const [sessionSeed, setSessionSeed] = useState(0);
 
   const wordsRef = useRef(words);
   wordsRef.current = words;
+  const knownWordIdsRef = useRef<Set<string>>(new Set());
+  const requeueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const dueWordsCount = useMemo(
-    () => (isHydrated ? getDueWords(words).length : 0),
-    [words, isHydrated]
+  const smartDueQueue = useMemo(
+    () =>
+      isHydrated
+        ? buildSmartFlashcardQueue(words, todayStr, { includeStudyAhead: false })
+        : [],
+    [isHydrated, todayStr, words]
   );
 
+  const allUnreviewedQueue = useMemo(
+    () =>
+      isHydrated
+        ? buildSmartFlashcardQueue(words, todayStr, { includeStudyAhead: true })
+        : [],
+    [isHydrated, todayStr, words]
+  );
+
+  const reviewedTodayWords = useMemo(
+    () => words.filter((w) => isReviewedToday(w, todayStr)),
+    [todayStr, words]
+  );
+
+  const todaySummary = useMemo(() => {
+    const todayLog = studyLogs.find((l) => l.study_date === todayStr);
+    const reviewedCards = Math.max(
+      reviewedTodayWords.length,
+      todayLog?.reviews_count ?? 0
+    );
+    const correct = todayLog?.correct_count ?? 0;
+    const wrong = todayLog?.wrong_count ?? 0;
+    const total = correct + wrong;
+    const accuracy =
+      total > 0
+        ? Math.round((correct / total) * 100)
+        : reviewedTodayWords.length > 0
+          ? 100
+          : 0;
+    const xpToday = todayLog?.xp_earned ?? 0;
+    return { reviewedCards, accuracy, xpToday };
+  }, [reviewedTodayWords.length, studyLogs, todayStr]);
+
   const startDeck = useCallback(
-    (nextFilter: DeckFilter, shuffle = false, customCards?: WordEntry[]) => {
-      const built =
-        customCards ?? buildDeckByFilter(wordsRef.current, nextFilter, shuffle);
+    (
+      nextFilter: DeckFilter,
+      shuffle = false,
+      options?: { extraPractice?: boolean; customCards?: WordEntry[] }
+    ) => {
+      const isExtra = Boolean(options?.extraPractice);
+      setExtraPracticeMode(isExtra);
+
+      let built: WordEntry[];
+      if (options?.customCards) {
+        built = options.customCards;
+      } else if (isExtra) {
+        const completedToday = wordsRef.current.filter((w) =>
+          isReviewedToday(w, todayStr)
+        );
+        built =
+          completedToday.length > 0 ? [...completedToday] : [...wordsRef.current];
+        if (shuffle && built.length > 1) {
+          for (let i = built.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [built[i], built[j]] = [built[j], built[i]];
+          }
+        }
+      } else {
+        built = buildDeckByFilter(wordsRef.current, todayStr, nextFilter, shuffle);
+      }
+
       setDeck(built);
       setCurrentIndex(0);
       setFlipped(false);
       setKnownCount(0);
       setCombo(0);
-      setRepeatWords([]);
+      setAgainCount(0);
+      setRequeueNotice(false);
       setSessionSeed((s) => s + 1);
     },
-    []
+    [todayStr]
   );
 
-  // Initialize deck once hydrated or when filter changes
+  // Initialize deck on hydration, filter switch, or calendar day rollover
   useEffect(() => {
     if (!isHydrated) return;
-    startDeck(filter, false);
-  }, [isHydrated, filter, startDeck]);
+    knownWordIdsRef.current = new Set(wordsRef.current.map((w) => w.id));
+    startDeck(filter, false, { extraPractice: false });
+  }, [isHydrated, filter, todayStr, startDeck]);
 
-  // If Vault gains/loses words while deck is empty (e.g., after demo reset or adding first word)
+  // Live Vault <-> Flashcards sync: dynamically fold in newly added Vault/Daily Pack words
+  // and refresh metadata without breaking an in-progress session!
   useEffect(() => {
     if (!isHydrated) return;
-    if (deck.length === 0 && words.length > 0 && currentIndex === 0) {
-      if (filter === "due" && getDueWords(words).length === 0) return;
-      startDeck(filter, false);
-    } else if (words.length === 0 && deck.length > 0) {
-      setDeck([]);
-      setCurrentIndex(0);
-    }
-  }, [words, isHydrated, deck.length, currentIndex, filter, startDeck]);
+
+    const currentIds = new Set(words.map((w) => w.id));
+    const newlyAdded = words.filter(
+      (w) =>
+        !knownWordIdsRef.current.has(w.id) && !isReviewedToday(w, todayStr)
+    );
+    knownWordIdsRef.current = currentIds;
+
+    const wordMap = new Map(words.map((w) => [w.id, w]));
+
+    setDeck((prevDeck) => {
+      // Remove deleted Vault words and refresh metadata on existing items
+      const cleaned = prevDeck
+        .filter((card) => wordMap.has(card.id))
+        .map((card) => wordMap.get(card.id)!);
+
+      if (extraPracticeMode || newlyAdded.length === 0) {
+        return cleaned;
+      }
+
+      const existingRemainingIds = new Set(
+        cleaned.slice(currentIndex).map((c) => c.id)
+      );
+      const toInsert = newlyAdded.filter((w) => !existingRemainingIds.has(w.id));
+      if (toInsert.length === 0) return cleaned;
+
+      // If user was caught up / deck finished, start immediately with newly added cards!
+      if (cleaned.length === 0 || currentIndex >= cleaned.length) {
+        setCurrentIndex(0);
+        setFlipped(false);
+        return [...toInsert];
+      }
+
+      // Insert brand-new Vault / Daily Pack cards right after the active card
+      const beforeAndCurrent = cleaned.slice(0, currentIndex + 1);
+      const afterCurrent = cleaned.slice(currentIndex + 1);
+      return [...beforeAndCurrent, ...toInsert, ...afterCurrent];
+    });
+  }, [words, isHydrated, todayStr, extraPracticeMode, currentIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (requeueTimerRef.current) clearTimeout(requeueTimerRef.current);
+    };
+  }, []);
 
   const currentCard = deck[currentIndex] ?? null;
   const sessionDone = deck.length > 0 && currentIndex >= deck.length;
+  const isCaughtUpToday =
+    !extraPracticeMode && words.length > 0 && (deck.length === 0 || sessionDone);
 
   const intervalLabels = useMemo(
-    () => (currentCard ? previewSm2IntervalLabels(currentCard) : null),
-    [currentCard]
+    () => (currentCard ? previewSm2IntervalLabels(currentCard, lang) : null),
+    [currentCard, lang]
   );
 
   // Zero-lag background audio pre-fetching for current + next card
@@ -492,11 +613,20 @@ export function FlashcardsView() {
       if (isFail) {
         playWrongThud();
         setCombo(0);
-        setRepeatWords((prev) =>
-          prev.some((w) => w.id === currentCard.id)
-            ? prev
-            : [...prev, currentCard]
-        );
+        setAgainCount((c) => c + 1);
+        setRequeueNotice(true);
+        if (requeueTimerRef.current) clearTimeout(requeueTimerRef.current);
+        requeueTimerRef.current = setTimeout(() => {
+          setRequeueNotice(false);
+        }, 2200);
+
+        // Re-queue "Again" card later in this exact session (3 slots ahead or back of deck)
+        setDeck((prev) => {
+          const next = [...prev];
+          const insertAt = Math.min(next.length, currentIndex + 4);
+          next.splice(insertAt, 0, currentCard);
+          return next;
+        });
       } else {
         setCombo((prev) => {
           const next = prev + 1;
@@ -504,13 +634,16 @@ export function FlashcardsView() {
           return next;
         });
         setKnownCount((c) => c + 1);
+        if (currentIndex + 1 >= deck.length) {
+          playRingCompleteChord();
+        }
       }
 
       setFlipped(false);
       setCurrentIndex((idx) => idx + 1);
       void recordSm2Review(currentCard.id, rating);
     },
-    [currentCard, recordSm2Review]
+    [currentCard, currentIndex, deck.length, recordSm2Review]
   );
 
   const handleSwipeAction = useCallback(
@@ -580,34 +713,30 @@ export function FlashcardsView() {
   }> = [
     {
       rating: "again",
-      label: "Again",
+      label: t.flashcards.rateAgain,
       shortcut: "1",
-      toneClass:
-        "border-[#FF453A]/35 text-[#FFB4AE] hover:bg-[#FF453A]/15",
+      toneClass: "border-[#FF453A]/35 text-[#FFB4AE] hover:bg-[#FF453A]/15",
       intervalClass: "text-[#FF8982]",
     },
     {
       rating: "hard",
-      label: "Hard",
+      label: t.flashcards.rateHard,
       shortcut: "2",
-      toneClass:
-        "border-[#FF9F0A]/35 text-[#FFE0A6] hover:bg-[#FF9F0A]/15",
+      toneClass: "border-[#FF9F0A]/35 text-[#FFE0A6] hover:bg-[#FF9F0A]/15",
       intervalClass: "text-[#FFBE5C]",
     },
     {
       rating: "good",
-      label: "Good",
+      label: t.flashcards.rateGood,
       shortcut: "3",
-      toneClass:
-        "border-[#30D158]/35 text-[#8FF5A7] hover:bg-[#30D158]/15",
+      toneClass: "border-[#30D158]/35 text-[#8FF5A7] hover:bg-[#30D158]/15",
       intervalClass: "text-[#7CF099]",
     },
     {
       rating: "easy",
-      label: "Easy",
+      label: t.flashcards.rateEasy,
       shortcut: "4",
-      toneClass:
-        "border-[#0A84FF]/40 text-[#9FD0FF] hover:bg-[#0A84FF]/15",
+      toneClass: "border-[#0A84FF]/40 text-[#9FD0FF] hover:bg-[#0A84FF]/15",
       intervalClass: "text-[#70BCFF]",
     },
   ];
@@ -630,10 +759,10 @@ export function FlashcardsView() {
           <motion.button
             type="button"
             whileTap={TAP_SCALE}
-            disabled={words.length < 2}
+            disabled={deck.length < 2 || sessionDone}
             onClick={() => {
               playGlassClick();
-              startDeck(filter, true);
+              startDeck(filter, true, { extraPractice: extraPracticeMode });
             }}
             title={t.flashcards.shuffleDeck}
             className="liquid-glass-pill inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium text-[#F5F5F7] hover:bg-white/[0.12] cursor-pointer disabled:opacity-40"
@@ -644,18 +773,40 @@ export function FlashcardsView() {
         </div>
       </div>
 
-      {/* Filter Pills */}
+      {/* Extra Practice Banner when manually reviewing completed cards */}
+      {extraPracticeMode && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#5E5CE6]/15 border border-[#5E5CE6]/35 px-4 py-2.5 text-xs">
+          <span className="font-semibold text-[#D7D6FF]">
+            {t.flashcards.extraPracticeBanner}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              playGlassClick();
+              startDeck(filter, false, { extraPractice: false });
+            }}
+            className="rounded-full bg-white/[0.1] px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/[0.18] cursor-pointer"
+          >
+            {t.flashcards.exitExtraPractice}
+          </button>
+        </div>
+      )}
+
+      {/* Smart Non-Repeating Filter Pills */}
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
         {(
           [
             {
               id: "due",
               label: t.flashcards.filterDue,
-              badge: isHydrated ? dueWordsCount : null,
+              badge: isHydrated ? smartDueQueue.length : null,
             },
-            { id: "all", label: t.flashcards.filterAll, badge: null },
+            {
+              id: "unreviewed",
+              label: t.flashcards.filterUnreviewed,
+              badge: isHydrated ? allUnreviewedQueue.length : null,
+            },
             { id: "weakest", label: t.flashcards.filterWeakest, badge: null },
-            { id: "recent", label: t.flashcards.filterRecent, badge: null },
           ] as const
         ).map((opt) => (
           <button
@@ -663,11 +814,12 @@ export function FlashcardsView() {
             type="button"
             onClick={() => {
               playGlassClick();
+              setExtraPracticeMode(false);
               setFilter(opt.id);
             }}
             className={cn(
               "shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors cursor-pointer",
-              filter === opt.id
+              !extraPracticeMode && filter === opt.id
                 ? "bg-[#0A84FF]/25 border-[#0A84FF]/50 text-white"
                 : "bg-white/[0.05] border-white/[0.09] text-[#8E8E93] hover:text-[#F5F5F7]"
             )}
@@ -689,23 +841,38 @@ export function FlashcardsView() {
         ))}
       </div>
 
-      {/* Session Progress Bar */}
-      {deck.length > 0 && (
+      {/* Re-queue Notification Pill when user taps "Again" */}
+      <AnimatePresence>
+        {requeueNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="flex items-center justify-center gap-2 rounded-2xl bg-[#FF9F0A]/15 border border-[#FF9F0A]/35 px-4 py-2 text-xs font-semibold text-[#FFD18C]"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span>{t.flashcards.requeuedToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Session Progress Bar (active deck only) */}
+      {deck.length > 0 && !sessionDone && (
         <div className="liquid-glass rounded-3xl p-4 space-y-2.5">
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="font-semibold text-[#F5F5F7]">
-              {sessionDone
-                ? `${t.flashcards.doneLabel} (${deck.length} ${t.flashcards.cardsSuffix})`
-                : `${t.flashcards.cardWordPrefix} ${currentIndex + 1} ${t.flashcards.ofWord} ${deck.length}`}
+              {`${t.flashcards.cardWordPrefix} ${currentIndex + 1} ${t.flashcards.ofWord} ${deck.length}`}
             </span>
 
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-[#30D158]/15 border border-[#30D158]/30 px-2.5 py-0.5 font-semibold text-[#7CF099]">
                 {knownCount} {t.flashcards.recallCount}
               </span>
-              <span className="rounded-full bg-[#FF9F0A]/15 border border-[#FF9F0A]/30 px-2.5 py-0.5 font-semibold text-[#FFD18C]">
-                {repeatWords.length} {t.flashcards.repeatCount}
-              </span>
+              {againCount > 0 && (
+                <span className="rounded-full bg-[#FF9F0A]/15 border border-[#FF9F0A]/30 px-2.5 py-0.5 font-semibold text-[#FFD18C]">
+                  {againCount} {t.flashcards.repeatCount}
+                </span>
+              )}
             </div>
           </div>
 
@@ -715,7 +882,7 @@ export function FlashcardsView() {
               style={{ transformOrigin: "left" }}
               initial={false}
               animate={{
-                scaleX: Math.max(0, Math.min(1, progressPct / 100)),
+                scaleX: Math.max(0.03, Math.min(1, progressPct / 100)),
               }}
               transition={IOS_SPRING}
             />
@@ -723,7 +890,7 @@ export function FlashcardsView() {
         </div>
       )}
 
-      {/* Main Card Area / Summary / Empty State */}
+      {/* Main Card Area / Daily Completion State / Empty Vault */}
       {!isHydrated ? (
         <div className="liquid-glass shimmer-glass h-[410px] rounded-[32px]" />
       ) : words.length === 0 ? (
@@ -749,40 +916,7 @@ export function FlashcardsView() {
             <span>{t.flashcards.emptyVaultCta}</span>
           </motion.button>
         </div>
-      ) : deck.length === 0 ? (
-        <div className="liquid-glass rounded-3xl p-8 text-center space-y-4">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#30D158]/20 border border-[#30D158]/35">
-            {filter === "due" ? (
-              <CalendarClock className="h-7 w-7 text-[#30D158]" />
-            ) : (
-              <Layers className="h-7 w-7 text-[#30D158]" />
-            )}
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-white">
-              {filter === "due"
-                ? t.flashcards.emptyDueTitle
-                : t.flashcards.emptyWeakTitle}
-            </h3>
-            <p className="mt-1 text-sm text-[#8E8E93]">
-              {filter === "due"
-                ? t.flashcards.emptyDueBody
-                : t.flashcards.emptyWeakBody}
-            </p>
-          </div>
-          <motion.button
-            type="button"
-            whileTap={TAP_SCALE}
-            onClick={() => {
-              playGlassClick();
-              setFilter("all");
-            }}
-            className="rounded-full bg-white/[0.1] border border-white/[0.15] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
-          >
-            {t.flashcards.viewAllWords}
-          </motion.button>
-        </div>
-      ) : sessionDone ? (
+      ) : isCaughtUpToday || (extraPracticeMode && sessionDone) ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -790,38 +924,68 @@ export function FlashcardsView() {
           className="liquid-glass-elevated transform-gpu will-change-transform rounded-3xl p-6 sm:p-8 text-center space-y-5"
         >
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#30D158]/20 border border-[#30D158]/40 shadow-[0_0_32px_rgba(48,209,88,0.25)]">
-            <CheckCircle2 className="h-8 w-8 text-[#30D158]" />
+            <Trophy className="h-8 w-8 text-[#30D158]" />
           </div>
 
-          <div>
+          <div className="space-y-1.5">
             <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
               {t.flashcards.sessionDoneEyebrow}
             </p>
-            <h3 className="mt-1 text-2xl sm:text-3xl font-bold text-white">
-              {knownCount} {t.flashcards.sessionDoneTitleMid} {deck.length}{" "}
-              {t.flashcards.sessionDoneTitleSuffix}
+            <h3 className="text-2xl sm:text-3xl font-bold text-white">
+              {t.flashcards.allCaughtUpTitle}
             </h3>
-            <p className="mt-1 text-sm text-[#8E8E93]">
-              {repeatWords.length > 0
-                ? `${repeatWords.length} ${t.flashcards.sessionDoneRepeatHint}`
-                : t.flashcards.sessionDoneAllMastered}
+            <p className="text-xs sm:text-sm text-[#8E8E93] max-w-md mx-auto">
+              {t.flashcards.allCaughtUpSubtitle}
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
-            {repeatWords.length > 0 && (
+          {/* Today's Summary Mini-Bento */}
+          <div className="grid grid-cols-3 gap-2.5 pt-1">
+            <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-1">
+              <Layers className="mx-auto h-4 w-4 text-[#70BCFF]" />
+              <p className="text-lg sm:text-xl font-bold text-white tabular-nums">
+                {todaySummary.reviewedCards}
+              </p>
+              <p className="text-[10px] font-medium text-[#8E8E93]">
+                {t.flashcards.reviewedTodayStat}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-1">
+              <Target className="mx-auto h-4 w-4 text-[#7CF099]" />
+              <p className="text-lg sm:text-xl font-bold text-white tabular-nums">
+                {todaySummary.accuracy}%
+              </p>
+              <p className="text-[10px] font-medium text-[#8E8E93]">
+                {t.flashcards.accuracyTodayStat}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-1">
+              <Flame className="mx-auto h-4 w-4 text-[#FF9F0A]" />
+              <p className="text-lg sm:text-xl font-bold text-white tabular-nums">
+                +{todaySummary.xpToday}
+              </p>
+              <p className="text-[10px] font-medium text-[#8E8E93]">
+                {t.flashcards.xpTodayStat}
+              </p>
+            </div>
+          </div>
+
+          {/* Optional Study-Ahead & Explicit Extra Practice CTAs */}
+          <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
+            {filter === "due" && allUnreviewedQueue.length > 0 && (
               <motion.button
                 type="button"
                 whileTap={TAP_SCALE}
                 onClick={() => {
                   playGlassClick();
-                  startDeck(filter, false, repeatWords);
+                  setExtraPracticeMode(false);
+                  setFilter("unreviewed");
                 }}
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#FF9F0A] to-[#FF453A] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+                className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-[#1A8EFF] cursor-pointer"
               >
-                <RotateCcw className="h-4 w-4" />
+                <Sparkles className="h-4 w-4" />
                 <span>
-                  {t.flashcards.repeatAgainBtn} ({repeatWords.length})
+                  {t.flashcards.filterUnreviewed} ({allUnreviewedQueue.length})
                 </span>
               </motion.button>
             )}
@@ -831,12 +995,12 @@ export function FlashcardsView() {
               whileTap={TAP_SCALE}
               onClick={() => {
                 playGlassClick();
-                startDeck(filter, true);
+                startDeck(filter, true, { extraPractice: true });
               }}
-              className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] border border-white/[0.15] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-white/[0.14] cursor-pointer"
             >
-              <Shuffle className="h-4 w-4" />
-              <span>{t.flashcards.reloadDeckBtn}</span>
+              <RotateCcw className="h-4 w-4 text-[#70BCFF]" />
+              <span>{t.flashcards.extraPracticeBtn}</span>
             </motion.button>
           </div>
         </motion.div>

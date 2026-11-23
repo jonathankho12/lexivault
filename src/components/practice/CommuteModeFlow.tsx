@@ -47,9 +47,9 @@ interface CommuteModeFlowProps {
 
 type CommuteStage = "flashcards" | "listening" | "done";
 
-function buildCommuteCards(words: WordEntry[]): WordEntry[] {
+function buildCommuteCards(words: WordEntry[], todayStr: string): WordEntry[] {
   if (words.length === 0) return [];
-  const due = getDueWords(words);
+  const due = getDueWords(words, Date.now(), todayStr);
   const dueIds = new Set(due.map((w) => w.id));
   const rest = words.filter((w) => !dueIds.has(w.id));
   return [...due, ...rest].slice(0, 5);
@@ -96,12 +96,12 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
   useEffect(() => {
     if (!isHydrated || initializedRef.current) return;
     initializedRef.current = true;
-    const picked = buildCommuteCards(words);
+    const picked = buildCommuteCards(words, todayStr);
     setCards(picked);
     if (picked.length === 0) {
       setStage("listening");
     }
-  }, [isHydrated, words]);
+  }, [isHydrated, todayStr, words]);
 
   const stopAllAudio = useCallback(() => {
     if (audioRef.current) {
@@ -133,8 +133,8 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
   const currentCard = cards[cardIndex] ?? null;
 
   const intervalLabels = useMemo(
-    () => (currentCard ? previewSm2IntervalLabels(currentCard) : null),
-    [currentCard]
+    () => (currentCard ? previewSm2IntervalLabels(currentCard, lang) : null),
+    [currentCard, lang]
   );
 
   // Pre-fetch pronunciation for current & next card
@@ -338,7 +338,7 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
   const handleRestartCommute = () => {
     playGlassClick();
     stopAllAudio();
-    const freshCards = buildCommuteCards(words);
+    const freshCards = buildCommuteCards(words, todayStr);
     setCards(freshCards);
     setCardIndex(0);
     setFlipped(false);

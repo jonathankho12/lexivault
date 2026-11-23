@@ -56,6 +56,7 @@ export function AppShell({
     toggleSfxMuted,
     words,
     syncMode,
+    syncStatus,
     isHydrated,
     openStreakCalendar,
     openRegisterFromGuest,
@@ -250,15 +251,23 @@ export function AppShell({
                       "h-1.5 w-1.5 rounded-full",
                       isGuest
                         ? "bg-[#FF9F0A]"
-                        : syncMode === "supabase"
-                          ? "bg-[#30D158]"
+                        : user?.provider === "supabase"
+                          ? syncStatus === "syncing"
+                            ? "bg-[#0A84FF] animate-pulse"
+                            : syncStatus === "synced" || syncMode === "supabase"
+                              ? "bg-[#30D158]"
+                              : "bg-[#FF9F0A]"
                           : "bg-[#0A84FF]"
                     )}
                   />
                   {isGuest
                     ? t.nav.syncGuest
-                    : syncMode === "supabase"
-                      ? t.nav.syncSupabase
+                    : user?.provider === "supabase"
+                      ? syncStatus === "syncing"
+                        ? t.nav.syncing
+                        : syncStatus === "synced" || syncMode === "supabase"
+                          ? t.nav.syncSupabase
+                          : t.nav.syncLocal
                       : t.nav.syncLocal}
                 </span>
               </div>

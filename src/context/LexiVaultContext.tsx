@@ -38,12 +38,16 @@ import {
 import {
   addUserXp,
   clearDemoData,
+  DEFAULT_DAILY_QUOTA,
   deleteWordEntry,
   incrementWordsAddedLog,
   loadInitialData,
-  loadUserXp,
+  normalizeDailyQuota,
   recordPracticeAttempt,
   recordSm2ReviewAttempt,
+  recordWrongQuizLogOnly,
+  saveCloudUserSettings,
+  saveDailyPack,
   saveWordEntry,
   seedStarterWordsForSupabaseUser,
   subscribeRealtimeSync,
@@ -61,6 +65,10 @@ import type {
   AuthUser,
   AutofillPayload,
   CaptureToastState,
+  CloudSyncStatus,
+  DailyPackItem,
+  DailyPackRecord,
+  DailyQuotaSettings,
   DailyRingsProgress,
   DiscoveryItem,
   ExtractedVocabItem,
@@ -74,6 +82,8 @@ import type {
 } from "@/types/lexivault";
 
 const ACCENT_STORAGE_KEY = "lexivault_accent_v1";
+const dailyDismissKey = (userId: string, dateStr: string) =>
+  `lexivault_daily_dismissed_${userId}_${dateStr}`;
 
 export interface PracticeLaunchRequest {
   mode: PracticeMode;
@@ -111,6 +121,7 @@ interface LexiVaultContextValue {
   words: WordEntry[];
   studyLogs: StudyLog[];
   syncMode: SyncMode;
+  syncStatus: CloudSyncStatus;
   streak: number;
   xp: number;
   masteryRankInfo: MasteryRankInfo;
@@ -133,6 +144,23 @@ interface LexiVaultContextValue {
   practiceLaunch: PracticeLaunchRequest | null;
   clearPracticeLaunch: () => void;
   launchPractice: (mode: PracticeMode, customItems?: DiscoveryItem[]) => void;
+  // Daily Pack & Quota
+  dailyQuota: DailyQuotaSettings;
+  updateDailyQuota: (patch: Partial<DailyQuotaSettings>) => void;
+  dailyPack: DailyPackRecord | null;
+  isDailyPackLoading: boolean;
+  dailyPackError: string | null;
+  dailyPackModalOpen: boolean;
+  setDailyPackModalOpen: (open: boolean) => void;
+  openDailyPackModal: () => void;
+  dismissDailyPackForSession: () => void;
+  ensureDailyPackLoaded: (
+    forceRegenerateIfUnstarted?: boolean
+  ) => Promise<DailyPackRecord | null>;
+  applyQuotaToTodayPack: () => Promise<DailyPackRecord | null>;
+  completeDailyPackItem: (item: DailyPackItem) => Promise<WordEntry | null>;
+  recordDailyPackWrongAttempt: () => Promise<void>;
+  // Vault & Practice actions
   addWordViaAI: (term: string, sourceTag: string) => Promise<AddWordResult>;
   addExtractedWordsBatch: (
     items: ExtractedVocabItem[],
@@ -191,11 +219,20 @@ export function LexiVaultProvider({
   const [words, setWords] = useState<WordEntry[]>([]);
   const [studyLogs, setStudyLogs] = useState<StudyLog[]>([]);
   const [syncMode, setSyncMode] = useState<SyncMode>("local");
+  const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>("local");
   const [xp, setXp] = useState(0);
   const [sfxMuted, setSfxMutedState] = useState(false);
   const [ringTargets, setRingTargets] = useState<DailyRingTargets>(
     DAILY_RING_TARGETS
   );
+  const [dailyQuota, setDailyQuota] = useState<DailyQuotaSettings>(
+    DEFAULT_DAILY_QUOTA
+  );
+  const [dailyPack, setDailyPack] = useState<DailyPackRecord | null>(null);
+  const [isDailyPackLoading, setIsDailyPackLoading] = useState(false);
+  const [dailyPackError, setDailyPackError] = useState<string | null>(null);
+  const [dailyPackModalOpen, setDailyPackModalOpen] = useState(false);
+
   const [selectedWord, setSelectedWord] = useState<WordEntry | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureToast, setCaptureToast] = useState<CaptureToastState | null>(
@@ -211,8 +248,45 @@ export function LexiVaultProvider({
   wordsRef.current = words;
   const ringTargetsRef = useRef<DailyRingTargets>(ringTargets);
   ringTargetsRef.current = ringTargets;
+  const dailyQuotaRef = useRef<DailyQuotaSettings>(dailyQuota);
+  dailyQuotaRef.current = dailyQuota;
+  const dailyPackRef = useRef<DailyPackRecord | null>(dailyPack);
+  dailyPackRef.current = dailyPack;
+  const userRef = useRef<AuthUser | null>(user);
+  userRef.current = user;
   const prevRingsRef = useRef<DailyRingsProgress | null>(null);
+  const pendingCloudOpsRef = useRef(0);
+  const dailyPackInFlightRef = useRef<Promise<DailyPackRecord | null> | null>(
+    null
+  );
+  const autoPopupCheckedKeyRef = useRef<string | null>(null);
 
+  const runCloudMutation = useCallback(
+    async <T,>(fn: () => Promise<T>): Promise<T> => {
+      const isCloudAccount = userRef.current?.provider === "supabase";
+      if (!isCloudAccount) {
+        return fn();
+      }
+      pendingCloudOpsRef.current += 1;
+      setSyncStatus("syncing");
+      try {
+        return await fn();
+      } finally {
+        pendingCloudOpsRef.current = Math.max(
+          0,
+          pendingCloudOpsRef.current - 1
+        );
+        if (pendingCloudOpsRef.current === 0) {
+          setSyncStatus(
+            userRef.current?.provider === "supabase" ? "synced" : "local"
+          );
+        }
+      }
+    },
+    []
+  );
+
+  // Initial client bootstrap + midnight calendar rollover watcher
   useEffect(() => {
     const localToday = getLocalDateString();
     setTodayStr(localToday);
@@ -233,7 +307,11 @@ export function LexiVaultProvider({
 
     const unsubAuth = subscribeAuthChanges((nextUser) => {
       setUser((prev) => {
-        if (prev?.id === nextUser?.id && prev?.username === nextUser?.username) {
+        if (
+          prev?.id === nextUser?.id &&
+          prev?.username === nextUser?.username &&
+          prev?.provider === nextUser?.provider
+        ) {
           return prev;
         }
         return nextUser;
@@ -241,12 +319,29 @@ export function LexiVaultProvider({
       setIsAuthChecked(true);
     });
 
+    const checkDateRollover = () => {
+      const freshDate = getLocalDateString();
+      setTodayStr((prev) => (prev === freshDate ? prev : freshDate));
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkDateRollover();
+      }
+    };
+
+    window.addEventListener("focus", checkDateRollover);
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       mounted = false;
       unsubAuth();
+      window.removeEventListener("focus", checkDateRollover);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
+  // Hydrate full Cloud + Local state on auth change or calendar day change
   useEffect(() => {
     if (!isAuthChecked) return;
 
@@ -254,37 +349,67 @@ export function LexiVaultProvider({
       setWords([]);
       setStudyLogs([]);
       setXp(0);
+      setDailyPack(null);
+      setDailyPackModalOpen(false);
+      setDailyPackError(null);
       setSelectedWord(null);
+      setSyncMode("local");
+      setSyncStatus("local");
       setIsHydrated(false);
       prevRingsRef.current = null;
+      autoPopupCheckedKeyRef.current = null;
       return;
     }
 
     let active = true;
     let unsubscribeSync: (() => void) | undefined;
     const localToday = getLocalDateString();
-    setTodayStr(localToday);
+    if (localToday !== todayStr) {
+      setTodayStr(localToday);
+    }
     setIsHydrated(false);
+    setSyncStatus(user.provider === "supabase" ? "syncing" : "local");
 
-    Promise.all([
-      loadInitialData(localToday, user.id),
-      loadUserXp(user.id),
-    ]).then(([res, loadedXp]) => {
+    loadInitialData(localToday, user.id).then((res) => {
       if (!active) return;
       setWords(res.words);
       setStudyLogs(res.studyLogs);
+      setXp(res.xp);
+      setDailyQuota(res.dailyQuota);
+      setRingTargets(res.ringTargets);
+      setDailyPack(res.dailyPack);
       setSyncMode(res.syncMode);
-      setXp(loadedXp);
+      setSyncStatus(
+        user.provider === "supabase"
+          ? res.cloudReachable
+            ? "synced"
+            : "error"
+          : "local"
+      );
       prevRingsRef.current = computeDailyRings(
         res.studyLogs,
         localToday,
-        ringTargetsRef.current
+        res.ringTargets
       );
       setIsHydrated(true);
 
       unsubscribeSync = subscribeRealtimeSync(localToday, user.id, {
         onWordsRefresh: (freshWords) => setWords(freshWords),
         onLogsRefresh: (freshLogs) => setStudyLogs(freshLogs),
+        onProfileRefresh: (profile) => {
+          if (typeof profile.xp === "number") {
+            setXp((prev) => Math.max(prev, profile.xp!));
+          }
+          if (profile.dailyQuota) {
+            setDailyQuota(profile.dailyQuota);
+          }
+          if (profile.ringTargets) {
+            setRingTargets(profile.ringTargets);
+          }
+        },
+        onDailyPackRefresh: (freshPack) => {
+          setDailyPack(freshPack);
+        },
       });
     });
 
@@ -292,7 +417,7 @@ export function LexiVaultProvider({
       active = false;
       unsubscribeSync?.();
     };
-  }, [isAuthChecked, user]);
+  }, [isAuthChecked, todayStr, user]);
 
   const dailyRings = useMemo(
     () => computeDailyRings(studyLogs, todayStr, ringTargets),
@@ -373,6 +498,298 @@ export function LexiVaultProvider({
     [updateWordAudioUrl]
   );
 
+  // ---------------------------------------------------------------------------
+  // Daily Learning Pack ("Daily Pack") Lifecycle
+  // ---------------------------------------------------------------------------
+  const ensureDailyPackLoaded = useCallback(
+    async (
+      forceRegenerateIfUnstarted = false
+    ): Promise<DailyPackRecord | null> => {
+      const activeUser = userRef.current;
+      if (!activeUser) return null;
+
+      const quota = dailyQuotaRef.current;
+      const totalQuota = quota.wordsPerDay + quota.idiomsPerDay;
+      if (totalQuota <= 0) {
+        setDailyPackError(null);
+        return null;
+      }
+
+      const existing = dailyPackRef.current;
+      if (
+        existing &&
+        existing.pack_date === todayStr &&
+        existing.items.length > 0
+      ) {
+        // Never discard partial progress on the same calendar day
+        if (!forceRegenerateIfUnstarted || existing.completed_terms.length > 0) {
+          return existing;
+        }
+      }
+
+      if (dailyPackInFlightRef.current && !forceRegenerateIfUnstarted) {
+        return dailyPackInFlightRef.current;
+      }
+
+      const task = (async (): Promise<DailyPackRecord | null> => {
+        setIsDailyPackLoading(true);
+        setDailyPackError(null);
+        try {
+          const res = await fetch("/api/daily-pack", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              date: todayStr,
+              wordsQuota: quota.wordsPerDay,
+              idiomsQuota: quota.idiomsPerDay,
+              existingTerms: wordsRef.current.map((w) => w.term),
+              lang,
+            }),
+          });
+
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+
+          const json = (await res.json()) as {
+            pack_date: string;
+            words_quota: number;
+            idioms_quota: number;
+            items: DailyPackItem[];
+            source?: "gemini" | "fallback";
+          };
+
+          const newPack: DailyPackRecord = {
+            pack_date: todayStr,
+            words_quota: quota.wordsPerDay,
+            idioms_quota: quota.idiomsPerDay,
+            items: Array.isArray(json.items) ? json.items : [],
+            completed_terms: [],
+            completed_at: null,
+            source: json.source ?? "fallback",
+          };
+
+          setDailyPack(newPack);
+          await runCloudMutation(() => saveDailyPack(newPack, activeUser.id));
+          return newPack;
+        } catch (err) {
+          console.error("[LexiVault] Failed to load Daily Pack:", err);
+          setDailyPackError(
+            lang === "en"
+              ? "Failed to load today's Daily Pack. Please try again."
+              : "Gagal memuat Target Harian hari ini. Silakan coba lagi."
+          );
+          return null;
+        } finally {
+          setIsDailyPackLoading(false);
+          dailyPackInFlightRef.current = null;
+        }
+      })();
+
+      dailyPackInFlightRef.current = task;
+      return task;
+    },
+    [lang, runCloudMutation, todayStr]
+  );
+
+  const openDailyPackModal = useCallback(() => {
+    setDailyPackModalOpen(true);
+    void ensureDailyPackLoaded(false);
+  }, [ensureDailyPackLoaded]);
+
+  const dismissDailyPackForSession = useCallback(() => {
+    setDailyPackModalOpen(false);
+    if (typeof window !== "undefined" && userRef.current) {
+      try {
+        window.sessionStorage.setItem(
+          dailyDismissKey(userRef.current.id, todayStr),
+          "1"
+        );
+      } catch {
+        // Ignore sessionStorage restrictions
+      }
+    }
+  }, [todayStr]);
+
+  // Auto-open Daily Pack modal once per session on new day if incomplete & autoShowPopup ON
+  useEffect(() => {
+    if (!isHydrated || !user || activeTab !== "vault") return;
+
+    const checkKey = `${user.id}_${todayStr}`;
+    if (autoPopupCheckedKeyRef.current === checkKey) return;
+    autoPopupCheckedKeyRef.current = checkKey;
+
+    const quota = dailyQuotaRef.current;
+    if (!quota.autoShowPopup || quota.wordsPerDay + quota.idiomsPerDay <= 0) {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        if (window.sessionStorage.getItem(dailyDismissKey(user.id, todayStr))) {
+          return;
+        }
+      } catch {
+        // Ignore sessionStorage read errors
+      }
+    }
+
+    const pack = dailyPackRef.current;
+    const alreadyDoneToday =
+      pack &&
+      pack.pack_date === todayStr &&
+      pack.items.length > 0 &&
+      pack.completed_terms.length >= pack.items.length;
+
+    if (alreadyDoneToday) return;
+
+    setDailyPackModalOpen(true);
+    void ensureDailyPackLoaded(false);
+  }, [activeTab, ensureDailyPackLoaded, isHydrated, todayStr, user]);
+
+  const completeDailyPackItem = useCallback(
+    async (item: DailyPackItem): Promise<WordEntry | null> => {
+      const activeUser = userRef.current;
+      if (!activeUser) return null;
+
+      const normalized = normalizeTermKey(item.term);
+      let savedEntry =
+        wordsRef.current.find((w) => normalizeTermKey(w.term) === normalized) ??
+        null;
+
+      if (!savedEntry) {
+        const nowIso = new Date().toISOString();
+        const draft: WordEntry = {
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `local-dp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          user_id: activeUser.id,
+          term: item.term,
+          pronunciation: item.pronunciation,
+          ipa: item.ipa,
+          cefr: item.cefr,
+          type: item.type,
+          meaning_id: item.meaning_id,
+          meaning_en: item.meaning_en,
+          examples_json: item.examples,
+          synonyms: item.synonyms,
+          antonyms: item.antonyms,
+          word_families_json: item.word_families,
+          register: item.register,
+          source_tag: "daily_pack",
+          audio_us_url: null,
+          audio_uk_url: null,
+          correct_count: 0,
+          wrong_count: 0,
+          last_practiced_at: null,
+          last_reviewed_date: null,
+          review_count: 0,
+          next_review_at: nowIso,
+          interval_days: 0,
+          ease_factor: 2.5,
+          repetitions: 0,
+          created_at: nowIso,
+        };
+
+        savedEntry = await runCloudMutation(() =>
+          saveWordEntry(draft, activeUser.id)
+        );
+        setWords((prev) => [
+          savedEntry!,
+          ...prev.filter((w) => w.id !== savedEntry!.id),
+        ]);
+        preGenerateDualAudio(savedEntry);
+      }
+
+      // Persist Daily Pack completion progress
+      const currentPack = dailyPackRef.current;
+      const alreadyRecorded = Boolean(
+        currentPack?.completed_terms.includes(normalized)
+      );
+
+      if (currentPack && currentPack.pack_date === todayStr) {
+        const nextCompleted = alreadyRecorded
+          ? currentPack.completed_terms
+          : [...currentPack.completed_terms, normalized];
+        const isAllDone =
+          currentPack.items.length > 0 &&
+          currentPack.items.every((it) =>
+            nextCompleted.includes(normalizeTermKey(it.term))
+          );
+
+        const nextPack: DailyPackRecord = {
+          ...currentPack,
+          completed_terms: nextCompleted,
+          completed_at: isAllDone
+            ? currentPack.completed_at ?? new Date().toISOString()
+            : currentPack.completed_at ?? null,
+        };
+        setDailyPack(nextPack);
+        void runCloudMutation(() => saveDailyPack(nextPack, activeUser.id));
+      }
+
+      // Award +20 XP & update vocab + recall rings + streak + accuracy
+      if (!alreadyRecorded) {
+        const { updatedLog, newXp } = await runCloudMutation(() =>
+          incrementWordsAddedLog(todayStr, activeUser.id, 1, true)
+        );
+        setStudyLogs((prev) => [
+          updatedLog,
+          ...prev.filter((l) => l.study_date !== updatedLog.study_date),
+        ]);
+        setXp(newXp);
+      }
+
+      return savedEntry;
+    },
+    [preGenerateDualAudio, runCloudMutation, todayStr]
+  );
+
+  const recordDailyPackWrongAttempt = useCallback(async () => {
+    const activeUser = userRef.current;
+    if (!activeUser) return;
+    const updatedLog = await runCloudMutation(() =>
+      recordWrongQuizLogOnly(todayStr, activeUser.id)
+    );
+    setStudyLogs((prev) => [
+      updatedLog,
+      ...prev.filter((l) => l.study_date !== updatedLog.study_date),
+    ]);
+  }, [runCloudMutation, todayStr]);
+
+  const updateDailyQuota = useCallback(
+    (patch: Partial<DailyQuotaSettings>) => {
+      const activeUser = userRef.current;
+      setDailyQuota((prev) => {
+        const next = normalizeDailyQuota({ ...prev, ...patch });
+        dailyQuotaRef.current = next;
+        if (activeUser) {
+          void runCloudMutation(() =>
+            saveCloudUserSettings(activeUser.id, { dailyQuota: next })
+          );
+        }
+        return next;
+      });
+    },
+    [runCloudMutation]
+  );
+
+  const applyQuotaToTodayPack = useCallback(async () => {
+    const existing = dailyPackRef.current;
+    if (
+      existing &&
+      existing.pack_date === todayStr &&
+      existing.completed_terms.length > 0
+    ) {
+      return existing;
+    }
+    return ensureDailyPackLoaded(true);
+  }, [ensureDailyPackLoaded, todayStr]);
+
+  // ---------------------------------------------------------------------------
+  // Vault Mutations
+  // ---------------------------------------------------------------------------
   const addWordViaAI = useCallback(
     async (rawTerm: string, sourceTag: string): Promise<AddWordResult> => {
       const isEn = lang === "en";
@@ -490,6 +907,8 @@ export function LexiVaultProvider({
           correct_count: 0,
           wrong_count: 0,
           last_practiced_at: null,
+          last_reviewed_date: null,
+          review_count: 0,
           next_review_at: nowIso,
           interval_days: 0,
           ease_factor: 2.5,
@@ -497,16 +916,16 @@ export function LexiVaultProvider({
           created_at: nowIso,
         };
 
-        const saved = await saveWordEntry(draft, user.id);
+        const saved = await runCloudMutation(() =>
+          saveWordEntry(draft, user.id)
+        );
         setWords((prev) => [
           saved,
           ...prev.filter((w) => w.id !== saved.id),
         ]);
 
-        const { updatedLog, newXp } = await incrementWordsAddedLog(
-          todayStr,
-          user.id,
-          1
+        const { updatedLog, newXp } = await runCloudMutation(() =>
+          incrementWordsAddedLog(todayStr, user.id, 1)
         );
         setStudyLogs((prev) => [
           updatedLog,
@@ -534,7 +953,7 @@ export function LexiVaultProvider({
         setIsCapturing(false);
       }
     },
-    [lang, preGenerateDualAudio, todayStr, user]
+    [lang, preGenerateDualAudio, runCloudMutation, todayStr, user]
   );
 
   const addExtractedWordsBatch = useCallback(
@@ -549,46 +968,50 @@ export function LexiVaultProvider({
       const savedList: WordEntry[] = [];
       const nowIso = new Date().toISOString();
 
-      for (const item of items) {
-        const key = normalizeTermKey(item.term);
-        if (existingKeys.has(key)) continue;
-        existingKeys.add(key);
+      await runCloudMutation(async () => {
+        for (const item of items) {
+          const key = normalizeTermKey(item.term);
+          if (existingKeys.has(key)) continue;
+          existingKeys.add(key);
 
-        const draft: WordEntry = {
-          id:
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `local-ext-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          user_id: user.id,
-          term: item.term,
-          pronunciation: item.pronunciation,
-          ipa: item.ipa,
-          cefr: item.cefr,
-          type: item.type,
-          meaning_id: item.meaning_id,
-          meaning_en: item.meaning_en,
-          examples_json: item.examples,
-          synonyms: item.synonyms,
-          antonyms: item.antonyms,
-          word_families_json: item.word_families,
-          register: item.register,
-          source_tag: canonicalSource,
-          audio_us_url: null,
-          audio_uk_url: null,
-          correct_count: 0,
-          wrong_count: 0,
-          last_practiced_at: null,
-          next_review_at: nowIso,
-          interval_days: 0,
-          ease_factor: 2.5,
-          repetitions: 0,
-          created_at: nowIso,
-        };
+          const draft: WordEntry = {
+            id:
+              typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `local-ext-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            user_id: user.id,
+            term: item.term,
+            pronunciation: item.pronunciation,
+            ipa: item.ipa,
+            cefr: item.cefr,
+            type: item.type,
+            meaning_id: item.meaning_id,
+            meaning_en: item.meaning_en,
+            examples_json: item.examples,
+            synonyms: item.synonyms,
+            antonyms: item.antonyms,
+            word_families_json: item.word_families,
+            register: item.register,
+            source_tag: canonicalSource,
+            audio_us_url: null,
+            audio_uk_url: null,
+            correct_count: 0,
+            wrong_count: 0,
+            last_practiced_at: null,
+            last_reviewed_date: null,
+            review_count: 0,
+            next_review_at: nowIso,
+            interval_days: 0,
+            ease_factor: 2.5,
+            repetitions: 0,
+            created_at: nowIso,
+          };
 
-        const saved = await saveWordEntry(draft, user.id);
-        savedList.push(saved);
-        preGenerateDualAudio(saved);
-      }
+          const saved = await saveWordEntry(draft, user.id);
+          savedList.push(saved);
+          preGenerateDualAudio(saved);
+        }
+      });
 
       if (savedList.length > 0) {
         const savedIds = new Set(savedList.map((s) => s.id));
@@ -597,10 +1020,8 @@ export function LexiVaultProvider({
           ...prev.filter((w) => !savedIds.has(w.id)),
         ]);
 
-        const { updatedLog, newXp } = await incrementWordsAddedLog(
-          todayStr,
-          user.id,
-          savedList.length
+        const { updatedLog, newXp } = await runCloudMutation(() =>
+          incrementWordsAddedLog(todayStr, user.id, savedList.length)
         );
         setStudyLogs((prev) => [
           updatedLog,
@@ -617,7 +1038,7 @@ export function LexiVaultProvider({
 
       return savedList.length;
     },
-    [lang, preGenerateDualAudio, todayStr, user]
+    [lang, preGenerateDualAudio, runCloudMutation, todayStr, user]
   );
 
   const addSuggestedWordToVault = useCallback(
@@ -657,6 +1078,8 @@ export function LexiVaultProvider({
         correct_count: 0,
         wrong_count: 0,
         last_practiced_at: null,
+        last_reviewed_date: null,
+        review_count: 0,
         next_review_at: nowIso,
         interval_days: 0,
         ease_factor: 2.5,
@@ -664,13 +1087,11 @@ export function LexiVaultProvider({
         created_at: nowIso,
       };
 
-      const saved = await saveWordEntry(draft, user.id);
+      const saved = await runCloudMutation(() => saveWordEntry(draft, user.id));
       setWords((prev) => [saved, ...prev.filter((w) => w.id !== saved.id)]);
 
-      const { updatedLog, newXp } = await incrementWordsAddedLog(
-        todayStr,
-        user.id,
-        1
+      const { updatedLog, newXp } = await runCloudMutation(() =>
+        incrementWordsAddedLog(todayStr, user.id, 1)
       );
       setStudyLogs((prev) => [
         updatedLog,
@@ -686,7 +1107,7 @@ export function LexiVaultProvider({
       });
       return saved;
     },
-    [lang, preGenerateDualAudio, todayStr, user]
+    [lang, preGenerateDualAudio, runCloudMutation, todayStr, user]
   );
 
   const refreshWordWithAI = useCallback(
@@ -740,7 +1161,9 @@ export function LexiVaultProvider({
           register: aiData.register,
         };
 
-        const updated = await updateWordEntry(merged, user.id);
+        const updated = await runCloudMutation(() =>
+          updateWordEntry(merged, user.id)
+        );
         setWords((prev) =>
           prev.map((w) => (w.id === wordId ? updated : w))
         );
@@ -759,7 +1182,7 @@ export function LexiVaultProvider({
         };
       }
     },
-    [lang, user]
+    [lang, runCloudMutation, user]
   );
 
   const saveDiscoveryItemToVault = useCallback(
@@ -798,6 +1221,8 @@ export function LexiVaultProvider({
         correct_count: 0,
         wrong_count: 0,
         last_practiced_at: null,
+        last_reviewed_date: null,
+        review_count: 0,
         next_review_at: nowIso,
         interval_days: 0,
         ease_factor: 2.5,
@@ -805,13 +1230,11 @@ export function LexiVaultProvider({
         created_at: nowIso,
       };
 
-      const saved = await saveWordEntry(draft, user.id);
+      const saved = await runCloudMutation(() => saveWordEntry(draft, user.id));
       setWords((prev) => [saved, ...prev.filter((w) => w.id !== saved.id)]);
 
-      const { updatedLog, newXp } = await incrementWordsAddedLog(
-        todayStr,
-        user.id,
-        1
+      const { updatedLog, newXp } = await runCloudMutation(() =>
+        incrementWordsAddedLog(todayStr, user.id, 1)
       );
       setStudyLogs((prev) => [
         updatedLog,
@@ -822,7 +1245,7 @@ export function LexiVaultProvider({
       preGenerateDualAudio(saved);
       return saved;
     },
-    [preGenerateDualAudio, todayStr, user]
+    [preGenerateDualAudio, runCloudMutation, todayStr, user]
   );
 
   const removeWord = useCallback(
@@ -830,9 +1253,9 @@ export function LexiVaultProvider({
       if (!user) return;
       setWords((prev) => prev.filter((w) => w.id !== id));
       setSelectedWord((prev) => (prev?.id === id ? null : prev));
-      await deleteWordEntry(id, user.id);
+      await runCloudMutation(() => deleteWordEntry(id, user.id));
     },
-    [user]
+    [runCloudMutation, user]
   );
 
   const recordAnswer = useCallback(
@@ -840,26 +1263,28 @@ export function LexiVaultProvider({
       if (!user) return;
       const target = wordsRef.current.find((w) => w.id === wordId);
       if (!target) {
-        const { updatedLog, newXp } = await recordPracticeAttempt(
-          {
-            id: wordId,
-            user_id: user.id,
-            term: wordId,
-            type: "vocab",
-            meaning_id: "",
-            examples_json: [],
-            synonyms: [],
-            antonyms: [],
-            word_families_json: [],
-            register: "Formal",
-            source_tag: "Discover",
-            correct_count: 0,
-            wrong_count: 0,
-            created_at: new Date().toISOString(),
-          },
-          isCorrect,
-          todayStr,
-          user.id
+        const { updatedLog, newXp } = await runCloudMutation(() =>
+          recordPracticeAttempt(
+            {
+              id: wordId,
+              user_id: user.id,
+              term: wordId,
+              type: "vocab",
+              meaning_id: "",
+              examples_json: [],
+              synonyms: [],
+              antonyms: [],
+              word_families_json: [],
+              register: "Formal",
+              source_tag: "discover",
+              correct_count: 0,
+              wrong_count: 0,
+              created_at: new Date().toISOString(),
+            },
+            isCorrect,
+            todayStr,
+            user.id
+          )
         );
         setStudyLogs((prev) => [
           updatedLog,
@@ -869,11 +1294,8 @@ export function LexiVaultProvider({
         return;
       }
 
-      const { updatedWord, updatedLog, newXp } = await recordPracticeAttempt(
-        target,
-        isCorrect,
-        todayStr,
-        user.id
+      const { updatedWord, updatedLog, newXp } = await runCloudMutation(() =>
+        recordPracticeAttempt(target, isCorrect, todayStr, user.id)
       );
 
       setWords((prev) =>
@@ -888,7 +1310,7 @@ export function LexiVaultProvider({
       ]);
       setXp(newXp);
     },
-    [todayStr, user]
+    [runCloudMutation, todayStr, user]
   );
 
   const recordSm2Review = useCallback(
@@ -897,11 +1319,8 @@ export function LexiVaultProvider({
       const target = wordsRef.current.find((w) => w.id === wordId);
       if (!target) return;
 
-      const { updatedWord, updatedLog, newXp } = await recordSm2ReviewAttempt(
-        target,
-        rating,
-        todayStr,
-        user.id
+      const { updatedWord, updatedLog, newXp } = await runCloudMutation(() =>
+        recordSm2ReviewAttempt(target, rating, todayStr, user.id)
       );
 
       setWords((prev) =>
@@ -916,7 +1335,7 @@ export function LexiVaultProvider({
       ]);
       setXp(newXp);
     },
-    [todayStr, user]
+    [runCloudMutation, todayStr, user]
   );
 
   const launchPractice = useCallback(
@@ -956,11 +1375,11 @@ export function LexiVaultProvider({
         ]);
       }
       if (xpDelta > 0) {
-        const nextXp = await addUserXp(user.id, xpDelta);
+        const nextXp = await runCloudMutation(() => addUserXp(user.id, xpDelta));
         setXp(nextXp);
       }
     },
-    [user]
+    [runCloudMutation, user]
   );
 
   const streak = useMemo(
@@ -971,8 +1390,8 @@ export function LexiVaultProvider({
   const masteryRankInfo = useMemo(() => getMasteryRankInfo(xp), [xp]);
 
   const dueWordsCount = useMemo(
-    () => (isHydrated ? getDueWords(words).length : 0),
-    [isHydrated, words]
+    () => (isHydrated ? getDueWords(words, Date.now(), todayStr).length : 0),
+    [isHydrated, todayStr, words]
   );
 
   const hasDemoWords = useMemo(
@@ -996,19 +1415,40 @@ export function LexiVaultProvider({
 
   const resetDemoData = useCallback(async () => {
     if (!user) return;
-    const cleaned = await clearDemoData(todayStr, user.id);
+    const cleaned = await runCloudMutation(() =>
+      clearDemoData(todayStr, user.id)
+    );
     setWords(cleaned.words);
     setStudyLogs(cleaned.studyLogs);
     setSelectedWord(null);
-  }, [todayStr, user]);
+  }, [runCloudMutation, todayStr, user]);
 
-  const updateRingTargets = useCallback((patch: Partial<DailyRingTargets>) => {
-    setRingTargets((prev) => writeCustomRingTargets({ ...prev, ...patch }));
-  }, []);
+  const updateRingTargets = useCallback(
+    (patch: Partial<DailyRingTargets>) => {
+      const activeUser = userRef.current;
+      setRingTargets((prev) => {
+        const next = writeCustomRingTargets({ ...prev, ...patch });
+        if (activeUser) {
+          void runCloudMutation(() =>
+            saveCloudUserSettings(activeUser.id, { ringTargets: next })
+          );
+        }
+        return next;
+      });
+    },
+    [runCloudMutation]
+  );
 
   const resetRingTargets = useCallback(() => {
-    setRingTargets(writeCustomRingTargets(DAILY_RING_TARGETS));
-  }, []);
+    const activeUser = userRef.current;
+    const next = writeCustomRingTargets(DAILY_RING_TARGETS);
+    setRingTargets(next);
+    if (activeUser) {
+      void runCloudMutation(() =>
+        saveCloudUserSettings(activeUser.id, { ringTargets: next })
+      );
+    }
+  }, [runCloudMutation]);
 
   const changePassword = useCallback(
     async (newPassword: string): Promise<AuthActionResult> => {
@@ -1038,6 +1478,8 @@ export function LexiVaultProvider({
     setWords([]);
     setStudyLogs([]);
     setXp(0);
+    setDailyPack(null);
+    setDailyPackModalOpen(false);
     setSelectedWord(null);
     setActiveTab("vault");
   }, []);
@@ -1101,6 +1543,8 @@ export function LexiVaultProvider({
     setWords([]);
     setStudyLogs([]);
     setXp(0);
+    setDailyPack(null);
+    setDailyPackModalOpen(false);
     setSelectedWord(null);
     setActiveTab("vault");
   }, []);
@@ -1117,6 +1561,7 @@ export function LexiVaultProvider({
     words,
     studyLogs,
     syncMode,
+    syncStatus,
     streak,
     xp,
     masteryRankInfo,
@@ -1139,6 +1584,19 @@ export function LexiVaultProvider({
     practiceLaunch,
     clearPracticeLaunch,
     launchPractice,
+    dailyQuota,
+    updateDailyQuota,
+    dailyPack,
+    isDailyPackLoading,
+    dailyPackError,
+    dailyPackModalOpen,
+    setDailyPackModalOpen,
+    openDailyPackModal,
+    dismissDailyPackForSession,
+    ensureDailyPackLoaded,
+    applyQuotaToTodayPack,
+    completeDailyPackItem,
+    recordDailyPackWrongAttempt,
     addWordViaAI,
     addExtractedWordsBatch,
     addSuggestedWordToVault,

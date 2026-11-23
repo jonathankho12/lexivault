@@ -12,7 +12,13 @@ export type TabId =
   | "discover"
   | "stats";
 
-export type SourceTag = "film" | "book" | "lecture" | "article" | "general";
+export type SourceTag =
+  | "film"
+  | "book"
+  | "lecture"
+  | "article"
+  | "general"
+  | "daily_pack";
 
 export type CefrLevel = "B2" | "C1" | "C2";
 
@@ -24,6 +30,41 @@ export interface CaptureToastState {
   message: string;
   type: "success" | "error" | "info";
 }
+
+export interface DailyQuotaSettings {
+  wordsPerDay: number;
+  idiomsPerDay: number;
+  autoShowPopup: boolean;
+}
+
+export interface DailyPackItem {
+  id: string;
+  term: string;
+  pronunciation?: string;
+  ipa?: string;
+  cefr: CefrLevel;
+  type: "vocab" | "idiom";
+  meaning_en: string;
+  meaning_id: string;
+  examples: WordExample[];
+  synonyms: string[];
+  antonyms: string[];
+  word_families: WordFamilyItem[];
+  register: RegisterType;
+  source_tag: "daily_pack";
+}
+
+export interface DailyPackRecord {
+  pack_date: string; // YYYY-MM-DD in local timezone
+  words_quota: number;
+  idioms_quota: number;
+  items: DailyPackItem[];
+  completed_terms: string[]; // normalized term keys completed via recall quiz
+  completed_at?: string | null;
+  source?: "gemini" | "fallback" | "supabase" | "local";
+}
+
+export type CloudSyncStatus = "synced" | "syncing" | "local" | "error";
 
 export type Sm2Rating = "again" | "hard" | "good" | "easy";
 
@@ -73,6 +114,8 @@ export interface WordEntry {
   correct_count: number;
   wrong_count: number;
   last_practiced_at?: string | null;
+  last_reviewed_date?: string | null;
+  review_count?: number;
   next_review_at?: string | null;
   interval_days?: number;
   ease_factor?: number;

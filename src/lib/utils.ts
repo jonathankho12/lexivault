@@ -39,6 +39,10 @@ export function normalizeSourceTag(raw?: string | null): string {
     case "ai_suggest":
     case "saran ai":
       return "ai_suggest";
+    case "daily_pack":
+    case "daily pack":
+    case "target harian":
+      return "daily_pack";
     default:
       return cleaned;
   }
@@ -57,6 +61,7 @@ export function formatSourceTagLabel(
     general: { en: "General", id: "Umum" },
     discover: { en: "Discover", id: "Discover" },
     ai_suggest: { en: "AI Suggest", id: "Saran AI" },
+    daily_pack: { en: "Daily Pack", id: "Target Harian" },
   };
   const match = labels[key];
   if (match) return match[lang];
