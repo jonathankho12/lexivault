@@ -23,6 +23,7 @@ import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
 import {
   cn,
+  formatCefrBadgeClass,
   formatGeminiClientError,
   formatRegisterBadgeClass,
   formatSourceTagLabel,
@@ -503,7 +504,12 @@ export function AiSuggestSheet({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                              <span className="rounded-full bg-[#5E5CE6]/25 border border-[#5E5CE6]/45 px-2 py-0.5 text-[10px] font-bold text-[#C8C6FF]">
+                              <span
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                                  formatCefrBadgeClass(item.cefr)
+                                )}
+                              >
                                 {item.cefr}
                               </span>
                               <span className="rounded-full bg-white/[0.08] border border-white/[0.12] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#F5F5F7]">

@@ -25,15 +25,19 @@ import { useLexiVault } from "@/context/LexiVaultContext";
 import { IOS_SPRING, STAGGER_CONTAINER, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
 import {
+  ALL_CEFR_LEVELS,
   cn,
+  formatCefrBadgeClass,
   formatSourceTagLabel,
+  normalizeCefrLevel,
   normalizeSourceTag,
   normalizeTermKey,
 } from "@/lib/utils";
-import type { RegisterType, WordType } from "@/types/lexivault";
+import type { CefrLevel, RegisterType, WordType } from "@/types/lexivault";
 
 type TypeFilter = "all" | WordType;
 type RegisterFilter = "all" | RegisterType;
+type CefrFilter = "all" | CefrLevel;
 
 export function VaultView() {
   const {
@@ -77,6 +81,7 @@ export function VaultView() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [registerFilter, setRegisterFilter] = useState<RegisterFilter>("all");
+  const [cefrFilter, setCefrFilter] = useState<CefrFilter>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   const availableSources = useMemo(() => {
@@ -94,6 +99,11 @@ export function VaultView() {
       if (registerFilter !== "all" && word.register !== registerFilter)
         return false;
       if (
+        cefrFilter !== "all" &&
+        normalizeCefrLevel(word.cefr) !== cefrFilter
+      )
+        return false;
+      if (
         sourceFilter !== "all" &&
         normalizeSourceTag(word.source_tag) !== sourceFilter
       )
@@ -104,11 +114,12 @@ export function VaultView() {
         word.term.toLowerCase().includes(q) ||
         word.meaning_id.toLowerCase().includes(q) ||
         (word.meaning_en?.toLowerCase().includes(q) ?? false) ||
+        (word.cefr?.toLowerCase().includes(q) ?? false) ||
         word.synonyms.some((s) => s.toLowerCase().includes(q)) ||
         word.word_families_json.some((wf) => wf.word.toLowerCase().includes(q))
       );
     });
-  }, [words, search, typeFilter, registerFilter, sourceFilter]);
+  }, [words, search, typeFilter, registerFilter, cefrFilter, sourceFilter]);
 
   return (
     <div className="space-y-5">
@@ -343,6 +354,26 @@ export function VaultView() {
               )}
             >
               {reg === "all" ? t.vault.allRegisters : reg}
+            </button>
+          ))}
+
+          <span className="h-4 w-px shrink-0 bg-white/[0.12]" />
+
+          {(["all", ...ALL_CEFR_LEVELS] as CefrFilter[]).map((lvl) => (
+            <button
+              key={lvl}
+              type="button"
+              onClick={() => setCefrFilter(lvl)}
+              className={cn(
+                "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors cursor-pointer",
+                cefrFilter === lvl
+                  ? lvl === "all"
+                    ? "bg-[#5E5CE6]/25 border-[#5E5CE6]/45 text-white"
+                    : formatCefrBadgeClass(lvl)
+                  : "bg-white/[0.05] border-white/[0.09] text-[#8E8E93] hover:text-[#F5F5F7]"
+              )}
+            >
+              {lvl === "all" ? t.vault.allLevels : lvl}
             </button>
           ))}
 

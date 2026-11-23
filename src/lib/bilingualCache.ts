@@ -1,4 +1,4 @@
-import { normalizeTermKey } from "@/lib/utils";
+import { normalizeCefrLevel, normalizeTermKey } from "@/lib/utils";
 import type { CefrLevel } from "@/types/lexivault";
 
 export interface BilingualMeaningInfo {
@@ -405,9 +405,7 @@ export function cacheWordMeanings(
     cache[key] = {
       meaning_en: cleanEn || existing?.meaning_en || "",
       meaning_id: cleanId || existing?.meaning_id,
-      cefr:
-        (cefr === "B2" || cefr === "C1" || cefr === "C2" ? cefr : undefined) ||
-        existing?.cefr,
+      cefr: normalizeCefrLevel(cefr) || existing?.cefr,
     };
     window.localStorage.setItem(BILINGUAL_CACHE_KEY, JSON.stringify(cache));
   } catch {
@@ -423,7 +421,7 @@ export function resolveWordMeanings(
 ): {
   meaning_id: string;
   meaning_en?: string;
-  cefr?: CefrLevel | string;
+  cefr?: CefrLevel;
 } {
   const key = normalizeTermKey(term);
   const builtIn = BUILT_IN_ENGLISH_MEANINGS[key];
@@ -443,7 +441,10 @@ export function resolveWordMeanings(
     "";
 
   const cefr =
-    explicitCefr?.trim() || cached?.cefr || builtIn?.cefr || undefined;
+    normalizeCefrLevel(explicitCefr) ||
+    normalizeCefrLevel(cached?.cefr) ||
+    builtIn?.cefr ||
+    undefined;
 
   return { meaning_id, meaning_en, cefr };
 }

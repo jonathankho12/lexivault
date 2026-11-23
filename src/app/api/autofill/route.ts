@@ -10,7 +10,11 @@ import {
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { checkAiRateLimit } from "@/lib/rate-limit";
-import { normalizeDuplicateKey, normalizeTermKey } from "@/lib/utils";
+import {
+  normalizeCefrLevel,
+  normalizeDuplicateKey,
+  normalizeTermKey,
+} from "@/lib/utils";
 import type {
   AutofillPayload,
   CefrLevel,
@@ -39,7 +43,7 @@ const CORE_ENTRY_PROPERTIES: Record<string, Schema> = {
   term: { type: Type.STRING },
   pronunciation: { type: Type.STRING },
   ipa: { type: Type.STRING },
-  cefr: { type: Type.STRING, enum: ["B2", "C1", "C2"] },
+  cefr: { type: Type.STRING, enum: ["A1", "A2", "B1", "B2", "C1", "C2"] },
   type: {
     type: Type.STRING,
     enum: ["vocab", "idiom", "collocation"],
@@ -161,9 +165,7 @@ function validateAndNormalizeAutofillPayload(
     : [];
 
   const cefr: CefrLevel =
-    raw.cefr === "B2" || raw.cefr === "C1" || raw.cefr === "C2"
-      ? raw.cefr
-      : builtInBilingual?.cefr || "C1";
+    normalizeCefrLevel(raw.cefr) ?? builtInBilingual?.cefr ?? "B1";
 
   return {
     ok: true,
@@ -252,7 +254,7 @@ Required fields (never leave blank when not a duplicate):
 - term: canonical English spelling/casing
 - pronunciation: Google "Sounds like" phonetic spelling with "·" syllable dots & ALL CAPS primary stress (e.g. "am·BIV·uh·luhnt")
 - ipa: standard IPA inside slashes (e.g. "/æmˈbɪv.ə.lənt/")
-- cefr: B2, C1, or C2
+- cefr: true, objective CEFR level ("A1", "A2", "B1", "B2", "C1", or "C2") — classify honestly across the full spectrum (e.g. "hi", "hello", "apple", "good" = A1; "holiday", "weather" = A2; "achieve", "opinion" = B1; "sustainable" = B2; "ubiquitous", "pragmatic" = C1; "ephemeral", "obfuscate" = C2); NEVER inflate beginner words to B2 or C1
 - type: vocab, idiom, or collocation
 - register: Academic, Formal, Casual, or Slang
 - meaning_en: 1 clear, natural English definition (figurative meaning for idioms)

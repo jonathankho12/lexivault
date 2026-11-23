@@ -10,6 +10,7 @@ import { useLexiVault } from "@/context/LexiVaultContext";
 import { STAGGER_ITEM, TAP_SCALE } from "@/lib/motion";
 import {
   cn,
+  formatCefrBadgeClass,
   formatRegisterBadgeClass,
   formatSourceTagLabel,
   formatTypeLabel,
@@ -48,7 +49,12 @@ export function VaultWordCard({ word }: { word: WordEntry }) {
               {word.register}
             </span>
             {word.cefr && (
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-bold bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 text-[#C8C6FF]">
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                  formatCefrBadgeClass(word.cefr)
+                )}
+              >
                 {word.cefr}
               </span>
             )}

@@ -19,6 +19,7 @@ import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   CANONICAL_SOURCE_TAGS,
   cn,
+  formatCefrBadgeClass,
   formatGeminiClientError,
   formatRegisterBadgeClass,
   formatSourceTagLabel,
@@ -362,6 +363,16 @@ export function TextExtractorSheet({
                             >
                               {item.register}
                             </span>
+                            {item.cefr && (
+                              <span
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                                  formatCefrBadgeClass(item.cefr)
+                                )}
+                              >
+                                {item.cefr}
+                              </span>
+                            )}
                             {alreadyInVault && (
                               <span className="rounded-full bg-[#30D158]/15 px-2 py-0.5 text-[10px] font-medium text-[#7CF099]">
                                 {t.extractor.alreadyInVault}

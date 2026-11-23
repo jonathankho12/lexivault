@@ -43,6 +43,7 @@ import {
 } from "@/lib/soundEffects";
 import {
   cn,
+  formatCefrBadgeClass,
   formatRegisterBadgeClass,
   formatSourceTagLabel,
   formatTypeLabel,
@@ -202,6 +203,16 @@ function SwipeableFlashcard({
                 >
                   {word.register}
                 </span>
+                {word.cefr && (
+                  <span
+                    className={cn(
+                      "rounded-full px-2.5 py-0.5 text-[11px] font-bold border",
+                      formatCefrBadgeClass(word.cefr)
+                    )}
+                  >
+                    {word.cefr}
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] text-[#8E8E93] bg-white/[0.05]">
                   <Tag className="h-3 w-3" />
                   {formatSourceTagLabel(word.source_tag, lang)}
@@ -281,9 +292,21 @@ function SwipeableFlashcard({
           <div className="liquid-glass-elevated backface-hidden rotate-y-180 absolute inset-0 flex flex-col rounded-[32px] p-5 sm:p-6 overflow-y-auto no-scrollbar">
             <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/[0.09] shrink-0">
               <div className="min-w-0">
-                <span className="text-xs font-semibold uppercase tracking-wider text-[#0A84FF]">
-                  {formatTypeLabel(word.type)} · {word.register}
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[#0A84FF]">
+                    {formatTypeLabel(word.type)} · {word.register}
+                  </span>
+                  {word.cefr && (
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                        formatCefrBadgeClass(word.cefr)
+                      )}
+                    >
+                      {word.cefr}
+                    </span>
+                  )}
+                </div>
                 <h4 className="text-lg sm:text-xl font-bold text-white truncate">
                   {word.term}
                 </h4>

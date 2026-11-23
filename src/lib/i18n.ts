@@ -117,6 +117,7 @@ export interface TranslationDictionary {
     clearSearch: string;
     allTypes: string;
     allRegisters: string;
+    allLevels: string;
     allSources: string;
     newBadge: string;
     emptyTitle: string;
@@ -613,6 +614,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       clearSearch: "Hapus pencarian",
       allTypes: "Semua Tipe",
       allRegisters: "Semua Register",
+      allLevels: "Semua Level",
       allSources: "Semua Sumber",
       newBadge: "Baru",
       emptyTitle: "Vault Kamu Masih Kosong",
@@ -1135,6 +1137,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       clearSearch: "Clear search",
       allTypes: "All Types",
       allRegisters: "All Registers",
+      allLevels: "All Levels",
       allSources: "All Sources",
       newBadge: "New",
       emptyTitle: "Your Vault Is Still Empty",

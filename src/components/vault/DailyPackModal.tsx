@@ -36,7 +36,12 @@ import {
   playRingCompleteChord,
   playWrongThud,
 } from "@/lib/soundEffects";
-import { cn, getLocalizedMeaning, normalizeTermKey } from "@/lib/utils";
+import {
+  cn,
+  formatCefrBadgeClass,
+  getLocalizedMeaning,
+  normalizeTermKey,
+} from "@/lib/utils";
 import type { DailyPackItem } from "@/types/lexivault";
 
 const CHUNK_SIZE = 5;
@@ -564,7 +569,12 @@ export function DailyPackModal() {
                     {/* Badges */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-[#5E5CE6]/20 border border-[#5E5CE6]/40 px-2.5 py-0.5 text-[11px] font-bold text-[#C7C6FF]">
+                        <span
+                          className={cn(
+                            "rounded-full border px-2.5 py-0.5 text-[11px] font-bold",
+                            formatCefrBadgeClass(currentMemItem.cefr)
+                          )}
+                        >
                           {currentMemItem.cefr}
                         </span>
                         <span

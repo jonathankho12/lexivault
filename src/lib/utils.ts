@@ -1,5 +1,45 @@
 import type { AppLanguage } from "@/lib/i18n";
-import type { SourceTag, StudyLog, WordEntry } from "@/types/lexivault";
+import type {
+  CefrLevel,
+  SourceTag,
+  StudyLog,
+  WordEntry,
+} from "@/types/lexivault";
+
+export const ALL_CEFR_LEVELS: readonly CefrLevel[] = [
+  "A1",
+  "A2",
+  "B1",
+  "B2",
+  "C1",
+  "C2",
+] as const;
+
+const VALID_CEFR_SET = new Set<string>(ALL_CEFR_LEVELS);
+
+export function normalizeCefrLevel(raw?: unknown): CefrLevel | undefined {
+  if (typeof raw !== "string") return undefined;
+  const cleaned = raw.trim().toUpperCase();
+  return VALID_CEFR_SET.has(cleaned) ? (cleaned as CefrLevel) : undefined;
+}
+
+export function formatCefrBadgeClass(level?: CefrLevel | string | null): string {
+  switch (normalizeCefrLevel(level)) {
+    case "A1":
+      return "bg-emerald-500/18 border-emerald-400/40 text-emerald-300";
+    case "A2":
+      return "bg-teal-500/18 border-teal-400/40 text-teal-300";
+    case "B1":
+      return "bg-sky-500/18 border-sky-400/40 text-sky-300";
+    case "B2":
+      return "bg-[#0A84FF]/20 border-[#0A84FF]/45 text-[#7AC1FF]";
+    case "C2":
+      return "bg-fuchsia-500/20 border-fuchsia-400/45 text-fuchsia-300";
+    case "C1":
+    default:
+      return "bg-[#5E5CE6]/22 border-[#5E5CE6]/45 text-[#C8C6FF]";
+  }
+}
 
 export const CANONICAL_SOURCE_TAGS: SourceTag[] = [
   "film",

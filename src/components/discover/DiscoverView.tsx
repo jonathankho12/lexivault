@@ -32,6 +32,7 @@ import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
 import { loadDailyDiscovery, saveDailyDiscovery } from "@/lib/storage";
 import {
   cn,
+  formatCefrBadgeClass,
   formatGeminiClientError,
   formatRegisterBadgeClass,
   formatTypeLabel,
@@ -646,7 +647,12 @@ export function DiscoverView() {
                         {item.register}
                       </span>
                       {item.cefr && (
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 text-[#C4C2FF]">
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                            formatCefrBadgeClass(item.cefr)
+                          )}
+                        >
                           {item.cefr}
                         </span>
                       )}

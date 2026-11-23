@@ -10,7 +10,7 @@ import {
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { checkAiRateLimit } from "@/lib/rate-limit";
-import { normalizeTermKey } from "@/lib/utils";
+import { normalizeCefrLevel, normalizeTermKey } from "@/lib/utils";
 import type {
   ExtractedVocabItem,
   RegisterType,
@@ -45,12 +45,12 @@ export async function POST(request: Request) {
       return rateLimit.response;
     }
 
-    const prompt = `Extract 6–10 high-value C1/C2 vocab, idioms, or collocations from this text (ui: ${lang}). Skip basic words.
+    const prompt = `Extract 6–10 notable English vocab, idioms, or collocations from this text (ui: ${lang}). Assign each expression its true objective CEFR level (A1|A2|B1|B2|C1|C2) without inflating basic words.
 Text:
 """
 ${rawText}
 """
-Concise JSON per item: term, cefr (B2|C1|C2), type (vocab|idiom|collocation), register (Academic|Formal|Casual|Slang), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural Indonesian sentence), examples (2 short sentences with **bold** term + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-3 real {word,pos}).`;
+Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|collocation), register (Academic|Formal|Casual|Slang), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural Indonesian sentence), examples (2 short sentences with **bold** term + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-3 real {word,pos}).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items: Partial<ExtractedVocabItem>[];
@@ -74,7 +74,10 @@ Concise JSON per item: term, cefr (B2|C1|C2), type (vocab|idiom|collocation), re
                 term: { type: Type.STRING },
                 pronunciation: { type: Type.STRING },
                 ipa: { type: Type.STRING },
-                cefr: { type: Type.STRING, enum: ["B2", "C1", "C2"] },
+                cefr: {
+                  type: Type.STRING,
+                  enum: ["A1", "A2", "B1", "B2", "C1", "C2"],
+                },
                 type: {
                   type: Type.STRING,
                   enum: ["vocab", "idiom", "collocation"],
@@ -204,7 +207,7 @@ Concise JSON per item: term, cefr (B2|C1|C2), type (vocab|idiom|collocation), re
             builtIn?.pronunciation ||
             undefined,
           ipa: (it.ipa || "").trim() || builtIn?.ipa || undefined,
-          cefr: it.cefr || builtInBilingual?.cefr,
+          cefr: normalizeCefrLevel(it.cefr) ?? builtInBilingual?.cefr,
           type: it.type && validTypes.has(it.type) ? it.type : "vocab",
           register:
             it.register && validRegisters.has(it.register)

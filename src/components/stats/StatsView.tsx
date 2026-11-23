@@ -25,12 +25,15 @@ import {
   TAP_SCALE,
 } from "@/lib/motion";
 import {
+  ALL_CEFR_LEVELS,
   cn,
+  formatCefrBadgeClass,
   formatShortDayLabel,
   getLastNDays,
   getLocalizedMeaning,
   getWeakestWords,
   getWordAccuracy,
+  normalizeCefrLevel,
 } from "@/lib/utils";
 
 export function StatsView() {
@@ -360,6 +363,61 @@ export function StatsView() {
         </div>
       </div>
 
+      {/* CEFR Vocabulary Distribution (A1–C2) */}
+      <div className="liquid-glass rounded-3xl p-5 sm:p-6 space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-white">
+              {isEn
+                ? "Vault CEFR Level Breakdown"
+                : "Distribusi Level CEFR di Vault"}
+            </h3>
+            <p className="text-xs text-[#8E8E93]">
+              {isEn
+                ? "Objective A1–C2 distribution across all expressions saved in your Vault."
+                : "Distribusi objektif A1–C2 dari seluruh kosakata & idiom yang tersimpan di Vault."}
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-[#8E8E93]">
+            {words.length} {isEn ? "total" : "total"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">
+          {ALL_CEFR_LEVELS.map((lvl) => {
+            const count = words.filter(
+              (w) => normalizeCefrLevel(w.cefr) === lvl
+            ).length;
+            const pct =
+              words.length > 0 ? Math.round((count / words.length) * 100) : 0;
+
+            return (
+              <div
+                key={lvl}
+                className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 flex flex-col items-start gap-1.5"
+              >
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-[11px] font-bold border",
+                    formatCefrBadgeClass(lvl)
+                  )}
+                >
+                  {lvl}
+                </span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-bold text-white tabular-nums">
+                    {count}
+                  </span>
+                  <span className="text-[11px] text-[#8E8E93] tabular-nums">
+                    {pct}%
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Weakest Words Section */}
       <div className="liquid-glass rounded-3xl p-5 sm:p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -410,10 +468,20 @@ export function StatsView() {
                   className="flex items-center justify-between gap-3 rounded-2xl bg-white/[0.04] border border-white/[0.09] px-4 py-3 hover:bg-white/[0.08] cursor-pointer transition-colors"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-white truncate">
                         {word.term}
                       </span>
+                      {word.cefr && (
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                            formatCefrBadgeClass(word.cefr)
+                          )}
+                        >
+                          {word.cefr}
+                        </span>
+                      )}
                       <span
                         className={cn(
                           "rounded-full px-2 py-0.5 text-[10px] font-bold border",

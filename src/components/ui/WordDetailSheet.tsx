@@ -21,6 +21,7 @@ import { useLexiVault } from "@/context/LexiVaultContext";
 import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   cn,
+  formatCefrBadgeClass,
   formatRegisterBadgeClass,
   formatSourceTagLabel,
   formatTypeLabel,
@@ -107,7 +108,12 @@ export function WordDetailSheet() {
                     {selectedWord.register}
                   </span>
                   {selectedWord.cefr && (
-                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 text-[#C8C6FF]">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold border",
+                        formatCefrBadgeClass(selectedWord.cefr)
+                      )}
+                    >
                       {selectedWord.cefr}
                     </span>
                   )}
