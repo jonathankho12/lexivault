@@ -233,6 +233,70 @@ export const BUILT_IN_PRONUNCIATIONS: Record<string, PronunciationInfo> = {
     pronunciation: "on thin EYS",
     ipa: "/ɒn θɪn aɪs/",
   },
+  "at a crossroads": {
+    pronunciation: "at uh KROS·rohdz",
+    ipa: "/æt ə ˈkrɒs.rəʊdz/",
+  },
+  "throw caution to the wind": {
+    pronunciation: "throh KAW·shuhn too thuh wind",
+    ipa: "/θrəʊ ˈkɔː.ʃən tuː ðə wɪnd/",
+  },
+  "bark up the wrong tree": {
+    pronunciation: "bark uhp thuh rawng TREE",
+    ipa: "/bɑːrk ʌp ðə rɒŋ triː/",
+  },
+  "turn a blind eye": {
+    pronunciation: "turn uh blynd EYE",
+    ipa: "/tɜːrn ə blaɪnd aɪ/",
+  },
+  "cut to the chase": {
+    pronunciation: "kuht too thuh CHAYS",
+    ipa: "/kʌt tuː ðə tʃeɪs/",
+  },
+  "a double-edged sword": {
+    pronunciation: "uh DUHB·uhl·ejd sord",
+    ipa: "/ə ˌdʌb.əl.edʒd sɔːrd/",
+  },
+  "pass the buck": {
+    pronunciation: "pas thuh BUHK",
+    ipa: "/pɑːs ðə bʌk/",
+  },
+  "up in the air": {
+    pronunciation: "uhp in thee AIR",
+    ipa: "/ʌp ɪn ði eər/",
+  },
+  perspicacious: {
+    pronunciation: "pur·spih·KAY·shuhs",
+    ipa: "/ˌpɜː.spɪˈkeɪ.ʃəs/",
+  },
+  quintessential: {
+    pronunciation: "kwin·tuh·SEN·shuhl",
+    ipa: "/ˌkwɪn.tɪˈsen.ʃəl/",
+  },
+  fastidious: {
+    pronunciation: "fa·STID·ee·uhs",
+    ipa: "/fæˈstɪd.i.əs/",
+  },
+  intransigent: {
+    pronunciation: "in·TRAN·zih·juhnt",
+    ipa: "/ɪnˈtræn.zɪ.dʒənt/",
+  },
+  exacerbate: {
+    pronunciation: "ig·ZAS·er·bayt",
+    ipa: "/ɪɡˈzæs.ə.beɪt/",
+  },
+  "warrant scrutiny": {
+    pronunciation: "WOR·uhnt SKROO·tuh·nee",
+    ipa: "/ˈwɒr.ənt ˈskruː.tə.ni/",
+  },
+  "galvanize support": {
+    pronunciation: "GAL·vuh·nyz suh·PORT",
+    ipa: "/ˈɡæl.və.naɪz səˈpɔːrt/",
+  },
+  "yield dividends": {
+    pronunciation: "yeeld DIV·ih·dendz",
+    ipa: "/jiːld ˈdɪv.ɪ.dendz/",
+  },
 };
 
 function readPronunciationCache(): Record<string, PronunciationInfo> {

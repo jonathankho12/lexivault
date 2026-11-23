@@ -28,6 +28,7 @@ import {
   cn,
   formatShortDayLabel,
   getLastNDays,
+  getLocalizedMeaning,
   getWeakestWords,
   getWordAccuracy,
 } from "@/lib/utils";
@@ -50,7 +51,8 @@ export function StatsView() {
     setSelectedWord,
     launchPractice,
   } = useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const isEn = lang === "en";
 
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetDone, setResetDone] = useState(false);
@@ -292,7 +294,7 @@ export function StatsView() {
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-[#30D158]" />
-              Benar
+              {isEn ? "Correct" : "Benar"}
             </span>
           </div>
         </div>
@@ -345,7 +347,7 @@ export function StatsView() {
                     isToday ? "text-[#0A84FF] font-bold" : "text-[#8E8E93]"
                   )}
                 >
-                  {isToday ? "Hari Ini" : point.label}
+                  {isToday ? (isEn ? "Today" : "Hari Ini") : point.label}
                 </span>
               </div>
             );
@@ -384,7 +386,9 @@ export function StatsView() {
 
         {weakestWords.length === 0 ? (
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-6 text-center text-sm text-[#8E8E93]">
-            Belum ada kata dengan catatan kesalahan — pertahankan akurasimu!
+            {isEn
+              ? "No missed words yet — keep up your accuracy!"
+              : "Belum ada kata dengan catatan kesalahan — pertahankan akurasimu!"}
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -413,11 +417,11 @@ export function StatsView() {
                             : "bg-[#FF9F0A]/15 border-[#FF9F0A]/35 text-[#FFD18C]"
                         )}
                       >
-                        {word.wrong_count} salah · {acc}%
+                        {word.wrong_count} {isEn ? "missed" : "salah"} · {acc}%
                       </span>
                     </div>
                     <p className="mt-0.5 text-xs text-[#8E8E93] truncate">
-                      {word.meaning_id}
+                      {getLocalizedMeaning(word, lang)}
                     </p>
                   </div>
 
@@ -438,19 +442,27 @@ export function StatsView() {
       <div className="liquid-glass rounded-3xl p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1">
           <h3 className="text-base font-bold text-white">
-            Mulai dari Nol (Data Kosakata Pribadi)
+            {isEn
+              ? "Start from Scratch (Personal Vocabulary Only)"
+              : "Mulai dari Nol (Data Kosakata Pribadi)"}
           </h3>
           <p className="text-xs text-[#8E8E93] max-w-xl">
             {hasDemoWords
-              ? "Hapus 18 kata/idiom demo bawaan agar Vault berisi 100% kosakata yang kamu simpan sendiri (kata yang sudah kamu tambahkan tidak akan terhapus)."
-              : "Data demo sudah dibersihkan — Vault kamu sekarang berisi 100% kosakata milikmu sendiri."}
+              ? isEn
+                ? "Remove the 5 starter C1–C2 expressions so your Vault contains 100% words you added yourself (your own saved words will remain untouched)."
+                : "Hapus 5 kata/idiom starter bawaan agar Vault berisi 100% kosakata yang kamu simpan sendiri (kata yang sudah kamu tambahkan tidak akan terhapus)."
+              : isEn
+                ? "Starter items cleared — your Vault now contains 100% your own vocabulary."
+                : "Data starter sudah dibersihkan — Vault kamu sekarang berisi 100% kosakata milikmu sendiri."}
           </p>
         </div>
 
         {resetDone || !hasDemoWords ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#30D158]/15 border border-[#30D158]/35 px-4 py-2 text-xs font-semibold text-[#7CF099]">
             <CheckCircle2 className="h-3.5 w-3.5" />
-            <span>Kosakata Sendiri Aktif</span>
+            <span>
+              {isEn ? "Personal Vault Active" : "Kosakata Sendiri Aktif"}
+            </span>
           </span>
         ) : !confirmReset ? (
           <motion.button
@@ -460,7 +472,11 @@ export function StatsView() {
             className="inline-flex items-center gap-2 rounded-full bg-[#FF453A]/15 border border-[#FF453A]/35 px-4 py-2 text-xs font-semibold text-[#FF8982] hover:bg-[#FF453A]/25 cursor-pointer"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            <span>Mulai dari Nol (Hapus Data Demo)</span>
+            <span>
+              {isEn
+                ? "Start from Scratch (Remove Starter)"
+                : "Mulai dari Nol (Hapus Starter)"}
+            </span>
           </motion.button>
         ) : (
           <div className="flex items-center gap-2">
@@ -470,7 +486,7 @@ export function StatsView() {
               onClick={() => setConfirmReset(false)}
               className="rounded-full bg-white/[0.08] px-3.5 py-2 text-xs font-medium text-[#8E8E93] hover:text-white cursor-pointer"
             >
-              Batal
+              {isEn ? "Cancel" : "Batal"}
             </motion.button>
             <motion.button
               type="button"
@@ -482,7 +498,7 @@ export function StatsView() {
               }}
               className="rounded-full bg-[#FF453A] px-4 py-2 text-xs font-semibold text-white cursor-pointer"
             >
-              Konfirmasi Hapus Demo
+              {isEn ? "Confirm Remove Starter" : "Konfirmasi Hapus Starter"}
             </motion.button>
           </div>
         )}

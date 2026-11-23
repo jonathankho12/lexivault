@@ -1,4 +1,82 @@
-import type { StudyLog, WordEntry } from "@/types/lexivault";
+import type { AppLanguage } from "@/lib/i18n";
+import type { SourceTag, StudyLog, WordEntry } from "@/types/lexivault";
+
+export const CANONICAL_SOURCE_TAGS: SourceTag[] = [
+  "film",
+  "book",
+  "lecture",
+  "article",
+  "general",
+];
+
+/**
+ * Normalizes legacy Indonesian, English, or custom source tags into canonical keys
+ * so filters & badges stay consistent across EN/ID without breaking existing rows.
+ */
+export function normalizeSourceTag(raw?: string | null): string {
+  const cleaned = (raw ?? "").trim();
+  if (!cleaned) return "general";
+  const lower = cleaned.toLowerCase();
+  switch (lower) {
+    case "film":
+    case "movie":
+      return "film";
+    case "buku":
+    case "book":
+      return "book";
+    case "kuliah":
+    case "lecture":
+      return "lecture";
+    case "artikel":
+    case "article":
+      return "article";
+    case "umum":
+    case "general":
+      return "general";
+    case "discover":
+      return "discover";
+    case "ai suggest":
+    case "ai_suggest":
+    case "saran ai":
+      return "ai_suggest";
+    default:
+      return cleaned;
+  }
+}
+
+export function formatSourceTagLabel(
+  raw: string | null | undefined,
+  lang: AppLanguage
+): string {
+  const key = normalizeSourceTag(raw);
+  const labels: Record<string, { en: string; id: string }> = {
+    film: { en: "Film", id: "Film" },
+    book: { en: "Book", id: "Buku" },
+    lecture: { en: "Lecture", id: "Kuliah" },
+    article: { en: "Article", id: "Artikel" },
+    general: { en: "General", id: "Umum" },
+    discover: { en: "Discover", id: "Discover" },
+    ai_suggest: { en: "AI Suggest", id: "Saran AI" },
+  };
+  const match = labels[key];
+  if (match) return match[lang];
+  return raw?.trim() || (lang === "en" ? "General" : "Umum");
+}
+
+export function getLocalizedMeaning(
+  item: {
+    meaning_id?: string | null;
+    meaning_en?: string | null;
+  },
+  lang: AppLanguage
+): string {
+  const en = item.meaning_en?.trim();
+  const id = item.meaning_id?.trim();
+  if (lang === "en") {
+    return en || id || "";
+  }
+  return id || en || "";
+}
 
 export function cn(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(" ");

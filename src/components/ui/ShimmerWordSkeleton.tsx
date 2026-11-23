@@ -2,9 +2,13 @@
 
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 import { IOS_SPRING } from "@/lib/motion";
 
 export function ShimmerWordSkeleton({ term }: { term?: string }) {
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -12, scale: 0.97 }}
@@ -20,10 +24,18 @@ export function ShimmerWordSkeleton({ term }: { term?: string }) {
           </div>
           <div>
             <p className="text-sm font-semibold text-[#F5F5F7]">
-              {term ? `Menyiapkan "${term}"...` : "AI sedang menganalisis..."}
+              {term
+                ? isEn
+                  ? `Preparing "${term}"...`
+                  : `Menyiapkan "${term}"...`
+                : isEn
+                  ? "AI is analyzing..."
+                  : "AI sedang menganalisis..."}
             </p>
             <p className="text-xs text-[#8E8E93]">
-              Arti, contoh kalimat, word family & audio US/UK
+              {isEn
+                ? "Definition, example sentences, word family & US/UK audio"
+                : "Arti, contoh kalimat, word family & audio US/UK"}
             </p>
           </div>
         </div>

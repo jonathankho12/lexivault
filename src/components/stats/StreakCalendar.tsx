@@ -2,13 +2,21 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Flame } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Flame,
+} from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { StudyLog } from "@/types/lexivault";
 
-const WEEKDAYS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const WEEKDAYS_ID = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function buildMonthKey(year: number, monthIndex: number): string {
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
@@ -16,6 +24,10 @@ function buildMonthKey(year: number, monthIndex: number): string {
 
 export function StreakCalendar() {
   const { studyLogs, streak, todayStr, isHydrated } = useLexiVault();
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
+  const locale = isEn ? "en-US" : "id-ID";
+  const weekdays = isEn ? WEEKDAYS_EN : WEEKDAYS_ID;
 
   const [todayYear, todayMonth] = useMemo(() => {
     const parts = todayStr.split("-").map(Number);
@@ -41,7 +53,7 @@ export function StreakCalendar() {
 
   const calendarData = useMemo(() => {
     const firstDay = new Date(activeYear, activeMonth, 1);
-    const startWeekday = firstDay.getDay(); // 0 = Sun
+    const startWeekday = firstDay.getDay();
     const daysInMonth = new Date(activeYear, activeMonth + 1, 0).getDate();
     const monthPrefix = buildMonthKey(activeYear, activeMonth);
 
@@ -77,13 +89,13 @@ export function StreakCalendar() {
       });
     }
 
-    const monthTitle = firstDay.toLocaleDateString("id-ID", {
+    const monthTitle = firstDay.toLocaleDateString(locale, {
       month: "long",
       year: "numeric",
     });
 
     return { cells, activeDaysCount, monthTitle };
-  }, [activeYear, activeMonth, logMap, todayStr]);
+  }, [activeYear, activeMonth, locale, logMap, todayStr]);
 
   const isViewingCurrentMonth =
     activeYear === todayYear && activeMonth === todayMonth;
@@ -112,13 +124,13 @@ export function StreakCalendar() {
   const formattedInspectedDate = useMemo(() => {
     const [y, m, d] = inspectedDate.split("-").map(Number);
     if (!y || !m || !d) return inspectedDate;
-    return new Date(y, m - 1, d).toLocaleDateString("id-ID", {
+    return new Date(y, m - 1, d).toLocaleDateString(locale, {
       weekday: "long",
       day: "numeric",
       month: "long",
       year: "numeric",
     });
-  }, [inspectedDate]);
+  }, [inspectedDate, locale]);
 
   return (
     <section
@@ -137,8 +149,12 @@ export function StreakCalendar() {
             </h3>
             <p className="text-xs text-[#8E8E93]">
               {isHydrated
-                ? `${calendarData.activeDaysCount} hari aktif di bulan ini`
-                : "Memuat kalender..."}
+                ? isEn
+                  ? `${calendarData.activeDaysCount} active days this month`
+                  : `${calendarData.activeDaysCount} hari aktif di bulan ini`
+                : isEn
+                  ? "Loading calendar..."
+                  : "Memuat kalender..."}
             </p>
           </div>
         </div>
@@ -146,7 +162,9 @@ export function StreakCalendar() {
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#30D158]/15 border border-[#30D158]/35 px-3 py-1 text-xs font-bold text-[#7CF099]">
             <Flame className="h-3.5 w-3.5 text-[#30D158]" />
-            {isHydrated ? `${streak} hari` : "—"}
+            {isHydrated
+              ? `${streak} ${isEn ? (streak === 1 ? "day" : "days") : "hari"}`
+              : "—"}
           </span>
 
           <div className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/[0.1] p-1">
@@ -154,7 +172,7 @@ export function StreakCalendar() {
               type="button"
               whileTap={TAP_SCALE}
               onClick={() => handleShiftMonth(-1)}
-              aria-label="Bulan sebelumnya"
+              aria-label={isEn ? "Previous month" : "Bulan sebelumnya"}
               className="flex h-7 w-7 items-center justify-center rounded-full text-[#8E8E93] hover:text-white hover:bg-white/[0.08] cursor-pointer"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -167,7 +185,7 @@ export function StreakCalendar() {
               whileTap={TAP_SCALE}
               disabled={isViewingCurrentMonth}
               onClick={() => handleShiftMonth(1)}
-              aria-label="Bulan berikutnya"
+              aria-label={isEn ? "Next month" : "Bulan berikutnya"}
               className="flex h-7 w-7 items-center justify-center rounded-full text-[#8E8E93] hover:text-white hover:bg-white/[0.08] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <ChevronRight className="h-4 w-4" />
@@ -178,7 +196,7 @@ export function StreakCalendar() {
 
       {/* Weekday Labels */}
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-center">
-        {WEEKDAYS.map((day) => (
+        {weekdays.map((day) => (
           <div
             key={day}
             className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93] py-1"
@@ -231,23 +249,30 @@ export function StreakCalendar() {
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 text-xs">
         <span className="font-medium text-[#F5F5F7]">
           {formattedInspectedDate}
-          {inspectedDate === todayStr ? " (Hari Ini)" : ""}
+          {inspectedDate === todayStr
+            ? isEn
+              ? " (Today)"
+              : " (Hari Ini)"
+            : ""}
         </span>
 
         {inspectedActive && inspectedLog ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-[#30D158]/15 border border-[#30D158]/30 px-2.5 py-0.5 font-semibold text-[#7CF099]">
-              {inspectedLog.reviews_count} review ({inspectedLog.correct_count}{" "}
-              benar)
+              {inspectedLog.reviews_count}{" "}
+              {isEn ? "reviews" : "review"} ({inspectedLog.correct_count}{" "}
+              {isEn ? "correct" : "benar"})
             </span>
             {inspectedLog.words_added > 0 && (
               <span className="rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/30 px-2.5 py-0.5 font-semibold text-[#70BCFF]">
-                +{inspectedLog.words_added} kata baru
+                +{inspectedLog.words_added} {isEn ? "new words" : "kata baru"}
               </span>
             )}
           </div>
         ) : (
-          <span className="text-[#8E8E93]">Belum ada aktivitas belajar</span>
+          <span className="text-[#8E8E93]">
+            {isEn ? "No study activity yet" : "Belum ada aktivitas belajar"}
+          </span>
         )}
       </div>
     </section>

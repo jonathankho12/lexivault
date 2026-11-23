@@ -35,7 +35,9 @@ import { recordIeltsStudyLog } from "@/lib/storage";
 import {
   cn,
   formatRegisterBadgeClass,
+  formatSourceTagLabel,
   formatTypeLabel,
+  getLocalizedMeaning,
 } from "@/lib/utils";
 import type { Sm2Rating, WordEntry } from "@/types/lexivault";
 
@@ -63,7 +65,7 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
     recordSm2Review,
     grantXpAndSyncLog,
   } = useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const { prefetchMany } = usePronunciation();
 
   const [stage, setStage] = useState<CommuteStage>("flashcards");
@@ -190,7 +192,11 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
 
   const playSpeechFallback = useCallback(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      setAudioStatusNote("Audio browser tidak tersedia.");
+      setAudioStatusNote(
+        lang === "en"
+          ? "Browser speech audio is unavailable."
+          : "Audio browser tidak tersedia."
+      );
       setIsPlaying(false);
       return;
     }
@@ -231,7 +237,7 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
     };
 
     speakSegment(0);
-  }, [activeClip, t.commute.deviceSpeechActive]);
+  }, [activeClip, lang, t.commute.deviceSpeechActive]);
 
   const togglePlayClip = async () => {
     playGlassClick();
@@ -505,7 +511,8 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
                       size="sm"
                     />
                     <p className="text-xs text-[#8E8E93]">
-                      {t.commute.sourceLabel} {currentCard.source_tag || "Umum"} ·{" "}
+                      {t.commute.sourceLabel}{" "}
+                      {formatSourceTagLabel(currentCard.source_tag, lang)} ·{" "}
                       {t.commute.accentLabel} {accent}
                     </p>
                   </div>
@@ -545,7 +552,7 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
                         {t.flashcards.meaningTitle}
                       </p>
                       <p className="text-sm font-medium text-[#F5F5F7] leading-relaxed">
-                        {currentCard.meaning_id}
+                        {getLocalizedMeaning(currentCard, lang)}
                       </p>
                     </div>
 

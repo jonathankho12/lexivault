@@ -19,6 +19,7 @@ import {
   cn,
   formatRegisterBadgeClass,
   formatTypeLabel,
+  getLocalizedMeaning,
 } from "@/lib/utils";
 import type { PracticeQuestion } from "@/types/lexivault";
 
@@ -179,22 +180,22 @@ export function FlashcardRecallCard({
 
                 <p className="text-[11px] text-[#8E8E93] text-center">
                   {lang === "en"
-                    ? "Choose an answer below to reveal the full Indonesian meaning."
+                    ? "Choose an answer below to reveal the full definition."
                     : "Pilih jawaban di bawah untuk membuka arti lengkapnya."}
                 </p>
               </div>
             ) : (
-              /* POST-ANSWER: Full Indonesian meaning + example + word families */
+              /* POST-ANSWER: Full localized meaning + example + word families */
               <div className="my-auto space-y-2.5 py-2">
                 <p className="text-sm sm:text-base font-medium leading-relaxed text-[#F5F5F7]">
-                  {word.meaning_id}
+                  {getLocalizedMeaning(word, lang)}
                 </p>
                 {firstExample && (
                   <div className="rounded-2xl bg-white/[0.05] border border-white/[0.08] p-3 space-y-1">
                     <p className="text-xs leading-relaxed text-[#D1D1D6]">
                       <HighlightedText text={firstExample.sentence} />
                     </p>
-                    {firstExample.translation_id && (
+                    {lang === "id" && firstExample.translation_id && (
                       <p className="text-[11px] leading-relaxed text-[#8E8E93]">
                         <HighlightedText text={firstExample.translation_id} />
                       </p>
@@ -224,7 +225,7 @@ export function FlashcardRecallCard({
       <div className="space-y-2.5">
         <p className="text-xs font-semibold uppercase tracking-wider text-[#8E8E93] px-1">
           {lang === "en"
-            ? "Select the most accurate Indonesian meaning:"
+            ? "Select the most accurate meaning:"
             : "Pilih arti Bahasa Indonesia yang paling tepat:"}
         </p>
         <div className="grid grid-cols-1 gap-2.5">

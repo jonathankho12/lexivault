@@ -7,6 +7,7 @@ import type {
   WordEntry,
 } from "@/types/lexivault";
 import { isLocalOnlyUserId } from "@/lib/auth";
+import { cacheWordMeanings, resolveWordMeanings } from "@/lib/bilingualCache";
 import { getMasteryRankInfo } from "@/lib/gamification";
 import { buildInitialMockWords } from "@/lib/mockData";
 import {
@@ -15,7 +16,7 @@ import {
 } from "@/lib/pronunciation";
 import { calculateSm2Next } from "@/lib/sm2";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
-import { isValidUuid } from "@/lib/utils";
+import { isValidUuid, normalizeSourceTag } from "@/lib/utils";
 
 function getScopedSupabase(userId: string) {
   if (isLocalOnlyUserId(userId) || !isSupabaseConfigured()) return null;
@@ -37,17 +38,48 @@ function safeParseJson<T>(raw: string | null): T | null {
   }
 }
 
-function hydrateWordPronunciation(word: WordEntry): WordEntry {
-  const resolved = resolveWordPronunciation(
+function hydrateWordMetadata(word: WordEntry): WordEntry {
+  const resolvedPron = resolveWordPronunciation(
     word.term,
     word.pronunciation,
     word.ipa
   );
-  if (!resolved.pronunciation && !resolved.ipa) return word;
+  const resolvedMeanings = resolveWordMeanings(
+    word.term,
+    word.meaning_id,
+    word.meaning_en,
+    word.cefr
+  );
   return {
     ...word,
-    pronunciation: resolved.pronunciation ?? undefined,
-    ipa: resolved.ipa ?? undefined,
+    pronunciation: resolvedPron.pronunciation ?? undefined,
+    ipa: resolvedPron.ipa ?? undefined,
+    meaning_id: resolvedMeanings.meaning_id,
+    meaning_en: resolvedMeanings.meaning_en,
+    cefr: resolvedMeanings.cefr,
+    source_tag: normalizeSourceTag(word.source_tag),
+  };
+}
+
+function hydrateDiscoveryMetadata(item: DiscoveryItem): DiscoveryItem {
+  const resolvedPron = resolveWordPronunciation(
+    item.term,
+    item.pronunciation,
+    item.ipa
+  );
+  const resolvedMeanings = resolveWordMeanings(
+    item.term,
+    item.meaning_id,
+    item.meaning_en,
+    item.cefr
+  );
+  return {
+    ...item,
+    pronunciation: resolvedPron.pronunciation ?? undefined,
+    ipa: resolvedPron.ipa ?? undefined,
+    meaning_id: resolvedMeanings.meaning_id,
+    meaning_en: resolvedMeanings.meaning_en,
+    cefr: resolvedMeanings.cefr,
   };
 }
 
@@ -69,7 +101,7 @@ function readLocalWords(todayStr: string, userId: string): WordEntry[] {
   }
 
   const parsed = safeParseJson<WordEntry[]>(raw);
-  return Array.isArray(parsed) ? parsed.map(hydrateWordPronunciation) : [];
+  return Array.isArray(parsed) ? parsed.map(hydrateWordMetadata) : [];
 }
 
 function writeLocalWords(words: WordEntry[], userId: string): void {
@@ -162,9 +194,7 @@ export async function loadInitialData(
       }
 
       return {
-        words: ((wordsRes.data as WordEntry[]) ?? []).map(
-          hydrateWordPronunciation
-        ),
+        words: ((wordsRes.data as WordEntry[]) ?? []).map(hydrateWordMetadata),
         studyLogs: (logsRes.data as StudyLog[]) ?? [],
         syncMode: "supabase",
       };
@@ -184,12 +214,36 @@ export async function loadInitialData(
   };
 }
 
+export async function seedStarterWordsForSupabaseUser(
+  todayStr: string,
+  userId: string
+): Promise<void> {
+  const supabase = getScopedSupabase(userId);
+  if (!supabase) return;
+  try {
+    const { count } = await supabase
+      .from("words")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId);
+    if ((count ?? 0) > 0) return;
+
+    const starters = buildInitialMockWords(todayStr);
+    for (const starter of starters) {
+      await saveWordEntry(starter, userId);
+    }
+  } catch (err) {
+    console.error("[LexiVault] Starter seed skipped:", err);
+  }
+}
+
 export async function saveWordEntry(
   word: WordEntry,
   userId: string
 ): Promise<WordEntry> {
   cacheWordPronunciation(word.term, word.pronunciation, word.ipa);
+  cacheWordMeanings(word.term, word.meaning_en, word.meaning_id, word.cefr);
 
+  const canonicalSource = normalizeSourceTag(word.source_tag);
   const supabase = getScopedSupabase(userId);
   if (supabase) {
     try {
@@ -203,7 +257,7 @@ export async function saveWordEntry(
         antonyms: word.antonyms,
         word_families_json: word.word_families_json,
         register: word.register,
-        source_tag: word.source_tag,
+        source_tag: canonicalSource,
         audio_us_url: word.audio_us_url ?? null,
         audio_uk_url: word.audio_uk_url ?? null,
         correct_count: word.correct_count,
@@ -218,6 +272,7 @@ export async function saveWordEntry(
         ...basePayload,
         pronunciation: word.pronunciation ?? null,
         ipa: word.ipa ?? null,
+        meaning_en: word.meaning_en ?? null,
       };
 
       let { data, error } = await supabase
@@ -226,7 +281,22 @@ export async function saveWordEntry(
         .select("*")
         .single();
 
-      // Gracefully retry without pronunciation/ipa columns if remote DB schema hasn't added them yet
+      // Gracefully retry without meaning_en if DB has pronunciation/ipa only
+      if (error) {
+        const midRetry = await supabase
+          .from("words")
+          .insert({
+            ...basePayload,
+            pronunciation: word.pronunciation ?? null,
+            ipa: word.ipa ?? null,
+          })
+          .select("*")
+          .single();
+        data = midRetry.data;
+        error = midRetry.error;
+      }
+
+      // Gracefully retry base payload if remote DB schema hasn't added optional columns yet
       if (error) {
         const retry = await supabase
           .from("words")
@@ -238,19 +308,25 @@ export async function saveWordEntry(
       }
 
       if (!error && data) {
-        return hydrateWordPronunciation({
+        return hydrateWordMetadata({
           ...(data as WordEntry),
           pronunciation: (data as WordEntry).pronunciation || word.pronunciation,
           ipa: (data as WordEntry).ipa || word.ipa,
+          meaning_en: (data as WordEntry).meaning_en || word.meaning_en,
+          cefr: (data as WordEntry).cefr || word.cefr,
         });
       }
-    } catch {
-      // Fallback to local
+      if (error) {
+        console.error("[LexiVault] Supabase saveWordEntry error:", error.message);
+      }
+    } catch (err) {
+      console.error("[LexiVault] Supabase saveWordEntry exception:", err);
     }
   }
 
-  const scopedWord: WordEntry = hydrateWordPronunciation({
+  const scopedWord: WordEntry = hydrateWordMetadata({
     ...word,
+    source_tag: canonicalSource,
     user_id: userId,
   });
   const current = readLocalWords(scopedWord.created_at.slice(0, 10), userId);
@@ -267,6 +343,7 @@ export async function updateWordEntry(
   userId: string
 ): Promise<WordEntry> {
   cacheWordPronunciation(word.term, word.pronunciation, word.ipa);
+  cacheWordMeanings(word.term, word.meaning_en, word.meaning_id, word.cefr);
 
   const supabase = getScopedSupabase(userId);
   if (supabase && isValidUuid(word.id)) {
@@ -287,11 +364,28 @@ export async function updateWordEntry(
           ...basePatch,
           pronunciation: word.pronunciation ?? null,
           ipa: word.ipa ?? null,
+          meaning_en: word.meaning_en ?? null,
         })
         .eq("id", word.id)
         .eq("user_id", userId)
         .select("*")
         .single();
+
+      if (error) {
+        const midRetry = await supabase
+          .from("words")
+          .update({
+            ...basePatch,
+            pronunciation: word.pronunciation ?? null,
+            ipa: word.ipa ?? null,
+          })
+          .eq("id", word.id)
+          .eq("user_id", userId)
+          .select("*")
+          .single();
+        data = midRetry.data;
+        error = midRetry.error;
+      }
 
       if (error) {
         const retry = await supabase
@@ -306,18 +400,20 @@ export async function updateWordEntry(
       }
 
       if (!error && data) {
-        return hydrateWordPronunciation({
+        return hydrateWordMetadata({
           ...(data as WordEntry),
           pronunciation: (data as WordEntry).pronunciation || word.pronunciation,
           ipa: (data as WordEntry).ipa || word.ipa,
+          meaning_en: (data as WordEntry).meaning_en || word.meaning_en,
+          cefr: (data as WordEntry).cefr || word.cefr,
         });
       }
-    } catch {
-      // Fallback to local
+    } catch (err) {
+      console.error("[LexiVault] Supabase updateWordEntry exception:", err);
     }
   }
 
-  const scoped: WordEntry = hydrateWordPronunciation({
+  const scoped: WordEntry = hydrateWordMetadata({
     ...word,
     user_id: userId,
   });
@@ -898,7 +994,9 @@ export async function loadDailyDiscovery(
       if (data && Array.isArray(data.items_json) && data.items_json.length > 0) {
         return {
           discovery_date: dateStr,
-          items: data.items_json as DiscoveryItem[],
+          items: (data.items_json as DiscoveryItem[]).map(
+            hydrateDiscoveryMetadata
+          ),
           source: "supabase",
         };
       }
@@ -907,7 +1005,12 @@ export async function loadDailyDiscovery(
     }
   }
 
-  return readLocalDiscoveryCache(dateStr, userId);
+  const cached = readLocalDiscoveryCache(dateStr, userId);
+  if (!cached) return null;
+  return {
+    ...cached,
+    items: cached.items.map(hydrateDiscoveryMetadata),
+  };
 }
 
 export async function saveDailyDiscovery(
@@ -958,7 +1061,10 @@ export function subscribeRealtimeSync(
             .select("*")
             .eq("user_id", userId)
             .order("created_at", { ascending: false });
-          if (data) callbacks.onWordsRefresh(data as WordEntry[]);
+          if (data)
+            callbacks.onWordsRefresh(
+              (data as WordEntry[]).map(hydrateWordMetadata)
+            );
         }
       )
       .on(

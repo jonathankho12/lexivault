@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Sparkles,
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { FALLBACK_WRITING_PACKS } from "@/lib/ieltsMockData";
 import { saveSkillAttempt } from "@/lib/ieltsStorage";
@@ -30,7 +31,13 @@ import type {
   WritingTaskPack,
 } from "@/types/ielts";
 
-function Task1ChartBlock({ data }: { data: WritingChartData }) {
+function Task1ChartBlock({
+  data,
+  isEn,
+}: {
+  data: WritingChartData;
+  isEn: boolean;
+}) {
   const maxVal = useMemo(() => {
     const all = data.rows.flatMap((r) => r.values);
     return Math.max(10, ...all);
@@ -105,7 +112,9 @@ function Task1ChartBlock({ data }: { data: WritingChartData }) {
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-white/[0.1] text-[#8E8E93]">
-              <th className="py-2 pr-3 font-medium">Periode</th>
+              <th className="py-2 pr-3 font-medium">
+                {isEn ? "Period" : "Periode"}
+              </th>
               {data.columns.map((col) => (
                 <th key={col} className="py-2 px-2 font-medium">
                   {col}
@@ -141,6 +150,8 @@ export function IeltsWritingPanel({
   onProfileUpdated: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
 }) {
   const { user, todayStr, syncExternalStudyLog } = useLexiVault();
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
 
   const [taskType, setTaskType] = useState<"task1" | "task2">("task2");
   const [pack, setPack] = useState<WritingTaskPack>(
@@ -256,9 +267,13 @@ export function IeltsWritingPanel({
         onProfileUpdated(saved.profile, saved.attempts);
         syncExternalStudyLog(saved.updatedLog, saved.newXp);
       }
-    } catch {
-      setErrorMsg("Gagal menilai esai. Coba kirim ulang.");
-    } finally {
+      } catch {
+        setErrorMsg(
+          isEn
+            ? "Failed to evaluate essay. Please try submitting again."
+            : "Gagal menilai esai. Coba kirim ulang."
+        );
+      } finally {
       setGrading(false);
     }
   };
@@ -301,7 +316,15 @@ export function IeltsWritingPanel({
             <button
               type="button"
               onClick={() => setTimerActive((v) => !v)}
-              aria-label={timerActive ? "Jeda timer" : "Mulai timer"}
+              aria-label={
+                timerActive
+                  ? isEn
+                    ? "Pause timer"
+                    : "Jeda timer"
+                  : isEn
+                    ? "Start timer"
+                    : "Mulai timer"
+              }
               className="ml-1 text-[#70BCFF] hover:text-white cursor-pointer"
             >
               {timerActive ? (
@@ -335,7 +358,15 @@ export function IeltsWritingPanel({
             ) : (
               <Sparkles className="h-3.5 w-3.5" />
             )}
-            <span>{generating ? "Membuat..." : "Generate Soal Baru (AI)"}</span>
+            <span>
+              {generating
+                ? isEn
+                  ? "Generating..."
+                  : "Membuat..."
+                : isEn
+                  ? "Generate New Prompt (AI)"
+                  : "Generate Soal Baru (AI)"}
+            </span>
           </motion.button>
         </div>
       </div>
@@ -351,7 +382,7 @@ export function IeltsWritingPanel({
           </p>
         </div>
 
-        {pack.chartData && <Task1ChartBlock data={pack.chartData} />}
+        {pack.chartData && <Task1ChartBlock data={pack.chartData} isEn={isEn} />}
 
         {/* Outline Tips Accordion */}
         <div>
@@ -360,7 +391,15 @@ export function IeltsWritingPanel({
             onClick={() => setShowTips((v) => !v)}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#70BCFF] hover:text-white cursor-pointer"
           >
-            <span>{showTips ? "Sembunyikan" : "Lihat"} Outline Tips</span>
+            <span>
+              {showTips
+                ? isEn
+                  ? "Hide Outline Tips"
+                  : "Sembunyikan Outline Tips"
+                : isEn
+                  ? "Show Outline Tips"
+                  : "Lihat Outline Tips"}
+            </span>
             {showTips ? (
               <ChevronUp className="h-3.5 w-3.5" />
             ) : (
@@ -382,7 +421,9 @@ export function IeltsWritingPanel({
       <div className="liquid-glass rounded-3xl p-4 sm:p-5 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-medium text-[#8E8E93]">
-            Tulis jawaban akademikmu di bawah:
+            {isEn
+              ? "Write your academic response below:"
+              : "Tulis jawaban akademikmu di bawah:"}
           </span>
 
           <span
@@ -394,7 +435,8 @@ export function IeltsWritingPanel({
             )}
           >
             {targetMet && <CheckCircle2 className="h-3.5 w-3.5" />}
-            {wordCount} / {pack.minWords} kata minimal
+            {wordCount} / {pack.minWords}{" "}
+            {isEn ? "words minimum" : "kata minimal"}
           </span>
         </div>
 
@@ -403,9 +445,15 @@ export function IeltsWritingPanel({
           value={essay}
           onChange={(e) => setEssay(e.target.value)}
           disabled={grading}
-          placeholder={`Mulai menulis ${
-            pack.taskType === "task1" ? "laporan data Task 1" : "esai Task 2"
-          } (minimal ${pack.minWords} kata untuk hasil penilaian optimal)...`}
+          placeholder={
+            isEn
+              ? `Start writing your ${
+                  pack.taskType === "task1" ? "Task 1 data report" : "Task 2 essay"
+                } (minimum ${pack.minWords} words for accurate evaluation)...`
+              : `Mulai menulis ${
+                  pack.taskType === "task1" ? "laporan data Task 1" : "esai Task 2"
+                } (minimal ${pack.minWords} kata untuk hasil penilaian optimal)...`
+          }
           className="w-full resize-y rounded-2xl bg-black/35 border border-white/[0.1] p-4 text-base leading-relaxed text-[#F5F5F7] placeholder:text-[#8E8E93]/70 focus:outline-none focus:border-[#0A84FF]/60"
         />
 
@@ -413,8 +461,9 @@ export function IeltsWritingPanel({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-[11px] text-[#8E8E93]">
-            Dinilai berdasarkan 4 rubrik resmi IELTS menggunakan Gemini Pro
-            Examiner (auto-fallback Flash).
+            {isEn
+              ? "Graded across all 4 official IELTS criteria by Gemini Pro Examiner (with Flash fallback)."
+              : "Dinilai berdasarkan 4 rubrik resmi IELTS menggunakan Gemini Pro Examiner (auto-fallback Flash)."}
           </span>
 
           <motion.button
@@ -427,12 +476,18 @@ export function IeltsWritingPanel({
             {grading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>AI Examiner Menilai...</span>
+                <span>
+                  {isEn ? "AI Examiner Grading..." : "AI Examiner Menilai..."}
+                </span>
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />
-                <span>Nilai dengan AI Examiner</span>
+                <span>
+                  {isEn
+                    ? "Evaluate with AI Examiner"
+                    : "Nilai dengan AI Examiner"}
+                </span>
               </>
             )}
           </motion.button>
@@ -515,7 +570,7 @@ export function IeltsWritingPanel({
           {/* Examiner Summary */}
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-4 space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-              Evaluasi Examiner
+              {isEn ? "Examiner Evaluation" : "Evaluasi Examiner"}
             </p>
             <p className="text-sm leading-relaxed text-[#F5F5F7]">
               {grade.summary_id}
@@ -526,7 +581,9 @@ export function IeltsWritingPanel({
           {grade.sentence_upgrades.length > 0 && (
             <div className="space-y-2.5">
               <p className="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">
-                Koreksi &amp; Upgrade Kalimat ke C1/C2
+                {isEn
+                  ? "C1/C2 Sentence Upgrades"
+                  : "Koreksi & Upgrade Kalimat ke C1/C2"}
               </p>
               {grade.sentence_upgrades.map((up, idx) => (
                 <div
@@ -555,8 +612,12 @@ export function IeltsWritingPanel({
             >
               <span>
                 {showSample
-                  ? "Sembunyikan Referensi Band 8.5+"
-                  : "Lihat Contoh Revisi Band 8.5+"}
+                  ? isEn
+                    ? "Hide Band 8.5+ Model Response"
+                    : "Sembunyikan Referensi Band 8.5+"
+                  : isEn
+                    ? "View Band 8.5+ Model Response"
+                    : "Lihat Contoh Revisi Band 8.5+"}
               </span>
               {showSample ? (
                 <ChevronUp className="h-3.5 w-3.5" />

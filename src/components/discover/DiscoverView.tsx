@@ -31,6 +31,7 @@ import {
   cn,
   formatRegisterBadgeClass,
   formatTypeLabel,
+  getLocalizedMeaning,
   normalizeTermKey,
 } from "@/lib/utils";
 import type { DailyDiscoveryPack, DiscoveryItem } from "@/types/lexivault";
@@ -45,7 +46,7 @@ export function DiscoverView() {
     saveDiscoveryItemToVault,
     launchPractice,
   } = useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const { prefetchMany } = usePronunciation();
 
   const [pack, setPack] = useState<DailyDiscoveryPack | null>(null);
@@ -54,6 +55,8 @@ export function DiscoverView() {
   const [savingAll, setSavingAll] = useState(false);
   const wordsRef = useRef(words);
   wordsRef.current = words;
+  const langRef = useRef(lang);
+  langRef.current = lang;
 
   const savedTermKeys = useMemo(
     () => new Set(words.map((w) => normalizeTermKey(w.term))),
@@ -83,6 +86,7 @@ export function DiscoverView() {
           body: JSON.stringify({
             date: todayStr,
             existingTerms: wordsRef.current.slice(0, 40).map((w) => w.term),
+            lang: langRef.current,
           }),
         });
         if (!res.ok) throw new Error("Failed to load daily pack");
@@ -141,6 +145,7 @@ export function DiscoverView() {
         body: JSON.stringify({
           date: todayStr,
           existingTerms: words.slice(0, 40).map((w) => w.term),
+          lang,
         }),
       });
       if (res.ok && user) {
@@ -344,7 +349,7 @@ export function DiscoverView() {
 
                 {/* Meaning */}
                 <p className="text-sm leading-relaxed text-[#E5E5EA]">
-                  {item.meaning_id}
+                  {getLocalizedMeaning(item, lang)}
                 </p>
 
                 {/* Examples */}
@@ -367,7 +372,7 @@ export function DiscoverView() {
                         <p className="text-xs sm:text-[13px] leading-relaxed text-[#F5F5F7]">
                           <HighlightedText text={ex.sentence} />
                         </p>
-                        {ex.translation_id && (
+                        {lang === "id" && ex.translation_id && (
                           <p className="text-[11px] leading-relaxed text-[#8E8E93]">
                             <HighlightedText text={ex.translation_id} />
                           </p>

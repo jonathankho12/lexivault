@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import {
+  AlertCircle,
   ArrowRight,
   CheckCircle2,
   Loader2,
@@ -11,9 +12,14 @@ import {
 } from "lucide-react";
 import { AudioButton } from "@/components/ui/AudioButton";
 import { PronunciationText } from "@/components/ui/PronunciationText";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
-import { cn, formatRegisterBadgeClass } from "@/lib/utils";
+import {
+  cn,
+  formatRegisterBadgeClass,
+  getLocalizedMeaning,
+} from "@/lib/utils";
 import type { PracticeQuestion, SentenceGradeResult } from "@/types/lexivault";
 
 export function SentenceMakerCard({
@@ -24,6 +30,9 @@ export function SentenceMakerCard({
   onComplete: (isCorrect: boolean) => void;
 }) {
   const { accent } = useLexiVault();
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
+
   const [sentence, setSentence] = useState("");
   const [isGrading, setIsGrading] = useState(false);
   const [grade, setGrade] = useState<SentenceGradeResult | null>(null);
@@ -45,10 +54,12 @@ export function SentenceMakerCard({
         body: JSON.stringify({
           term: word.term,
           meaning_id: word.meaning_id,
+          meaning_en: word.meaning_en,
           register: word.register,
           sentence: sentence.trim(),
           word_families: word.word_families_json,
           example_sentence: word.examples_json?.[0]?.sentence ?? "",
+          lang,
         }),
       });
 
@@ -56,11 +67,18 @@ export function SentenceMakerCard({
       const json = (await res.json()) as { result: SentenceGradeResult };
       setGrade(json.result);
     } catch {
-      setErrorMsg("Gagal mengevaluasi kalimat. Coba kirim ulang.");
+      setErrorMsg(
+        isEn
+          ? "Failed to evaluate sentence. Please try submitting again."
+          : "Gagal mengevaluasi kalimat. Coba kirim ulang."
+      );
     } finally {
       setIsGrading(false);
     }
   };
+
+  const isGoodVerdict =
+    grade?.verdict === "Cukup Baik" || grade?.verdict === "Good";
 
   return (
     <div className="space-y-5">
@@ -103,7 +121,7 @@ export function SentenceMakerCard({
             className="mt-1"
           />
           <p className="mt-1.5 text-sm text-[#D1D1D6] leading-relaxed">
-            {word.meaning_id}
+            {getLocalizedMeaning(word, lang)}
           </p>
         </div>
 
@@ -128,8 +146,17 @@ export function SentenceMakerCard({
             htmlFor="sentence-maker-input"
             className="block text-xs font-medium text-[#8E8E93] mb-2"
           >
-            Tulis 1 kalimat bahasa Inggris asli buatanmu menggunakan{" "}
-            <span className="text-white font-semibold">{word.term}</span>:
+            {isEn ? (
+              <>
+                Write 1 original English sentence using{" "}
+                <span className="text-white font-semibold">{word.term}</span>:
+              </>
+            ) : (
+              <>
+                Tulis 1 kalimat bahasa Inggris asli buatanmu menggunakan{" "}
+                <span className="text-white font-semibold">{word.term}</span>:
+              </>
+            )}
           </label>
           <textarea
             id="sentence-maker-input"
@@ -137,12 +164,24 @@ export function SentenceMakerCard({
             value={sentence}
             onChange={(e) => setSentence(e.target.value)}
             disabled={isGrading || Boolean(grade)}
-            placeholder={`Contoh: Write a natural sentence using "${word.term}"...`}
+            placeholder={
+              isEn
+                ? `e.g. Write a natural sentence using "${word.term}"...`
+                : `Contoh: Write a natural sentence using "${word.term}"...`
+            }
             className="w-full resize-none bg-transparent text-base text-[#F5F5F7] placeholder:text-[#8E8E93]/70 focus:outline-none"
           />
         </div>
 
-        {errorMsg && <p className="text-xs text-[#FF453A] px-1">{errorMsg}</p>}
+        {errorMsg && (
+          <div
+            role="alert"
+            className="inline-flex items-center gap-2 rounded-2xl bg-red-500/10 border border-red-500/30 px-3.5 py-2 text-xs text-red-400"
+          >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
 
         {!grade && (
           <div className="flex justify-end">
@@ -160,12 +199,16 @@ export function SentenceMakerCard({
               {isGrading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Menilai dengan AI...</span>
+                  <span>
+                    {isEn ? "Evaluating with AI..." : "Menilai dengan AI..."}
+                  </span>
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
-                  <span>Cek Kualitas Kalimat</span>
+                  <span>
+                    {isEn ? "Check Sentence Quality" : "Cek Kualitas Kalimat"}
+                  </span>
                 </>
               )}
             </motion.button>
@@ -193,7 +236,7 @@ export function SentenceMakerCard({
                   "rounded-full px-3 py-1 text-xs font-bold border",
                   grade.verdict === "Natural"
                     ? "bg-[#30D158]/20 border-[#30D158]/40 text-[#7CF099]"
-                    : grade.verdict === "Cukup Baik"
+                    : isGoodVerdict
                       ? "bg-[#FF9F0A]/20 border-[#FF9F0A]/40 text-[#FFD18C]"
                       : "bg-[#FF453A]/20 border-[#FF453A]/40 text-[#FFB4AE]"
                 )}
@@ -210,7 +253,7 @@ export function SentenceMakerCard({
           <div className="rounded-2xl bg-[#0A84FF]/10 border border-[#0A84FF]/25 p-4 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF]">
-                Versi Lebih Native
+                {isEn ? "More Native Rewrite" : "Versi Lebih Native"}
               </span>
               <AudioButton text={grade.native_rewrite} size="sm" />
             </div>
@@ -221,7 +264,9 @@ export function SentenceMakerCard({
 
           {grade.tip && (
             <p className="text-xs text-[#8E8E93]">
-              <span className="font-semibold text-[#F5F5F7]">Tips: </span>
+              <span className="font-semibold text-[#F5F5F7]">
+                {isEn ? "Tip: " : "Tips: "}
+              </span>
               {grade.tip}
             </p>
           )}
@@ -233,7 +278,7 @@ export function SentenceMakerCard({
               onClick={() => onComplete(grade.is_correct)}
               className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
             >
-              <span>Lanjut</span>
+              <span>{isEn ? "Next" : "Lanjut"}</span>
               <ArrowRight className="h-4 w-4" />
             </motion.button>
           </div>

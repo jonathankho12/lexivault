@@ -19,7 +19,8 @@ export function CefrProgressBanner({
   profile: IeltsProfile;
   onRetakePlacement: () => void;
 }) {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const isEn = lang === "en";
   const hasScore = profile.placement_completed || profile.estimated_band > 0;
   const pct = hasScore ? bandToCefrPercent(profile.estimated_band) : 0;
 
@@ -127,8 +128,9 @@ export function CefrProgressBanner({
         <div className="flex items-center gap-2 text-xs text-[#8E8E93]">
           <Sparkles className="h-3.5 w-3.5 text-[#0A84FF] shrink-0" />
           <span>
-            Selesaikan Quick Placement Test (3–5 menit) atau salah satu modul
-            IELTS untuk menghitung Band &amp; level CEFR awalmu.
+            {isEn
+              ? "Complete the Quick Placement Test (3–5 minutes) or any IELTS module to calculate your starting Band and CEFR level."
+              : "Selesaikan Quick Placement Test (3–5 menit) atau salah satu modul IELTS untuk menghitung Band & level CEFR awalmu."}
           </span>
         </div>
       )}

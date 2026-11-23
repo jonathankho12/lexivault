@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertCircle,
   BookOpen,
   CheckCircle2,
   Layers,
@@ -22,18 +23,23 @@ import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   cn,
   formatRegisterBadgeClass,
+  formatSourceTagLabel,
   formatTypeLabel,
+  getLocalizedMeaning,
   getWordAccuracy,
 } from "@/lib/utils";
 
 export function WordDetailSheet() {
   const { selectedWord, setSelectedWord, removeWord, refreshWordWithAI } =
     useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const { prefetchMany } = usePronunciation();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [refreshingAI, setRefreshingAI] = useState(false);
-  const [aiStatusMsg, setAiStatusMsg] = useState<string | null>(null);
+  const [aiStatusMsg, setAiStatusMsg] = useState<{
+    text: string;
+    isError: boolean;
+  } | null>(null);
 
   useEffect(() => {
     setConfirmDelete(false);
@@ -89,7 +95,11 @@ export function WordDetailSheet() {
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label={`Detail untuk ${selectedWord.term}`}
+            aria-label={
+              lang === "en"
+                ? `Details for ${selectedWord.term}`
+                : `Detail untuk ${selectedWord.term}`
+            }
             initial={{ opacity: 0, y: 48 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 36 }}
@@ -114,9 +124,14 @@ export function WordDetailSheet() {
                   >
                     {selectedWord.register}
                   </span>
+                  {selectedWord.cefr && (
+                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 text-[#C8C6FF]">
+                      {selectedWord.cefr}
+                    </span>
+                  )}
                   <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] text-[#8E8E93] bg-white/[0.05] border border-white/[0.08]">
                     <Tag className="h-3 w-3" />
-                    {selectedWord.source_tag || "Umum"}
+                    {formatSourceTagLabel(selectedWord.source_tag, lang)}
                   </span>
                 </div>
 
@@ -172,13 +187,26 @@ export function WordDetailSheet() {
                   const res = await refreshWordWithAI(selectedWord.id);
                   setRefreshingAI(false);
                   if (res.ok) {
-                    setAiStatusMsg(
-                      res.source === "gemini"
-                        ? "Diperbarui oleh Gemini AI"
-                        : "Diperbarui dari kamus fallback"
-                    );
+                    setAiStatusMsg({
+                      isError: false,
+                      text:
+                        res.source === "gemini"
+                          ? lang === "en"
+                            ? "Updated by Gemini AI"
+                            : "Diperbarui oleh Gemini AI"
+                          : lang === "en"
+                            ? "Updated from offline dictionary"
+                            : "Diperbarui dari kamus fallback",
+                    });
                   } else {
-                    setAiStatusMsg(res.error || "Failed to refresh");
+                    setAiStatusMsg({
+                      isError: true,
+                      text:
+                        res.error ||
+                        (lang === "en"
+                          ? "Failed to refresh details."
+                          : "Gagal memperbarui detail."),
+                    });
                   }
                 }}
                 className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-[#0A84FF]/15 border border-[#0A84FF]/35 text-[#70BCFF] hover:bg-[#0A84FF]/25 cursor-pointer disabled:opacity-60"
@@ -214,9 +242,22 @@ export function WordDetailSheet() {
             </div>
 
             {aiStatusMsg && (
-              <p className="mt-2 text-[11px] font-medium text-[#7CF099]">
-                {aiStatusMsg}
-              </p>
+              <div
+                role={aiStatusMsg.isError ? "alert" : "status"}
+                className={cn(
+                  "mt-2.5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium",
+                  aiStatusMsg.isError
+                    ? "bg-red-500/10 border-red-500/30 text-red-400"
+                    : "bg-[#30D158]/15 border-[#30D158]/35 text-[#7CF099]"
+                )}
+              >
+                {aiStatusMsg.isError ? (
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <span>{aiStatusMsg.text}</span>
+              </div>
             )}
 
             {/* Meaning */}
@@ -225,7 +266,7 @@ export function WordDetailSheet() {
                 {t.wordDetail.meaningTitle}
               </p>
               <p className="text-[15px] leading-relaxed text-[#F5F5F7]">
-                {selectedWord.meaning_id}
+                {getLocalizedMeaning(selectedWord, lang)}
               </p>
             </div>
 
@@ -253,7 +294,7 @@ export function WordDetailSheet() {
                     <p className="text-sm leading-relaxed text-[#F5F5F7]">
                       <HighlightedText text={ex.sentence} />
                     </p>
-                    {ex.translation_id && (
+                    {lang === "id" && ex.translation_id && (
                       <p className="text-xs leading-relaxed text-[#8E8E93]">
                         <HighlightedText text={ex.translation_id} />
                       </p>

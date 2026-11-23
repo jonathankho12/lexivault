@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertCircle,
   Check,
   CheckCircle2,
   FileText,
@@ -15,20 +16,15 @@ import { useLexiVault } from "@/context/LexiVaultContext";
 import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
 import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
+  CANONICAL_SOURCE_TAGS,
   cn,
   formatRegisterBadgeClass,
+  formatSourceTagLabel,
   formatTypeLabel,
+  getLocalizedMeaning,
   normalizeTermKey,
 } from "@/lib/utils";
 import type { ExtractedVocabItem, SourceTag } from "@/types/lexivault";
-
-const SOURCE_OPTIONS: SourceTag[] = [
-  "Artikel",
-  "Buku",
-  "Kuliah",
-  "Film",
-  "Umum",
-];
 
 export function TextExtractorSheet({
   open,
@@ -38,10 +34,10 @@ export function TextExtractorSheet({
   onClose: () => void;
 }) {
   const { words, addExtractedWordsBatch } = useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
 
   const [rawText, setRawText] = useState("");
-  const [sourceTag, setSourceTag] = useState<SourceTag>("Artikel");
+  const [sourceTag, setSourceTag] = useState<SourceTag>("article");
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState<ExtractedVocabItem[]>([]);
@@ -67,6 +63,7 @@ export function TextExtractorSheet({
         body: JSON.stringify({
           text: rawText.trim(),
           sourceTag,
+          lang,
         }),
       });
       if (!res.ok) throw new Error("Extraction failed");
@@ -143,7 +140,7 @@ export function TextExtractorSheet({
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label="Ekstrak Kosakata dari Teks"
+            aria-label={t.extractor.title}
             initial={{ opacity: 0, y: 48 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 36 }}
@@ -182,7 +179,7 @@ export function TextExtractorSheet({
               <span className="text-xs text-[#8E8E93] mr-1 shrink-0">
                 {t.extractor.sourceLabel}:
               </span>
-              {SOURCE_OPTIONS.map((tag) => (
+              {CANONICAL_SOURCE_TAGS.map((tag) => (
                 <button
                   key={tag}
                   type="button"
@@ -194,7 +191,7 @@ export function TextExtractorSheet({
                       : "bg-white/[0.04] border-white/[0.09] text-[#8E8E93]"
                   )}
                 >
-                  {tag}
+                  {formatSourceTagLabel(tag, lang)}
                 </button>
               ))}
             </div>
@@ -244,9 +241,13 @@ export function TextExtractorSheet({
             </div>
 
             {errorMsg && (
-              <p className="rounded-2xl bg-[#FF453A]/15 border border-[#FF453A]/35 px-3.5 py-2 text-xs text-[#FFB4AE]">
-                {errorMsg}
-              </p>
+              <div
+                role="alert"
+                className="flex items-center gap-2 rounded-2xl bg-red-500/10 border border-red-500/30 px-3.5 py-2.5 text-xs text-red-400"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
             )}
 
             {savedCount !== null && (
@@ -333,7 +334,7 @@ export function TextExtractorSheet({
                             )}
                           </div>
                           <p className="text-xs text-[#D1D1D6] leading-snug">
-                            {item.meaning_id}
+                            {getLocalizedMeaning(item, lang)}
                           </p>
                         </div>
                       </div>

@@ -59,7 +59,7 @@ export function PracticeView() {
     clearCommuteLaunch,
     isHydrated,
   } = useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const { prefetchMany } = usePronunciation();
 
   const [phase, setPhase] = useState<"launcher" | "active" | "summary" | "commute">(
@@ -77,13 +77,13 @@ export function PracticeView() {
     (mode: PracticeMode, customItems?: DiscoveryItem[]) => {
       let generated: PracticeQuestion[] = [];
       if (mode === "smart_mix") {
-        generated = buildSmartMixSession(words, 20);
+        generated = buildSmartMixSession(words, 20, lang);
       } else if (mode === "full_marathon") {
-        generated = buildFullMarathonSession(words);
+        generated = buildFullMarathonSession(words, lang);
       } else if (mode === "weakest_drill") {
-        generated = buildWeakestDrillSession(words);
+        generated = buildWeakestDrillSession(words, lang);
       } else if (mode === "daily_mini" && customItems) {
-        generated = buildDailyMiniQuizSession(customItems, words);
+        generated = buildDailyMiniQuizSession(customItems, words, lang);
       }
 
       if (generated.length === 0) return;
@@ -96,7 +96,7 @@ export function PracticeView() {
       setCombo(0);
       setPhase("active");
     },
-    [words]
+    [lang, words]
   );
 
   // React to external launches (e.g. "Drill Weakest Words" from Stats or "Mini-Quiz" from Discover)

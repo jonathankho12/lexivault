@@ -1,16 +1,24 @@
+import type { AppLanguage } from "@/lib/i18n";
+import { getLocalizedMeaning, getWeakestWords } from "@/lib/utils";
 import type {
   DiscoveryItem,
   PracticeQuestion,
   QuestionKind,
   WordEntry,
 } from "@/types/lexivault";
-import { getWeakestWords } from "@/lib/utils";
 
-const FALLBACK_MEANING_DISTRACTORS = [
+const FALLBACK_MEANING_DISTRACTORS_ID = [
   "Melakukan sesuatu secara tergesa-gesa tanpa pertimbangan jangka panjang.",
   "Keadaan ketika dua pihak menolak berkompromi dalam situasi mendesak.",
   "Kebiasaan menjaga rutinitas lama meskipun lingkungan sudah berubah drastis.",
   "Upaya menyembunyikan informasi penting agar terhindar dari kritik publik.",
+];
+
+const FALLBACK_MEANING_DISTRACTORS_EN = [
+  "Acting hastily without considering the long-term consequences of a decision.",
+  "A deadlock in which two sides refuse to compromise despite urgent pressure.",
+  "Clinging rigidly to outdated habits even after circumstances have shifted.",
+  "Deliberately concealing inconvenient details to avoid public criticism.",
 ];
 
 const FALLBACK_TERM_DISTRACTORS = [
@@ -35,19 +43,28 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildFillBlankPrompt(word: WordEntry): {
+function buildFillBlankPrompt(
+  word: WordEntry,
+  lang: AppLanguage
+): {
   blankSentence: string;
   blankTarget: string;
   blankTranslation: string;
 } {
+  const localizedMeaning = getLocalizedMeaning(word, lang);
   const sample = word.examples_json?.[0];
   if (!sample) {
     return {
       blankSentence: `We often encounter the expression "_____" when discussing ${word.register.toLowerCase()} topics.`,
       blankTarget: word.term,
-      blankTranslation: word.meaning_id,
+      blankTranslation: localizedMeaning,
     };
   }
+
+  const clueText =
+    lang === "en"
+      ? localizedMeaning
+      : sample.translation_id.replace(/\*\*/g, "") || localizedMeaning;
 
   const boldMatch = sample.sentence.match(/\*\*(.+?)\*\*/);
   if (boldMatch && boldMatch[1]) {
@@ -58,7 +75,7 @@ function buildFillBlankPrompt(word: WordEntry): {
     return {
       blankSentence,
       blankTarget: target,
-      blankTranslation: sample.translation_id.replace(/\*\*/g, ""),
+      blankTranslation: clueText,
     };
   }
 
@@ -68,14 +85,14 @@ function buildFillBlankPrompt(word: WordEntry): {
     return {
       blankSentence: sample.sentence.replace(regex, "_____"),
       blankTarget: matched,
-      blankTranslation: sample.translation_id.replace(/\*\*/g, ""),
+      blankTranslation: clueText,
     };
   }
 
   return {
-    blankSentence: `In context: "_____" — (${word.meaning_id})`,
+    blankSentence: `In context: "_____" — (${localizedMeaning})`,
     blankTarget: word.term,
-    blankTranslation: sample.translation_id.replace(/\*\*/g, ""),
+    blankTranslation: clueText,
   };
 }
 
@@ -83,37 +100,47 @@ function createQuestionForWord(
   word: WordEntry,
   kind: QuestionKind,
   pool: WordEntry[],
-  index: number
+  index: number,
+  lang: AppLanguage
 ): PracticeQuestion {
   const id = `q-${index}-${word.id}-${kind}`;
 
   if (kind === "flashcard") {
+    const targetMeaning = getLocalizedMeaning(word, lang);
+    const fallbackDistractors =
+      lang === "en"
+        ? FALLBACK_MEANING_DISTRACTORS_EN
+        : FALLBACK_MEANING_DISTRACTORS_ID;
     const otherMeanings = shuffleArray(
       pool
-        .filter((item) => item.id !== word.id && item.meaning_id !== word.meaning_id)
-        .map((item) => item.meaning_id)
+        .filter((item) => item.id !== word.id)
+        .map((item) => getLocalizedMeaning(item, lang))
+        .filter((m) => m && m !== targetMeaning)
     );
-    const distractors = [...otherMeanings, ...FALLBACK_MEANING_DISTRACTORS].slice(
-      0,
-      3
-    );
-    const choices = shuffleArray([word.meaning_id, ...distractors]);
+    const distractors = [...otherMeanings, ...fallbackDistractors]
+      .filter((m) => m !== targetMeaning)
+      .slice(0, 3);
+    const choices = shuffleArray([targetMeaning, ...distractors]);
 
     return {
       id,
       word,
       kind,
       choices,
-      correctChoice: word.meaning_id,
+      correctChoice: targetMeaning,
     };
   }
 
   if (kind === "fill_blank") {
     const { blankSentence, blankTarget, blankTranslation } =
-      buildFillBlankPrompt(word);
+      buildFillBlankPrompt(word, lang);
     const otherTerms = shuffleArray(
       pool
-        .filter((item) => item.id !== word.id && item.term.toLowerCase() !== word.term.toLowerCase())
+        .filter(
+          (item) =>
+            item.id !== word.id &&
+            item.term.toLowerCase() !== word.term.toLowerCase()
+        )
         .map((item) => item.term)
     );
     const distractors = [...otherTerms, ...FALLBACK_TERM_DISTRACTORS]
@@ -140,8 +167,11 @@ function createQuestionForWord(
   };
 }
 
-function assignQuestionKinds(words: WordEntry[], pool: WordEntry[]): PracticeQuestion[] {
-  // Cycle across all 3 core exercise types while guaranteeing make_sentence appears regularly
+function assignQuestionKinds(
+  words: WordEntry[],
+  pool: WordEntry[],
+  lang: AppLanguage
+): PracticeQuestion[] {
   const pattern: QuestionKind[] = [
     "flashcard",
     "fill_blank",
@@ -151,13 +181,14 @@ function assignQuestionKinds(words: WordEntry[], pool: WordEntry[]): PracticeQue
   ];
 
   return words.map((word, idx) =>
-    createQuestionForWord(word, pattern[idx % pattern.length], pool, idx)
+    createQuestionForWord(word, pattern[idx % pattern.length], pool, idx, lang)
   );
 }
 
 export function buildSmartMixSession(
   words: WordEntry[],
-  maxCount = 20
+  maxCount = 20,
+  lang: AppLanguage = "id"
 ): PracticeQuestion[] {
   if (words.length === 0) return [];
 
@@ -180,18 +211,26 @@ export function buildSmartMixSession(
   });
 
   scored.sort((a, b) => b.priority - a.priority);
-  const selected = scored.slice(0, Math.min(maxCount, scored.length)).map((s) => s.word);
+  const selected = scored
+    .slice(0, Math.min(maxCount, scored.length))
+    .map((s) => s.word);
 
-  return assignQuestionKinds(shuffleArray(selected), words);
+  return assignQuestionKinds(shuffleArray(selected), words, lang);
 }
 
-export function buildFullMarathonSession(words: WordEntry[]): PracticeQuestion[] {
+export function buildFullMarathonSession(
+  words: WordEntry[],
+  lang: AppLanguage = "id"
+): PracticeQuestion[] {
   if (words.length === 0) return [];
   const shuffled = shuffleArray(words);
-  return assignQuestionKinds(shuffled, words);
+  return assignQuestionKinds(shuffled, words, lang);
 }
 
-export function buildWeakestDrillSession(words: WordEntry[]): PracticeQuestion[] {
+export function buildWeakestDrillSession(
+  words: WordEntry[],
+  lang: AppLanguage = "id"
+): PracticeQuestion[] {
   if (words.length === 0) return [];
   const weakest = getWeakestWords(words, 15);
   const targetPool =
@@ -201,31 +240,34 @@ export function buildWeakestDrillSession(words: WordEntry[]): PracticeQuestion[]
           .sort((a, b) => a.correct_count - b.correct_count)
           .slice(0, Math.min(10, words.length));
 
-  return assignQuestionKinds(shuffleArray(targetPool), words);
+  return assignQuestionKinds(shuffleArray(targetPool), words, lang);
 }
 
 export function buildDailyMiniQuizSession(
   items: DiscoveryItem[],
-  vaultWords: WordEntry[]
+  vaultWords: WordEntry[],
+  lang: AppLanguage = "id"
 ): PracticeQuestion[] {
   const asWords: WordEntry[] = items.map((item) => ({
     id: item.id,
     term: item.term,
     pronunciation: item.pronunciation,
     ipa: item.ipa,
+    cefr: item.cefr,
     type: item.type,
     meaning_id: item.meaning_id,
+    meaning_en: item.meaning_en,
     examples_json: item.examples_json,
     synonyms: item.synonyms,
     antonyms: item.antonyms,
     word_families_json: item.word_families_json,
     register: item.register,
-    source_tag: item.source_tag ?? "Discover",
+    source_tag: item.source_tag ?? "discover",
     correct_count: 0,
     wrong_count: 0,
     created_at: new Date().toISOString(),
   }));
 
   const combinedPool = [...asWords, ...vaultWords];
-  return assignQuestionKinds(asWords, combinedPool);
+  return assignQuestionKinds(asWords, combinedPool, lang);
 }

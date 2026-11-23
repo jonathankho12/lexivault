@@ -10,11 +10,13 @@ import { PracticeView } from "@/components/practice/PracticeView";
 import { StatsView } from "@/components/stats/StatsView";
 import { LexiLogo } from "@/components/ui/LexiLogo";
 import { VaultView } from "@/components/vault/VaultView";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import type { TabId } from "@/types/lexivault";
 
 export default function HomePage() {
   const { user, isAuthChecked } = useLexiVault();
+  const { lang } = useLanguage();
 
   if (!isAuthChecked) {
     return (
@@ -25,7 +27,7 @@ export default function HomePage() {
             <LexiLogo size="lg" showAmbientGlow />
           </div>
           <p className="text-xs font-medium text-[#8E8E93]">
-            Memuat LexiVault...
+            {lang === "en" ? "Loading LexiVault..." : "Memuat LexiVault..."}
           </p>
         </div>
       </div>

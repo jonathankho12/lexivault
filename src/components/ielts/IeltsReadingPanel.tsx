@@ -14,6 +14,7 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { FALLBACK_READING_PACKS } from "@/lib/ieltsMockData";
 import { saveSkillAttempt } from "@/lib/ieltsStorage";
@@ -48,6 +49,8 @@ export function IeltsReadingPanel({
   onProfileUpdated: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
 }) {
   const { user, todayStr, addWordViaAI, syncExternalStudyLog } = useLexiVault();
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
 
   const [pack, setPack] = useState<ReadingPassagePack>(FALLBACK_READING_PACKS[0]);
   const [seenIds, setSeenIds] = useState<string[]>([FALLBACK_READING_PACKS[0].id]);
@@ -95,10 +98,14 @@ export function IeltsReadingPanel({
   const handleSaveSelectedToVault = async () => {
     if (!selectedPhrase || savingToVault) return;
     setSavingToVault(true);
-    const res = await addWordViaAI(selectedPhrase, "Artikel");
+    const res = await addWordViaAI(selectedPhrase, "article");
     setSavingToVault(false);
     if (res.ok || res.duplicate) {
-      setVaultSavedMsg(`"${selectedPhrase}" disimpan ke Vault ✓`);
+      setVaultSavedMsg(
+        isEn
+          ? `"${selectedPhrase}" saved to Vault ✓`
+          : `"${selectedPhrase}" disimpan ke Vault ✓`
+      );
       setSelectedPhrase("");
     }
   };
@@ -186,7 +193,15 @@ export function IeltsReadingPanel({
             <button
               type="button"
               onClick={() => setTimerActive((v) => !v)}
-              aria-label={timerActive ? "Jeda timer" : "Mulai timer"}
+              aria-label={
+                timerActive
+                  ? isEn
+                    ? "Pause timer"
+                    : "Jeda timer"
+                  : isEn
+                    ? "Start timer"
+                    : "Mulai timer"
+              }
               className="ml-1 text-[#70BCFF] hover:text-white cursor-pointer"
             >
               {timerActive ? (
@@ -220,7 +235,15 @@ export function IeltsReadingPanel({
             ) : (
               <Sparkles className="h-3.5 w-3.5" />
             )}
-            <span>{generating ? "Membuat..." : "Generate Soal Baru (AI)"}</span>
+            <span>
+              {generating
+                ? isEn
+                  ? "Generating..."
+                  : "Membuat..."
+                : isEn
+                  ? "Generate New Passage (AI)"
+                  : "Generate Soal Baru (AI)"}
+            </span>
           </motion.button>
         </div>
       </div>
@@ -229,8 +252,13 @@ export function IeltsReadingPanel({
       <div className="lg:hidden grid grid-cols-2 rounded-full bg-white/[0.06] border border-white/[0.1] p-1">
         {(
           [
-            { id: "passage", label: "Teks Bacaan" },
-            { id: "questions", label: `Soal (${pack.questions.length})` },
+            { id: "passage", label: isEn ? "Passage" : "Teks Bacaan" },
+            {
+              id: "questions",
+              label: isEn
+                ? `Questions (${pack.questions.length})`
+                : `Soal (${pack.questions.length})`,
+            },
           ] as const
         ).map((tab) => (
           <button
@@ -261,7 +289,11 @@ export function IeltsReadingPanel({
           <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-white/[0.08]">
             <div className="flex items-center gap-2 text-xs font-semibold text-[#8E8E93]">
               <BookOpen className="h-4 w-4 text-[#0A84FF]" />
-              <span>Blok kata sulit di teks untuk simpan ke Vault</span>
+              <span>
+                {isEn
+                  ? "Highlight any unfamiliar phrase to save it to your Vault"
+                  : "Blok kata sulit di teks untuk simpan ke Vault"}
+              </span>
             </div>
 
             {selectedPhrase && (
@@ -311,11 +343,11 @@ export function IeltsReadingPanel({
             <div className="liquid-glass-elevated rounded-3xl p-5 flex items-center justify-between gap-3 border-[#30D158]/35">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
-                  Hasil Reading Academic
+                  {isEn ? "Academic Reading Result" : "Hasil Reading Academic"}
                 </p>
                 <p className="text-xl font-bold text-white">
                   Est. Band {resultBand.toFixed(1)} ({correctCount}/
-                  {pack.questions.length} benar)
+                  {pack.questions.length} {isEn ? "correct" : "benar"})
                 </p>
               </div>
               <CheckCircle2 className="h-7 w-7 text-[#30D158] shrink-0" />
@@ -361,7 +393,11 @@ export function IeltsReadingPanel({
                         [q.id]: e.target.value,
                       }))
                     }
-                    placeholder="Ketik 1–2 kata dari teks..."
+                    placeholder={
+                      isEn
+                        ? "Type 1–2 words from the passage..."
+                        : "Ketik 1–2 kata dari teks..."
+                    }
                     className="w-full rounded-2xl bg-white/[0.05] border border-white/[0.12] px-3.5 py-2.5 text-base sm:text-sm text-white placeholder:text-[#8E8E93] focus:outline-none focus:border-[#0A84FF]/60"
                   />
                 ) : (
@@ -406,14 +442,18 @@ export function IeltsReadingPanel({
                 {submitted && (
                   <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-1.5 text-xs">
                     <p className="font-semibold text-[#7CF099]">
-                      Jawaban: {q.answer}
+                      {isEn ? "Answer: " : "Jawaban: "}
+                      {q.answer}
                     </p>
-                    <p className="text-[#D1D1D6] leading-relaxed">
-                      {q.explanation_id}
-                    </p>
+                    {!isEn && q.explanation_id && (
+                      <p className="text-[#D1D1D6] leading-relaxed">
+                        {q.explanation_id}
+                      </p>
+                    )}
                     {q.evidence_quote && (
                       <p className="text-[11px] italic text-[#70BCFF] pt-1 border-t border-white/[0.07]">
-                        Bukti teks: &ldquo;{q.evidence_quote}&rdquo;
+                        {isEn ? "Evidence: " : "Bukti teks: "}
+                        &ldquo;{q.evidence_quote}&rdquo;
                       </p>
                     )}
                   </div>
@@ -429,7 +469,7 @@ export function IeltsReadingPanel({
               onClick={() => void handleSubmit()}
               className="w-full rounded-full bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] py-3 text-sm font-semibold text-white cursor-pointer"
             >
-              Submit Jawaban Reading
+              {isEn ? "Submit Reading Answers" : "Submit Jawaban Reading"}
             </motion.button>
           )}
         </div>

@@ -7,11 +7,20 @@ import type {
   WordFamilyItem,
 } from "@/types/lexivault";
 
-const VALID_VERDICTS = new Set<SentenceGradeVerdict>([
+type GradeLang = "en" | "id";
+
+const VALID_VERDICTS_ID = new Set<SentenceGradeVerdict>([
   "Natural",
   "Cukup Baik",
   "Kurang Tepat",
   "Belum Menjawab / Tidak Valid",
+]);
+
+const VALID_VERDICTS_EN = new Set<SentenceGradeVerdict>([
+  "Natural",
+  "Good",
+  "Needs Work",
+  "No Valid Attempt",
 ]);
 
 const NON_ATTEMPT_EXACT = new Set([
@@ -87,7 +96,8 @@ const NON_ATTEMPT_SUBSTRINGS = [
   "no idea",
 ];
 
-const KEYBOARD_MASH_REGEX = /(asdf|qwer|zxcv|hjkl|jklm|uiop|dfgh|cvbn|fghj|tyui)/i;
+const KEYBOARD_MASH_REGEX =
+  /(asdf|qwer|zxcv|hjkl|jklm|uiop|dfgh|cvbn|fghj|tyui)/i;
 
 const INDONESIAN_COMMON_WORDS = new Set([
   "saya",
@@ -134,20 +144,29 @@ function buildSampleNativeRewrite(
 function detectInvalidOrNonAttempt(
   sentence: string,
   term: string,
-  meaningId: string,
+  meaning: string,
   wordFamilies: WordFamilyItem[],
+  lang: GradeLang,
   exampleSentence?: string
 ): SentenceGradeResult | null {
   const trimmed = sentence.trim();
   const sampleRewrite = buildSampleNativeRewrite(term, exampleSentence);
-  const tip = `Ingat maknanya: ${meaningId || `pelajari konteks penggunaan "${term}".`}`;
+  const isEn = lang === "en";
+  const invalidVerdict: SentenceGradeVerdict = isEn
+    ? "No Valid Attempt"
+    : "Belum Menjawab / Tidak Valid";
+  const tip = isEn
+    ? `Keep the meaning in mind: ${meaning || `review how "${term}" works in context.`}`
+    : `Ingat maknanya: ${meaning || `pelajari konteks penggunaan "${term}".`}`;
 
   if (!trimmed) {
     return {
       is_correct: false,
-      verdict: "Belum Menjawab / Tidak Valid",
+      verdict: invalidVerdict,
       score: 0,
-      feedback_id: `Kamu belum menuliskan kalimat apa pun. Tulis minimal 1 kalimat bahasa Inggris utuh yang menggunakan "${term}".`,
+      feedback_id: isEn
+        ? `You haven't written a sentence yet. Write at least one complete English sentence using "${term}".`
+        : `Kamu belum menuliskan kalimat apa pun. Tulis minimal 1 kalimat bahasa Inggris utuh yang menggunakan "${term}".`,
       native_rewrite: sampleRewrite,
       tip,
     };
@@ -160,7 +179,6 @@ function detectInvalidOrNonAttempt(
     .trim();
   const compact = normalized.replace(/\s+/g, "");
 
-  // 1. Direct non-attempt / give-up phrases (e.g. "idunno", "idk", "skip", "ga tau", "test")
   if (
     !normalized ||
     NON_ATTEMPT_EXACT.has(normalized) ||
@@ -170,9 +188,11 @@ function detectInvalidOrNonAttempt(
   ) {
     return {
       is_correct: false,
-      verdict: "Belum Menjawab / Tidak Valid",
+      verdict: invalidVerdict,
       score: 0,
-      feedback_id: `Input "${trimmed}" bukan percobaan kalimat bahasa Inggris. Coba tulis 1 kalimat sederhana (subjek + kata kerja + konteks) memakai "${term}"—tidak apa-apa salah dulu!`,
+      feedback_id: isEn
+        ? `"${trimmed}" is not a valid English sentence attempt. Try writing one simple sentence (subject + verb + context) using "${term}"—mistakes are totally fine!`
+        : `Input "${trimmed}" bukan percobaan kalimat bahasa Inggris. Coba tulis 1 kalimat sederhana (subjek + kata kerja + konteks) memakai "${term}"—tidak apa-apa salah dulu!`,
       native_rewrite: sampleRewrite,
       tip,
     };
@@ -196,9 +216,10 @@ function detectInvalidOrNonAttempt(
     lowerSentence.includes(form)
   );
 
-  // 2. Gibberish / keyboard smash / pure symbols / repeated spam
   const hasCharSmash = cleanedTokens.some((w) => /(.)\1{3,}/i.test(w));
-  const hasKeyboardMash = cleanedTokens.some((w) => KEYBOARD_MASH_REGEX.test(w));
+  const hasKeyboardMash = cleanedTokens.some((w) =>
+    KEYBOARD_MASH_REGEX.test(w)
+  );
   const vowellessLongCount = alphaWords.filter(
     (w) => w.length >= 4 && !/[aeiouy]/i.test(w)
   ).length;
@@ -212,23 +233,28 @@ function detectInvalidOrNonAttempt(
   if (mostlyGibberish) {
     return {
       is_correct: false,
-      verdict: "Belum Menjawab / Tidak Valid",
+      verdict: invalidVerdict,
       score: 0,
-      feedback_id: `Jawaban terdeteksi acak atau belum berupa kalimat bahasa Inggris yang valid. Susun kalimat bermakna menggunakan "${term}" agar bisa dinilai dengan akurat.`,
+      feedback_id: isEn
+        ? `Your input looks like random characters rather than a valid English sentence. Write a meaningful sentence using "${term}" for accurate feedback.`
+        : `Jawaban terdeteksi acak atau belum berupa kalimat bahasa Inggris yang valid. Susun kalimat bermakna menggunakan "${term}" agar bisa dinilai dengan akurat.`,
       native_rewrite: sampleRewrite,
       tip,
     };
   }
 
-  // 3. Too short (< 3 real words)
   if (alphaWords.length < 3) {
     return {
       is_correct: false,
-      verdict: "Belum Menjawab / Tidak Valid",
+      verdict: invalidVerdict,
       score: usesTarget ? 10 : 5,
-      feedback_id: usesTarget
-        ? `Kamu baru menulis ${alphaWords.length} kata — "${term}" sudah muncul, tetapi belum membentuk kalimat utuh. Tambahkan subjek dan konteks kalimat lengkap.`
-        : `Jawabanmu terlalu pendek (${alphaWords.length} kata) dan belum membentuk kalimat utuh. Tulis minimal 1 kalimat lengkap menggunakan "${term}".`,
+      feedback_id: isEn
+        ? usesTarget
+          ? `You only wrote ${alphaWords.length} word(s)—"${term}" is included, but it isn't a full sentence yet. Add a subject and clear context.`
+          : `Your response is too short (${alphaWords.length} word(s)) to be a complete sentence. Write at least one full sentence using "${term}".`
+        : usesTarget
+          ? `Kamu baru menulis ${alphaWords.length} kata — "${term}" sudah muncul, tetapi belum membentuk kalimat utuh. Tambahkan subjek dan konteks kalimat lengkap.`
+          : `Jawabanmu terlalu pendek (${alphaWords.length} kata) dan belum membentuk kalimat utuh. Tulis minimal 1 kalimat lengkap menggunakan "${term}".`,
       native_rewrite: sampleRewrite,
       tip,
     };
@@ -239,20 +265,23 @@ function detectInvalidOrNonAttempt(
 
 function buildFallbackGrade(
   term: string,
-  meaningId: string,
+  meaning: string,
   sentence: string,
-  wordFamilies: WordFamilyItem[] = [],
+  wordFamilies: WordFamilyItem[],
+  lang: GradeLang,
   exampleSentence?: string
 ): SentenceGradeResult {
   const invalidCheck = detectInvalidOrNonAttempt(
     sentence,
     term,
-    meaningId,
+    meaning,
     wordFamilies,
+    lang,
     exampleSentence
   );
   if (invalidCheck) return invalidCheck;
 
+  const isEn = lang === "en";
   const trimmed = sentence.trim();
   const words = trimmed.split(/\s+/).filter(Boolean);
   const lowerSentence = trimmed.toLowerCase();
@@ -268,43 +297,52 @@ function buildFallbackGrade(
     lowerSentence.includes(form)
   );
 
-  // Detect predominantly Indonesian text instead of English
   const indonesianHits = words
     .map((w) => stripEdgePunctuation(w).toLowerCase())
     .filter((w) => INDONESIAN_COMMON_WORDS.has(w)).length;
   if (indonesianHits >= 2 && indonesianHits / words.length >= 0.3) {
     return {
       is_correct: false,
-      verdict: "Kurang Tepat",
+      verdict: isEn ? "Needs Work" : "Kurang Tepat",
       score: usesTarget ? 28 : 20,
-      feedback_id: `Kalimatmu masih didominasi bahasa Indonesia. Coba tulis kalimat penuh dalam bahasa Inggris sambil memasukkan "${term}" secara alami.`,
+      feedback_id: isEn
+        ? `Your sentence is mostly written in Indonesian. Write a full English sentence incorporating "${term}" naturally.`
+        : `Kalimatmu masih didominasi bahasa Indonesia. Coba tulis kalimat penuh dalam bahasa Inggris sambil memasukkan "${term}" secara alami.`,
       native_rewrite: sampleRewrite,
-      tip: `Gunakan struktur kalimat bahasa Inggris penuh untuk melatih "${term}".`,
+      tip: isEn
+        ? `Use complete English sentence structure to actively practice "${term}".`
+        : `Gunakan struktur kalimat bahasa Inggris penuh untuk melatih "${term}".`,
     };
   }
 
-  // Real English sentence (>= 3 words), but missing target expression -> 20-45 range
   if (!usesTarget) {
     const score = words.length >= 5 ? 32 : 24;
     return {
       is_correct: false,
-      verdict: "Kurang Tepat",
+      verdict: isEn ? "Needs Work" : "Kurang Tepat",
       score,
-      feedback_id: `Kalimat bahasa Inggrismu sudah mulai terbentuk, tetapi belum memakai kata atau frasa target "${term}". Masukkan "${term}" (atau bentuk turunannya) ke dalam konteks kalimat.`,
+      feedback_id: isEn
+        ? `Your English sentence is taking shape, but it doesn't include the target expression "${term}". Include "${term}" (or one of its word-family forms) in context.`
+        : `Kalimat bahasa Inggrismu sudah mulai terbentuk, tetapi belum memakai kata atau frasa target "${term}". Masukkan "${term}" (atau bentuk turunannya) ke dalam konteks kalimat.`,
       native_rewrite: sampleRewrite,
-      tip: `Ingat maknanya: ${meaningId}`,
+      tip: isEn
+        ? `Keep the meaning in mind: ${meaning}`
+        : `Ingat maknanya: ${meaning}`,
     };
   }
 
-  // Uses target, 3-4 words fragment -> 42-45 range
   if (words.length < 5) {
     return {
       is_correct: false,
-      verdict: "Kurang Tepat",
+      verdict: isEn ? "Needs Work" : "Kurang Tepat",
       score: 45,
-      feedback_id: `Kamu sudah memasukkan "${term}", tetapi kalimat masih terlalu singkat (${words.length} kata). Tambahkan konteks siapa, kapan, atau mengapa agar kalimat terasa natural.`,
+      feedback_id: isEn
+        ? `You included "${term}", but the sentence is still too brief (${words.length} words). Add who, when, or why to make the context feel natural.`
+        : `Kamu sudah memasukkan "${term}", tetapi kalimat masih terlalu singkat (${words.length} kata). Tambahkan konteks siapa, kapan, atau mengapa agar kalimat terasa natural.`,
       native_rewrite: sampleRewrite,
-      tip: "Tambahkan keterangan konteks atau alasan agar penggunaan kata terdengar lebih idiomatik.",
+      tip: isEn
+        ? "Add a brief clause explaining the reason or setting to sound more idiomatic."
+        : "Tambahkan keterangan konteks atau alasan agar penggunaan kata terdengar lebih idiomatik.",
     };
   }
 
@@ -316,11 +354,20 @@ function buildFallbackGrade(
 
   return {
     is_correct: true,
-    verdict: endsCleanly && words.length >= 7 ? "Natural" : "Cukup Baik",
+    verdict:
+      endsCleanly && words.length >= 7
+        ? "Natural"
+        : isEn
+          ? "Good"
+          : "Cukup Baik",
     score: endsCleanly && words.length >= 7 ? 88 : 78,
-    feedback_id: `Bagus! Kamu berhasil menyusun kalimat bahasa Inggris yang utuh dengan "${term}". Sambungkan GEMINI_API_KEY untuk evaluasi tata bahasa & nuansa register secara mendalam.`,
+    feedback_id: isEn
+      ? `Well done! You built a complete English sentence using "${term}". Connect GEMINI_API_KEY for deeper grammar and register coaching.`
+      : `Bagus! Kamu berhasil menyusun kalimat bahasa Inggris yang utuh dengan "${term}". Sambungkan GEMINI_API_KEY untuk evaluasi tata bahasa & nuansa register secara mendalam.`,
     native_rewrite: cleanPunctuated,
-    tip: "Perhatikan kesesuaian tenses dan tanda baca di akhir kalimat agar terdengar semakin native.",
+    tip: isEn
+      ? "Double-check tense agreement and final punctuation to sound even more natural."
+      : "Perhatikan kesesuaian tenses dan tanda baca di akhir kalimat agar terdengar semakin native.",
   };
 }
 
@@ -329,15 +376,21 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       term?: string;
       meaning_id?: string;
+      meaning_en?: string;
       register?: string;
       sentence?: string;
       word_families?: WordFamilyItem[];
       example_sentence?: string;
+      lang?: GradeLang;
     };
 
+    const lang: GradeLang = body.lang === "en" ? "en" : "id";
+    const isEn = lang === "en";
     const term = body.term?.trim() ?? "";
     const sentence = body.sentence?.trim() ?? "";
-    const meaningId = body.meaning_id?.trim() ?? "";
+    const meaning = isEn
+      ? body.meaning_en?.trim() || body.meaning_id?.trim() || ""
+      : body.meaning_id?.trim() || body.meaning_en?.trim() || "";
     const register = body.register?.trim() ?? "Casual";
     const exampleSentence = body.example_sentence?.trim();
     const wordFamilies = Array.isArray(body.word_families)
@@ -351,13 +404,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Strict pre-validation guard: immediately catch empty, < 3 words, gibberish,
-    // or non-attempts ("idunno", "idk", "skip", "ga tau", "test") with score 0-10.
     const invalidResult = detectInvalidOrNonAttempt(
       sentence,
       term,
-      meaningId,
+      meaning,
       wordFamilies,
+      lang,
       exampleSentence
     );
     if (invalidResult) {
@@ -372,18 +424,52 @@ export async function POST(request: Request) {
       return NextResponse.json({
         result: buildFallbackGrade(
           term,
-          meaningId,
+          meaning,
           sentence,
           wordFamilies,
+          lang,
           exampleSentence
         ),
         source: "fallback",
       });
     }
 
-    const prompt = `You are a strict yet constructive native English writing coach for an Indonesian learner.
+    const verdictEnum = isEn
+      ? ["Natural", "Good", "Needs Work", "No Valid Attempt"]
+      : [
+          "Natural",
+          "Cukup Baik",
+          "Kurang Tepat",
+          "Belum Menjawab / Tidak Valid",
+        ];
+
+    const prompt = isEn
+      ? `You are a strict yet constructive native English writing coach for an advanced C1–C2 learner.
 Target expression: "${term}"
-Indonesian meaning: "${meaningId}"
+Definition: "${meaning}"
+Expected register: "${register}"
+Allowed word-family forms: ${wordFamilies.map((w) => `${w.word} (${w.pos})`).join(", ") || term}
+Learner's sentence: "${sentence}"
+
+Evaluate whether the learner used "${term}" (or a valid inflection/word-family form) accurately, grammatically, and naturally in context.
+
+STRICT SCORING RUBRIC (MUST FOLLOW):
+- 0 to 10 ("No Valid Attempt", is_correct=false): Empty, < 3 words, random gibberish/keyboard mash, non-English refusal, or non-attempts like "idunno", "idk", "skip", "test". NEVER give 35 for non-attempts!
+- 20 to 45 ("Needs Work", is_correct=false): Learner wrote a real, complete English sentence, BUT either did not use the target expression at all OR used it with the wrong meaning/context.
+- 46 to 69 ("Needs Work", is_correct=false): Uses the target expression with partial understanding, but has significant grammar issues, unnatural collocation, or incomplete context.
+- 70 to 84 ("Good", is_correct=true): Clear, understandable, mostly natural English sentence using the target expression accurately with only minor phrasing/grammar tweaks.
+- 85 to 100 ("Natural", is_correct=true): Idiomatic, accurate meaning, proper grammar, and matching register.
+
+Return strictly valid JSON (ALL feedback and tips MUST be in natural English — ZERO Indonesian):
+- "is_correct": boolean (true ONLY if "Natural" or "Good", false otherwise)
+- "verdict": exactly one of "Natural", "Good", "Needs Work", or "No Valid Attempt"
+- "score": integer 0-100 following the strict rubric above
+- "feedback_id": specific, natural feedback in ENGLISH (2 sentences max) addressing the exact sentence written.
+- "native_rewrite": a polished, natural native-speaker English sentence using "${term}".
+- "tip": 1 short actionable tip in ENGLISH on register, collocation, or phrasing.`
+      : `You are a strict yet constructive native English writing coach for an Indonesian learner.
+Target expression: "${term}"
+Indonesian meaning: "${meaning}"
 Expected register: "${register}"
 Allowed word-family forms: ${wordFamilies.map((w) => `${w.word} (${w.pos})`).join(", ") || term}
 Learner's sentence: "${sentence}"
@@ -416,12 +502,7 @@ Return strictly valid JSON:
             is_correct: { type: Type.BOOLEAN },
             verdict: {
               type: Type.STRING,
-              enum: [
-                "Natural",
-                "Cukup Baik",
-                "Kurang Tepat",
-                "Belum Menjawab / Tidak Valid",
-              ],
+              enum: verdictEnum,
             },
             score: { type: Type.INTEGER },
             feedback_id: { type: Type.STRING },
@@ -445,9 +526,10 @@ Return strictly valid JSON:
       return NextResponse.json({
         result: buildFallbackGrade(
           term,
-          meaningId,
+          meaning,
           sentence,
           wordFamilies,
+          lang,
           exampleSentence
         ),
         source: "fallback",
@@ -460,25 +542,32 @@ Return strictly valid JSON:
         ? Math.max(0, Math.min(100, Math.round(parsed.score)))
         : 0;
 
+    const validSet = isEn ? VALID_VERDICTS_EN : VALID_VERDICTS_ID;
+    const invalidVerdict: SentenceGradeVerdict = isEn
+      ? "No Valid Attempt"
+      : "Belum Menjawab / Tidak Valid";
+    const goodVerdict: SentenceGradeVerdict = isEn ? "Good" : "Cukup Baik";
+    const weakVerdict: SentenceGradeVerdict = isEn
+      ? "Needs Work"
+      : "Kurang Tepat";
+
     let verdict: SentenceGradeVerdict =
-      parsed.verdict && VALID_VERDICTS.has(parsed.verdict)
+      parsed.verdict && validSet.has(parsed.verdict)
         ? parsed.verdict
         : rawScore <= 10
-          ? "Belum Menjawab / Tidak Valid"
+          ? invalidVerdict
           : parsed.is_correct
-            ? "Cukup Baik"
-            : "Kurang Tepat";
+            ? goodVerdict
+            : weakVerdict;
 
     if (rawScore <= 10) {
-      verdict = "Belum Menjawab / Tidak Valid";
+      verdict = invalidVerdict;
     }
 
     const clampedScore =
-      verdict === "Belum Menjawab / Tidak Valid"
-        ? Math.min(10, rawScore)
-        : rawScore;
+      verdict === invalidVerdict ? Math.min(10, rawScore) : rawScore;
     const isCorrect =
-      verdict === "Natural" || verdict === "Cukup Baik"
+      verdict === "Natural" || verdict === goodVerdict
         ? Boolean(parsed.is_correct ?? true)
         : false;
 
@@ -487,15 +576,22 @@ Return strictly valid JSON:
         is_correct: isCorrect,
         verdict,
         score: clampedScore,
-        feedback_id: parsed.feedback_id || "Kalimat sudah dinilai.",
+        feedback_id:
+          parsed.feedback_id ||
+          (isEn ? "Sentence evaluated." : "Kalimat sudah dinilai."),
         native_rewrite:
           parsed.native_rewrite ||
           buildSampleNativeRewrite(term, exampleSentence),
-        tip: parsed.tip || "Pertahankan latihan menulis kalimat kontekstual!",
+        tip:
+          parsed.tip ||
+          (isEn
+            ? "Keep practicing writing sentences in natural context!"
+            : "Pertahankan latihan menulis kalimat kontekstual!"),
       },
       source: "gemini",
     });
-  } catch {
+  } catch (err) {
+    console.error("[api/grade-sentence] Error:", err);
     return NextResponse.json(
       { error: "Failed to grade sentence" },
       { status: 500 }

@@ -2,14 +2,22 @@
 
 import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowUp,
+  CheckCircle2,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
-import { cn } from "@/lib/utils";
+import {
+  CANONICAL_SOURCE_TAGS,
+  cn,
+  formatSourceTagLabel,
+} from "@/lib/utils";
 import type { SourceTag } from "@/types/lexivault";
-
-const SOURCE_TAGS: SourceTag[] = ["Film", "Buku", "Kuliah", "Artikel", "Umum"];
 
 export function QuickCaptureBar({
   onPendingTermChange,
@@ -18,15 +26,16 @@ export function QuickCaptureBar({
 }) {
   const { addWordViaAI, isCapturing, captureToast, clearCaptureToast } =
     useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const [term, setTerm] = useState("");
-  const [sourceTag, setSourceTag] = useState<SourceTag>("Artikel");
+  const [sourceTag, setSourceTag] = useState<SourceTag>("article");
 
   useEffect(() => {
     if (!captureToast) return;
+    const duration = captureToast.type === "error" ? 5000 : 3600;
     const timer = setTimeout(() => {
       clearCaptureToast();
-    }, 3600);
+    }, duration);
     return () => clearTimeout(timer);
   }, [captureToast, clearCaptureToast]);
 
@@ -94,7 +103,7 @@ export function QuickCaptureBar({
             <span className="shrink-0 text-[11px] font-medium text-[#8E8E93] mr-1">
               {t.vault.captureSourceLabel}
             </span>
-            {SOURCE_TAGS.map((tag) => {
+            {CANONICAL_SOURCE_TAGS.map((tag) => {
               const active = sourceTag === tag;
               return (
                 <motion.button
@@ -109,7 +118,7 @@ export function QuickCaptureBar({
                       : "bg-white/[0.04] text-[#8E8E93] border border-transparent hover:text-[#F5F5F7]"
                   )}
                 >
-                  {tag}
+                  {formatSourceTagLabel(tag, lang)}
                 </motion.button>
               );
             })}
@@ -124,14 +133,26 @@ export function QuickCaptureBar({
       <AnimatePresence>
         {captureToast && (
           <motion.div
+            role={captureToast.type === "error" ? "alert" : "status"}
             initial={{ opacity: 0, y: -6, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={IOS_SPRING}
-            className="inline-flex items-center gap-2 rounded-full bg-[#30D158]/15 border border-[#30D158]/35 px-3.5 py-1.5 text-xs font-medium text-[#7CF099]"
+            className={cn(
+              "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium",
+              captureToast.type === "error"
+                ? "bg-red-500/10 border-red-500/30 text-red-400"
+                : captureToast.type === "info"
+                  ? "bg-[#0A84FF]/15 border-[#0A84FF]/35 text-[#70BCFF]"
+                  : "bg-[#30D158]/15 border-[#30D158]/35 text-[#7CF099]"
+            )}
           >
-            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-            <span>{captureToast}</span>
+            {captureToast.type === "error" || captureToast.type === "info" ? (
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            ) : (
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            )}
+            <span>{captureToast.message}</span>
           </motion.div>
         )}
       </AnimatePresence>

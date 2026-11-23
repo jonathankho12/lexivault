@@ -62,6 +62,7 @@ export interface TranslationDictionary {
   vault: {
     eyebrow: string;
     title: string;
+    aiSuggestBtn: string;
     extractBtn: string;
     commuteBtn: string;
     searchPlaceholder: string;
@@ -69,6 +70,7 @@ export interface TranslationDictionary {
     allTypes: string;
     allRegisters: string;
     allSources: string;
+    newBadge: string;
     emptyTitle: string;
     emptySubtitle: string;
     emptyFilterTitle: string;
@@ -78,6 +80,33 @@ export interface TranslationDictionary {
     captureSaving: string;
     captureSourceLabel: string;
     captureHint: string;
+  };
+  suggest: {
+    title: string;
+    subtitle: string;
+    categoryLabel: string;
+    registerLabel: string;
+    catMix: string;
+    catIdiom: string;
+    catVocab: string;
+    catCollocation: string;
+    regAny: string;
+    regAcademic: string;
+    regFormal: string;
+    regCasual: string;
+    addToVault: string;
+    adding: string;
+    added: string;
+    generateMore: string;
+    generating: string;
+    loadingHint: string;
+    emptyTitle: string;
+    emptySubtitle: string;
+    errorFallback: string;
+    retryBtn: string;
+    close: string;
+    sourceAi: string;
+    sourceCurated: string;
   };
   extractor: {
     title: string;
@@ -381,7 +410,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       loginTab: "Masuk",
       registerTab: "Daftar Akun",
       usernameLabel: "Username",
-      usernamePlaceholder: "misal: nate_dev",
+      usernamePlaceholder: "misal: abeljonathan_dev",
       passwordLabel: "Password",
       passwordPlaceholder: "Minimal 6 karakter",
       confirmPasswordLabel: "Konfirmasi Password",
@@ -434,6 +463,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
     vault: {
       eyebrow: "Leksikon Pribadi",
       title: "Vocabulary Vault",
+      aiSuggestBtn: "Tambah Kata / Idiom AI",
       extractBtn: "Ekstrak dari Teks",
       commuteBtn: "5-Min Commute",
       searchPlaceholder: "Cari kata, arti Indonesia, sinonim, atau turunan...",
@@ -441,6 +471,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       allTypes: "Semua Tipe",
       allRegisters: "Semua Register",
       allSources: "Semua Sumber",
+      newBadge: "Baru",
       emptyTitle: "Vault Kamu Masih Kosong",
       emptySubtitle:
         "Ketik kata atau idiom di atas untuk mengisi kosakata dengan contoh kalimat dan audio.",
@@ -451,6 +482,35 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       captureSaving: "AI Fill",
       captureSourceLabel: "Sumber:",
       captureHint: "Auto-kategori AI: Vocab / Idiom / Collocation & Register",
+    },
+    suggest: {
+      title: "Tambah Kata / Idiom AI",
+      subtitle:
+        "Temukan ekspresi bahasa Inggris level C1–C2 yang belum ada di Vault-mu, lalu simpan dalam 1 klik.",
+      categoryLabel: "Kategori",
+      registerLabel: "Register / Nada",
+      catMix: "Mix (C1–C2)",
+      catIdiom: "Idiom",
+      catVocab: "Vocab",
+      catCollocation: "Collocation",
+      regAny: "Semua",
+      regAcademic: "Academic",
+      regFormal: "Formal",
+      regCasual: "Casual",
+      addToVault: "+ Simpan ke Vault",
+      adding: "Menyimpan...",
+      added: "Tersimpan ✓",
+      generateMore: "Cari Lagi",
+      generating: "Mencari...",
+      loadingHint: "AI sedang meracik 4 ekspresi C1–C2 baru tanpa duplikat...",
+      emptyTitle: "Semua saran pada filter ini sudah ada di Vault",
+      emptySubtitle:
+        "Coba ganti filter kategori/register atau klik Cari Lagi untuk batch segar.",
+      errorFallback: "Gagal memuat saran AI. Silakan coba lagi.",
+      retryBtn: "Coba Lagi",
+      close: "Tutup",
+      sourceAi: "Gemini AI · C1–C2",
+      sourceCurated: "Kurasi C1–C2",
     },
     extractor: {
       title: "Paste & Panen Kata",
@@ -770,7 +830,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       loginTab: "Sign In",
       registerTab: "Create Account",
       usernameLabel: "Username",
-      usernamePlaceholder: "e.g. nate_dev",
+      usernamePlaceholder: "e.g. abeljonathan_dev",
       passwordLabel: "Password",
       passwordPlaceholder: "At least 6 characters",
       confirmPasswordLabel: "Confirm Password",
@@ -823,6 +883,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
     vault: {
       eyebrow: "Personal Lexicon",
       title: "Vocabulary Vault",
+      aiSuggestBtn: "AI Suggest Idiom / Word",
       extractBtn: "Extract from Text",
       commuteBtn: "5-Min Commute",
       searchPlaceholder: "Search term, meaning, synonyms, or word family...",
@@ -830,6 +891,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       allTypes: "All Types",
       allRegisters: "All Registers",
       allSources: "All Sources",
+      newBadge: "New",
       emptyTitle: "Your Vault Is Still Empty",
       emptySubtitle:
         "Type a word or idiom above to auto-fill definitions, examples, and US/UK audio.",
@@ -840,6 +902,35 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       captureSaving: "AI Fill",
       captureSourceLabel: "Source:",
       captureHint: "AI auto-tags: Vocab / Idiom / Collocation & Register",
+    },
+    suggest: {
+      title: "AI Suggest Idiom / Word",
+      subtitle:
+        "Discover fresh C1–C2 English expressions not yet in your Vault and save them in one click.",
+      categoryLabel: "Category",
+      registerLabel: "Register / Tone",
+      catMix: "Mix (C1–C2)",
+      catIdiom: "Idiom",
+      catVocab: "Vocab",
+      catCollocation: "Collocation",
+      regAny: "Any",
+      regAcademic: "Academic",
+      regFormal: "Formal",
+      regCasual: "Casual",
+      addToVault: "+ Add to Vault",
+      adding: "Adding...",
+      added: "Added ✓",
+      generateMore: "Generate More",
+      generating: "Generating...",
+      loadingHint: "AI is curating 4 fresh non-duplicate C1–C2 expressions...",
+      emptyTitle: "All suggestions in this filter are already in your Vault",
+      emptySubtitle:
+        "Try switching the category or register filter, or tap Generate More for a new batch.",
+      errorFallback: "Failed to load AI suggestions. Please try again.",
+      retryBtn: "Try Again",
+      close: "Close",
+      sourceAi: "Gemini AI · C1–C2",
+      sourceCurated: "Curated C1–C2",
     },
     extractor: {
       title: "Paste & Harvest Vocabulary",
@@ -862,7 +953,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       alreadyInVault: "Already in Vault",
     },
     wordDetail: {
-      meaningTitle: "Indonesian Meaning",
+      meaningTitle: "Definition",
       examplesTitle: "Example Sentences",
       synonymsTitle: "Synonyms",
       antonymsTitle: "Antonyms",
@@ -918,7 +1009,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       rateGood: "Good",
       rateEasy: "Easy",
       tapFlipHint: "Tap card to reveal meaning & example",
-      meaningTitle: "Meaning (Indonesian)",
+      meaningTitle: "Definition",
       exampleTitle: "Example Sentence",
       swipeGood: "Good",
       swipeAgain: "Again",

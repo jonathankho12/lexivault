@@ -37,7 +37,9 @@ import {
 import {
   cn,
   formatRegisterBadgeClass,
+  formatSourceTagLabel,
   formatTypeLabel,
+  getLocalizedMeaning,
 } from "@/lib/utils";
 import type { Sm2Rating, WordEntry } from "@/types/lexivault";
 
@@ -98,7 +100,7 @@ function SwipeableFlashcard({
   onSwipeAction,
 }: SwipeFlashcardProps) {
   const { accent } = useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-220, 0, 220], [-9, 0, 9]);
   const rightBadgeOpacity = useTransform(x, [25, 110], [0, 1]);
@@ -189,7 +191,7 @@ function SwipeableFlashcard({
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] text-[#8E8E93] bg-white/[0.05]">
                   <Tag className="h-3 w-3" />
-                  {word.source_tag || "Umum"}
+                  {formatSourceTagLabel(word.source_tag, lang)}
                 </span>
               </div>
 
@@ -209,7 +211,9 @@ function SwipeableFlashcard({
 
             <div className="my-auto py-4 text-center space-y-3">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-[#8E8E93]">
-                Ingat arti &amp; penggunaannya?
+                {lang === "en"
+                  ? "Recall the meaning & usage?"
+                  : "Ingat arti & penggunaannya?"}
               </p>
               <h3 className="text-3xl sm:text-5xl font-bold tracking-tight text-white break-words px-2">
                 {word.term}
@@ -298,7 +302,7 @@ function SwipeableFlashcard({
                   {t.flashcards.meaningTitle}
                 </p>
                 <p className="text-sm sm:text-[15px] leading-relaxed font-medium text-[#F5F5F7]">
-                  {word.meaning_id}
+                  {getLocalizedMeaning(word, lang)}
                 </p>
               </div>
 
@@ -322,7 +326,7 @@ function SwipeableFlashcard({
                   <p className="text-xs sm:text-sm leading-relaxed text-[#F5F5F7]">
                     <HighlightedText text={word.examples_json[0].sentence} />
                   </p>
-                  {word.examples_json[0].translation_id && (
+                  {lang === "id" && word.examples_json[0].translation_id && (
                     <p className="text-[11px] leading-relaxed text-[#8E8E93]">
                       <HighlightedText
                         text={word.examples_json[0].translation_id}

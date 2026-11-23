@@ -13,6 +13,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { PLACEMENT_TEST_QUESTIONS } from "@/lib/ieltsMockData";
 import { savePlacementCompletion } from "@/lib/ieltsStorage";
@@ -33,6 +34,8 @@ export function PlacementTestFlow({
   onCancel?: () => void;
 }) {
   const { user, todayStr, syncExternalStudyLog } = useLexiVault();
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
 
   const [started, setStarted] = useState(false);
   const [index, setIndex] = useState(0);
@@ -208,15 +211,19 @@ export function PlacementTestFlow({
 
         <div className="space-y-1.5">
           <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
-            Placement Selesai
+            {isEn ? "Placement Complete" : "Placement Selesai"}
           </p>
           <h3 className="text-2xl sm:text-3xl font-bold text-white">
-            Level Kamu: {resultSummary.cefr} • Band{" "}
-            {resultSummary.band.toFixed(1)}
+            {isEn ? "Your Level: " : "Level Kamu: "}
+            {resultSummary.cefr} • Band {resultSummary.band.toFixed(1)}
           </h3>
           <p className="text-sm text-[#8E8E93]">
-            Skor objektif {resultSummary.correctCount}/9 benar ·{" "}
-            {resultSummary.paraphraseFeedback}
+            {isEn
+              ? `Objective score ${resultSummary.correctCount}/9 correct`
+              : `Skor objektif ${resultSummary.correctCount}/9 benar`}
+            {!isEn && resultSummary.paraphraseFeedback
+              ? ` · ${resultSummary.paraphraseFeedback}`
+              : ""}
           </p>
         </div>
 
@@ -249,7 +256,11 @@ export function PlacementTestFlow({
           }
           className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-6 py-3 text-sm font-semibold text-white cursor-pointer"
         >
-          <span>Buka Dashboard IELTS Lengkap</span>
+          <span>
+            {isEn
+              ? "Open Full IELTS Dashboard"
+              : "Buka Dashboard IELTS Lengkap"}
+          </span>
           <ArrowRight className="h-4 w-4" />
         </motion.button>
       </motion.div>
@@ -263,16 +274,17 @@ export function PlacementTestFlow({
           <div className="space-y-2 max-w-2xl">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/20 border border-[#0A84FF]/35 px-3 py-1 text-[11px] font-semibold text-[#70BCFF]">
               <Sparkles className="h-3.5 w-3.5" />
-              3–5 Menit · 10 Soal Lintas Level (A2–C2)
+              {isEn
+                ? "3–5 Minutes · 10 Adaptive Questions (A2–C2)"
+                : "3–5 Menit · 10 Soal Lintas Level (A2–C2)"}
             </span>
             <h3 className="text-2xl font-bold text-white">
               Quick Placement Test
             </h3>
             <p className="text-sm text-[#8E8E93] leading-relaxed">
-              Ukur estimasi Band IELTS dan level CEFR awalmu (A1–C2) lewat 4
-              soal nuansa Vocab/Grammar, 3 soal Short Reading inference, 2 klip
-              audio Listening aksen British/Australian, dan 1 parafrase Writing
-              akademik.
+              {isEn
+                ? "Estimate your starting IELTS Band and CEFR level (A1–C2) through 4 vocabulary/grammar nuance items, 3 short academic reading inferences, 2 British/Australian listening clips, and 1 formal paraphrase task."
+                : "Ukur estimasi Band IELTS dan level CEFR awalmu (A1–C2) lewat 4 soal nuansa Vocab/Grammar, 3 soal Short Reading inference, 2 klip audio Listening aksen British/Australian, dan 1 parafrase Writing akademik."}
             </p>
           </div>
 
@@ -281,7 +293,7 @@ export function PlacementTestFlow({
               type="button"
               onClick={onCancel}
               className="rounded-full bg-white/[0.07] p-2 text-[#8E8E93] hover:text-white cursor-pointer"
-              aria-label="Tutup placement test"
+              aria-label={isEn ? "Close placement test" : "Tutup placement test"}
             >
               <X className="h-4 w-4" />
             </button>
@@ -295,7 +307,11 @@ export function PlacementTestFlow({
             onClick={() => setStarted(true)}
             className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] px-6 py-3 text-sm font-semibold text-white cursor-pointer"
           >
-            <span>Mulai Placement Test Sekarang</span>
+            <span>
+              {isEn
+                ? "Start Placement Test Now"
+                : "Mulai Placement Test Sekarang"}
+            </span>
             <ArrowRight className="h-4 w-4" />
           </motion.button>
 
@@ -305,7 +321,7 @@ export function PlacementTestFlow({
               onClick={onCancel}
               className="rounded-full bg-white/[0.07] border border-white/[0.1] px-4 py-2.5 text-xs font-medium text-[#D1D1D6] hover:text-white cursor-pointer"
             >
-              Lewati &amp; Masuk ke Modul
+              {isEn ? "Skip to Modules" : "Lewati & Masuk ke Modul"}
             </button>
           )}
         </div>
@@ -325,7 +341,9 @@ export function PlacementTestFlow({
       <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="font-semibold text-white">
-            Soal {index + 1} dari {total}
+            {isEn
+              ? `Question ${index + 1} of ${total}`
+              : `Soal ${index + 1} dari ${total}`}
           </span>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 px-2.5 py-0.5 text-[11px] font-semibold text-[#C4C2FF]">
@@ -337,7 +355,7 @@ export function PlacementTestFlow({
                 onClick={onCancel}
                 className="text-[#8E8E93] hover:text-white cursor-pointer"
               >
-                Keluar
+                {isEn ? "Exit" : "Keluar"}
               </button>
             )}
           </div>
@@ -369,10 +387,14 @@ export function PlacementTestFlow({
             <Volume2 className="h-4.5 w-4.5 text-[#70BCFF]" />
             <div>
               <p className="text-xs font-semibold text-white">
-                Audio Klip Placement ({current.audioSegments[0]?.speaker})
+                {isEn
+                  ? `Placement Audio Clip (${current.audioSegments[0]?.speaker})`
+                  : `Audio Klip Placement (${current.audioSegments[0]?.speaker})`}
               </p>
               <p className="text-[11px] text-[#8E8E93]">
-                Klik play untuk mendengarkan percakapan neural
+                {isEn
+                  ? "Click Play to hear the neural dialogue clip"
+                  : "Klik play untuk mendengarkan percakapan neural"}
               </p>
             </div>
           </div>
@@ -391,7 +413,15 @@ export function PlacementTestFlow({
             ) : (
               <Play className="h-3.5 w-3.5 fill-current" />
             )}
-            <span>{audioPlaying ? "Jeda" : "Putar Klip"}</span>
+            <span>
+              {audioPlaying
+                ? isEn
+                  ? "Pause"
+                  : "Jeda"
+                : isEn
+                  ? "Play Clip"
+                  : "Putar Klip"}
+            </span>
           </motion.button>
         </div>
       )}
@@ -411,7 +441,11 @@ export function PlacementTestFlow({
               rows={3}
               value={paraphraseText}
               onChange={(e) => setParaphraseText(e.target.value)}
-              placeholder="Tulis ulang dalam gaya formal IELTS C1/C2..."
+              placeholder={
+                isEn
+                  ? "Rewrite in formal IELTS C1/C2 academic style..."
+                  : "Tulis ulang dalam gaya formal IELTS C1/C2..."
+              }
               className="w-full rounded-2xl bg-white/[0.05] border border-white/[0.12] p-3.5 text-base text-[#F5F5F7] placeholder:text-[#8E8E93] focus:outline-none focus:border-[#0A84FF]/60"
             />
           </div>
@@ -453,7 +487,7 @@ export function PlacementTestFlow({
           onClick={() => setIndex((i) => Math.max(0, i - 1))}
           className="rounded-full bg-white/[0.07] px-4 py-2 text-xs font-medium text-[#D1D1D6] disabled:opacity-35 cursor-pointer"
         >
-          Sebelumnya
+          {isEn ? "Previous" : "Sebelumnya"}
         </button>
 
         {isLast ? (
@@ -467,11 +501,15 @@ export function PlacementTestFlow({
             {submitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Menghitung Level...</span>
+                <span>
+                  {isEn ? "Calculating Level..." : "Menghitung Level..."}
+                </span>
               </>
             ) : (
               <>
-                <span>Selesai &amp; Lihat Level</span>
+                <span>
+                  {isEn ? "Finish & View Level" : "Selesai & Lihat Level"}
+                </span>
                 <CheckCircle2 className="h-4 w-4" />
               </>
             )}
@@ -484,7 +522,7 @@ export function PlacementTestFlow({
             onClick={() => setIndex((i) => Math.min(total - 1, i + 1))}
             className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white cursor-pointer disabled:opacity-45"
           >
-            <span>Lanjut</span>
+            <span>{isEn ? "Next" : "Lanjut"}</span>
             <ArrowRight className="h-4 w-4" />
           </motion.button>
         )}

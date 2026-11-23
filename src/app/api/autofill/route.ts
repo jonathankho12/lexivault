@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
+import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import { getGeminiClient, getGeminiFlashModel } from "@/lib/gemini";
 import { buildFallbackAutofill } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { normalizeTermKey } from "@/lib/utils";
 import type {
   AutofillPayload,
+  CefrLevel,
   RegisterType,
   WordExample,
   WordFamilyItem,
@@ -21,10 +23,11 @@ const VALID_REGISTERS = new Set<RegisterType>([
 ]);
 
 function normalizeAutofillPayload(
-  raw: Partial<AutofillPayload>,
+  raw: Partial<AutofillPayload> & { meaning?: string },
   fallbackTerm: string
 ): AutofillPayload {
   const cleanTerm = (raw.term || fallbackTerm).trim();
+  const key = normalizeTermKey(cleanTerm);
   const type: WordType =
     raw.type && VALID_TYPES.has(raw.type) ? raw.type : "vocab";
   const register: RegisterType =
@@ -32,7 +35,9 @@ function normalizeAutofillPayload(
 
   const examples: WordExample[] = Array.isArray(raw.examples)
     ? raw.examples
-        .filter((ex) => ex && typeof ex.sentence === "string" && ex.sentence.trim())
+        .filter(
+          (ex) => ex && typeof ex.sentence === "string" && ex.sentence.trim()
+        )
         .slice(0, 2)
         .map((ex, idx) => ({
           sentence: ex.sentence.trim(),
@@ -58,19 +63,34 @@ function normalizeAutofillPayload(
         }))
     : [{ word: cleanTerm, pos: type }];
 
-  const builtInPron = BUILT_IN_PRONUNCIATIONS[normalizeTermKey(cleanTerm)];
+  const builtInPron = BUILT_IN_PRONUNCIATIONS[key];
+  const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
   const pronunciation =
     (raw.pronunciation || "").trim() || builtInPron?.pronunciation || undefined;
   const ipa = (raw.ipa || "").trim() || builtInPron?.ipa || undefined;
+
+  const meaning_en =
+    (raw.meaning_en || "").trim() ||
+    builtInBilingual?.meaning_en ||
+    undefined;
+  const meaning_id =
+    (raw.meaning_id || "").trim() ||
+    (raw.meaning || "").trim() ||
+    meaning_en ||
+    `Makna kontekstual untuk "${cleanTerm}".`;
+  const cefr: CefrLevel | undefined =
+    raw.cefr === "B2" || raw.cefr === "C1" || raw.cefr === "C2"
+      ? raw.cefr
+      : builtInBilingual?.cefr;
 
   return {
     term: cleanTerm,
     pronunciation,
     ipa,
+    cefr,
     type,
-    meaning_id:
-      (raw.meaning_id || "").trim() ||
-      `Makna kontekstual untuk "${cleanTerm}".`,
+    meaning_id,
+    meaning_en,
     examples,
     synonyms: Array.isArray(raw.synonyms)
       ? raw.synonyms.map((s) => String(s).trim()).filter(Boolean).slice(0, 5)
@@ -83,51 +103,82 @@ function normalizeAutofillPayload(
   };
 }
 
+function classifyApiError(err: unknown): {
+  status: number;
+  code: string;
+  detail: string;
+} {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  const lower = msg.toLowerCase();
+  if (lower.includes("429") || lower.includes("quota") || lower.includes("rate")) {
+    return { status: 429, code: "quota", detail: "AI rate limit or quota exceeded" };
+  }
+  if (
+    lower.includes("401") ||
+    lower.includes("403") ||
+    lower.includes("api key") ||
+    lower.includes("permission")
+  ) {
+    return { status: 401, code: "auth", detail: "AI API key authentication error" };
+  }
+  if (lower.includes("network") || lower.includes("fetch") || lower.includes("timeout")) {
+    return { status: 503, code: "network", detail: "AI network timeout" };
+  }
+  return { status: 500, code: "server", detail: "Failed to process autofill request" };
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       term?: string;
       sourceTag?: string;
+      lang?: "en" | "id";
     };
     const term = body.term?.trim() ?? "";
+    const lang = body.lang === "en" ? "en" : "id";
 
     if (!term) {
       return NextResponse.json(
-        { error: "Term is required" },
+        { error: "Term is required", code: "invalid_input" },
         { status: 400 }
       );
     }
 
     const ai = getGeminiClient();
     if (!ai) {
+      const fallback = buildFallbackAutofill(term);
       return NextResponse.json({
-        data: buildFallbackAutofill(term),
+        data: fallback,
+        meaning: lang === "en" ? fallback.meaning_en || fallback.meaning_id : fallback.meaning_id,
         source: "fallback",
       });
     }
 
-    const prompt = `You are an expert bilingual English-Indonesian lexicographer and ESL linguistic coach.
+    const prompt = `You are an expert bilingual English-Indonesian lexicographer and C1–C2 ESL linguistic coach.
 Analyze the English expression: "${term}".
-Source context hint (optional): "${body.sourceTag || "General"}".
+Source context hint (optional): "${body.sourceTag || "general"}".
+Active UI language preference: "${lang}".
 
 You MUST accurately perform Auto-Categorization and return strictly valid JSON matching the schema:
 1. "term": clean canonical English casing for "${term}".
-2. "type": auto-detect the exact lexical category:
+2. "cefr": estimated CEFR level ("B2", "C1", or "C2").
+3. "type": auto-detect the exact lexical category:
    - "vocab": single vocabulary word (including phrasal adjectives/participles like "gentrified", "ubiquitous", "ephemeral").
    - "idiom": figurative multi-word expression whose overall meaning is non-literal (e.g., "snowed under", "bite the bullet", "burn the midnight oil", "on thin ice").
    - "collocation": natural habitual pairing of words with literal/semi-literal meaning (e.g., "make a compelling case", "pose a threat", "strike a balance", "yield results").
-3. "register": auto-detect the primary stylistic register:
-   - "Academic": scholarly, analytical, research, essay vocabulary (e.g., "gentrified", "ubiquitous", "corroborate").
-   - "Formal": professional, business, polite official writing (e.g., "mitigate", "make a compelling case").
-   - "Casual": everyday conversational English and common idioms (e.g., "snowed under", "bite the bullet", "cut corners").
+4. "register": auto-detect the primary stylistic register:
+   - "Academic": scholarly, analytical, research, essay vocabulary.
+   - "Formal": professional, business, polite official writing.
+   - "Casual": everyday conversational English and common idioms.
    - "Slang": very informal, street, internet, or youth colloquialisms.
-4. "meaning_id": accurate, natural, figurative-aware Indonesian explanation (1-2 crisp sentences). For idioms, explain the real figurative meaning in Indonesian, NOT word-by-word literal translation.
-5. "examples": exactly 2 natural English example sentences (1 "Daily" conversation/scenario, 1 "Academic" or professional scenario) wrapping the target expression (or its inflected form) in **double asterisks** like **${term}**, each paired with a natural Indonesian "translation_id".
-6. "synonyms": 2-4 natural English synonyms or equivalent expressions matching the same register.
-7. "antonyms": 1-3 natural English antonyms or contrasting expressions.
-8. "word_families": morphological derivatives or closely related expressions with part-of-speech tags ("n", "v", "adj", "adv", "idiom", "collocation").
-9. "pronunciation": easy-to-read Google "Sounds like" phonetic respelling separating syllables with middle dots "·" and putting the primary STRESSED syllable in ALL CAPS (e.g., "am·BIV·uh·luhnt", "JEN·truh·fyd", "bair thuh BRUHNT").
-10. "ipa": standard IPA transcription enclosed in slashes (e.g., "/æmˈbɪv.ə.lənt/").`;
+5. "meaning_en": clear, natural, C1–C2 monolingual English learner's dictionary definition (1-2 crisp sentences). For idioms, explain the real figurative meaning in English.
+6. "meaning_id": accurate, natural, figurative-aware Indonesian explanation (1-2 crisp sentences). For idioms, explain the real figurative meaning in Indonesian, NOT word-by-word literal translation.
+7. "examples": exactly 2 natural English example sentences (1 "Daily" conversation/scenario, 1 "Academic" or professional scenario) wrapping the target expression (or its inflected form) in **double asterisks** like **${term}**, each paired with a natural Indonesian "translation_id".
+8. "synonyms": 2-4 natural English synonyms or equivalent expressions matching the same register.
+9. "antonyms": 1-3 natural English antonyms or contrasting expressions.
+10. "word_families": morphological derivatives or closely related expressions with part-of-speech tags ("n", "v", "adj", "adv", "idiom", "collocation").
+11. "pronunciation": easy-to-read Google "Sounds like" phonetic respelling separating syllables with middle dots "·" and putting the primary STRESSED syllable in ALL CAPS (e.g., "am·BIV·uh·luhnt", "JEN·truh·fyd", "bair thuh BRUHNT").
+12. "ipa": standard IPA transcription enclosed in slashes (e.g., "/æmˈbɪv.ə.lənt/").`;
 
     const response = await ai.models.generateContent({
       model: getGeminiFlashModel(),
@@ -140,10 +191,12 @@ You MUST accurately perform Auto-Categorization and return strictly valid JSON m
             term: { type: Type.STRING },
             pronunciation: { type: Type.STRING },
             ipa: { type: Type.STRING },
+            cefr: { type: Type.STRING, enum: ["B2", "C1", "C2"] },
             type: {
               type: Type.STRING,
               enum: ["vocab", "idiom", "collocation"],
             },
+            meaning_en: { type: Type.STRING },
             meaning_id: { type: Type.STRING },
             examples: {
               type: Type.ARRAY,
@@ -185,7 +238,9 @@ You MUST accurately perform Auto-Categorization and return strictly valid JSON m
             "term",
             "pronunciation",
             "ipa",
+            "cefr",
             "type",
+            "meaning_en",
             "meaning_id",
             "examples",
             "synonyms",
@@ -199,21 +254,30 @@ You MUST accurately perform Auto-Categorization and return strictly valid JSON m
 
     const parsedText = response.text?.trim() ?? "";
     if (!parsedText) {
+      const fallback = buildFallbackAutofill(term);
       return NextResponse.json({
-        data: buildFallbackAutofill(term),
+        data: fallback,
+        meaning: lang === "en" ? fallback.meaning_en || fallback.meaning_id : fallback.meaning_id,
         source: "fallback",
       });
     }
 
     const parsed = JSON.parse(parsedText) as Partial<AutofillPayload>;
+    const normalized = normalizeAutofillPayload(parsed, term);
     return NextResponse.json({
-      data: normalizeAutofillPayload(parsed, term),
+      data: normalized,
+      meaning:
+        lang === "en"
+          ? normalized.meaning_en || normalized.meaning_id
+          : normalized.meaning_id,
       source: "gemini",
     });
-  } catch {
+  } catch (err) {
+    console.error("[api/autofill] Error:", err);
+    const classified = classifyApiError(err);
     return NextResponse.json(
-      { error: "Failed to process autofill request" },
-      { status: 500 }
+      { error: classified.detail, code: classified.code },
+      { status: classified.status }
     );
   }
 }

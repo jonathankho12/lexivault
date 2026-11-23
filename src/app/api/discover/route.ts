@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
+import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import { getGeminiClient, getGeminiFlashModel } from "@/lib/gemini";
 import { FALLBACK_DISCOVERY_PACKS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
@@ -34,15 +35,23 @@ function normalizeItems(
 
   return rawItems.slice(0, 7).map((item, idx) => {
     const cleanTerm = (item.term || `expression-${idx + 1}`).trim();
-    const builtIn = BUILT_IN_PRONUNCIATIONS[normalizeTermKey(cleanTerm)];
+    const key = normalizeTermKey(cleanTerm);
+    const builtIn = BUILT_IN_PRONUNCIATIONS[key];
+    const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
+    const meaning_en =
+      (item.meaning_en || "").trim() || builtInBilingual?.meaning_en || undefined;
+    const meaning_id = (item.meaning_id || "").trim() || meaning_en || "";
+
     return {
       id: item.id || `disc-${dateStr}-${idx + 1}`,
       term: cleanTerm,
       pronunciation:
         (item.pronunciation || "").trim() || builtIn?.pronunciation || undefined,
       ipa: (item.ipa || "").trim() || builtIn?.ipa || undefined,
+      cefr: item.cefr || builtInBilingual?.cefr || "C1",
       type: item.type && validTypes.has(item.type) ? item.type : "vocab",
-      meaning_id: (item.meaning_id || "").trim(),
+      meaning_id,
+      meaning_en,
       examples_json: Array.isArray(item.examples_json)
         ? item.examples_json.slice(0, 2)
         : [],
@@ -55,7 +64,7 @@ function normalizeItems(
         item.register && validRegisters.has(item.register)
           ? item.register
           : "Formal",
-      source_tag: "Discover",
+      source_tag: "discover",
     };
   });
 }
@@ -65,6 +74,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       date?: string;
       existingTerms?: string[];
+      lang?: "en" | "id";
     };
 
     const dateStr =
@@ -74,22 +84,25 @@ export async function POST(request: Request) {
     const existingTerms = Array.isArray(body.existingTerms)
       ? body.existingTerms.slice(0, 60)
       : [];
+    const lang = body.lang === "en" ? "en" : "id";
 
     const ai = getGeminiClient();
     if (ai) {
       try {
-        const prompt = `Generate today's curated English Daily Discovery Pack for date ${dateStr}.
+        const prompt = `Generate today's curated English Daily Discovery Pack for date ${dateStr} (active learner UI language: ${lang}).
 Provide EXACTLY 7 items in this exact order:
 - 3 items with type "vocab" (C1/C2 advanced versatile English vocabulary)
-- 2 items with type "idiom" (high-utility modern English idioms)
-- 2 items with type "collocation" (natural academic/professional English collocations)
+- 2 items with type "idiom" (high-utility modern C1/C2 English idioms)
+- 2 items with type "collocation" (natural academic/professional C1/C2 English collocations)
 
 Avoid these already-saved terms: ${existingTerms.join(", ") || "none"}.
 
-For EVERY item return:
+For EVERY item return BOTH bilingual meanings and rich linguistic details:
 - "term": English word/idiom/collocation
+- "cefr": "C1" or "C2"
 - "type": "vocab" | "idiom" | "collocation"
-- "meaning_id": crisp, natural Indonesian explanation
+- "meaning_en": concise, natural C1–C2 monolingual English dictionary definition (1-2 clear sentences)
+- "meaning_id": crisp, natural Indonesian explanation (figurative meaning for idioms)
 - "examples_json": 2 natural sentences (1 Daily, 1 Academic) highlighting the target in **bold**, with Indonesian "translation_id" and "context"
 - "synonyms": 2-3 strings
 - "antonyms": 1-2 strings
@@ -114,10 +127,12 @@ For EVERY item return:
                       term: { type: Type.STRING },
                       pronunciation: { type: Type.STRING },
                       ipa: { type: Type.STRING },
+                      cefr: { type: Type.STRING, enum: ["C1", "C2"] },
                       type: {
                         type: Type.STRING,
                         enum: ["vocab", "idiom", "collocation"],
                       },
+                      meaning_en: { type: Type.STRING },
                       meaning_id: { type: Type.STRING },
                       examples_json: {
                         type: Type.ARRAY,
@@ -159,7 +174,9 @@ For EVERY item return:
                       "term",
                       "pronunciation",
                       "ipa",
+                      "cefr",
                       "type",
+                      "meaning_en",
                       "meaning_id",
                       "examples_json",
                       "synonyms",
@@ -189,8 +206,8 @@ For EVERY item return:
             return NextResponse.json(pack);
           }
         }
-      } catch {
-        // Fall back smoothly below
+      } catch (err) {
+        console.error("[api/discover] Gemini fallback triggered:", err);
       }
     }
 
@@ -200,7 +217,8 @@ For EVERY item return:
       source: "fallback",
     };
     return NextResponse.json(pack);
-  } catch {
+  } catch (err) {
+    console.error("[api/discover] Request error:", err);
     return NextResponse.json(
       { error: "Failed to load daily discoveries" },
       { status: 500 }

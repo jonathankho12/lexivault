@@ -12,7 +12,18 @@ export type TabId =
   | "discover"
   | "stats";
 
-export type SourceTag = "Film" | "Buku" | "Kuliah" | "Artikel" | "Umum";
+export type SourceTag = "film" | "book" | "lecture" | "article" | "general";
+
+export type CefrLevel = "B2" | "C1" | "C2";
+
+export type SuggestCategory = "mix" | "idiom" | "vocab" | "collocation";
+
+export type SuggestRegister = "any" | "Academic" | "Formal" | "Casual";
+
+export interface CaptureToastState {
+  message: string;
+  type: "success" | "error" | "info";
+}
 
 export type Sm2Rating = "again" | "hard" | "good" | "easy";
 
@@ -47,8 +58,10 @@ export interface WordEntry {
   term: string;
   pronunciation?: string;
   ipa?: string;
+  cefr?: CefrLevel | string;
   type: WordType;
   meaning_id: string;
+  meaning_en?: string;
   examples_json: WordExample[];
   synonyms: string[];
   antonyms: string[];
@@ -72,8 +85,10 @@ export interface DiscoveryItem {
   term: string;
   pronunciation?: string;
   ipa?: string;
+  cefr?: CefrLevel | string;
   type: WordType;
   meaning_id: string;
+  meaning_en?: string;
   examples_json: WordExample[];
   synonyms: string[];
   antonyms: string[];
@@ -116,13 +131,31 @@ export interface ExtractedVocabItem {
   term: string;
   pronunciation?: string;
   ipa?: string;
+  cefr?: CefrLevel | string;
   type: WordType;
+  meaning_id: string;
+  meaning_en?: string;
+  examples: WordExample[];
+  synonyms: string[];
+  antonyms: string[];
+  word_families: WordFamilyItem[];
+  register: RegisterType;
+}
+
+export interface SuggestedWordItem {
+  term: string;
+  pronunciation?: string;
+  ipa?: string;
+  cefr: CefrLevel;
+  type: WordType;
+  meaning_en: string;
   meaning_id: string;
   examples: WordExample[];
   synonyms: string[];
   antonyms: string[];
   word_families: WordFamilyItem[];
   register: RegisterType;
+  source_tag: SourceTag;
 }
 
 export type PracticeMode =
@@ -148,7 +181,10 @@ export type SentenceGradeVerdict =
   | "Natural"
   | "Cukup Baik"
   | "Kurang Tepat"
-  | "Belum Menjawab / Tidak Valid";
+  | "Belum Menjawab / Tidak Valid"
+  | "Good"
+  | "Needs Work"
+  | "No Valid Attempt";
 
 export interface SentenceGradeResult {
   is_correct: boolean;
@@ -163,8 +199,10 @@ export interface AutofillPayload {
   term: string;
   pronunciation?: string;
   ipa?: string;
+  cefr?: CefrLevel | string;
   type: WordType;
   meaning_id: string;
+  meaning_en?: string;
   examples: WordExample[];
   synonyms: string[];
   antonyms: string[];

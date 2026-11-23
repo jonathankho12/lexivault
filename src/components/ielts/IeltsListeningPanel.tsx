@@ -14,6 +14,7 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { FALLBACK_LISTENING_PACKS } from "@/lib/ieltsMockData";
 import { saveSkillAttempt } from "@/lib/ieltsStorage";
@@ -55,6 +56,8 @@ export function IeltsListeningPanel({
   onProfileUpdated: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
 }) {
   const { user, todayStr, syncExternalStudyLog } = useLexiVault();
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
 
   const [pack, setPack] = useState<ListeningSectionPack>(
     FALLBACK_LISTENING_PACKS[0]
@@ -120,7 +123,11 @@ export function IeltsListeningPanel({
         blobUrl = URL.createObjectURL(blob);
         urlCacheRef.current.set(pack.id, blobUrl);
       } catch {
-        setAudioError("Gagal memuat audio percakapan. Coba klik Play lagi.");
+        setAudioError(
+          isEn
+            ? "Failed to load conversation audio. Tap Play to try again."
+            : "Gagal memuat audio percakapan. Coba klik Play lagi."
+        );
         return null;
       } finally {
         setAudioLoading(false);
@@ -140,7 +147,9 @@ export function IeltsListeningPanel({
     };
     audio.onerror = () => {
       setIsPlaying(false);
-      setAudioError("Gagal memutar berkas audio.");
+      setAudioError(
+        isEn ? "Failed to play audio file." : "Gagal memutar berkas audio."
+      );
     };
     audioRef.current = audio;
     return audio;
@@ -274,7 +283,15 @@ export function IeltsListeningPanel({
           ) : (
             <Sparkles className="h-3.5 w-3.5" />
           )}
-          <span>{generating ? "Membuat..." : "Generate Soal Baru (AI)"}</span>
+          <span>
+            {generating
+              ? isEn
+                ? "Generating..."
+                : "Membuat..."
+              : isEn
+                ? "Generate New Section (AI)"
+                : "Generate Soal Baru (AI)"}
+          </span>
         </motion.button>
       </div>
 
@@ -287,7 +304,15 @@ export function IeltsListeningPanel({
               whileTap={TAP_SCALE}
               disabled={audioLoading}
               onClick={() => void togglePlay()}
-              aria-label={isPlaying ? "Jeda audio" : "Putar audio"}
+              aria-label={
+                isPlaying
+                  ? isEn
+                    ? "Pause audio"
+                    : "Jeda audio"
+                  : isEn
+                    ? "Play audio"
+                    : "Putar audio"
+              }
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#0A84FF] to-[#5E5CE6] text-white shadow-[0_6px_20px_rgba(10,132,255,0.35)] cursor-pointer disabled:opacity-60"
             >
               {audioLoading ? (
@@ -304,10 +329,16 @@ export function IeltsListeningPanel({
                 <Headphones className="h-4 w-4 text-[#70BCFF]" />
                 <span className="text-sm font-semibold text-white">
                   {audioLoading
-                    ? "Menyiapkan Audio Multi-Aksen..."
+                    ? isEn
+                      ? "Preparing Multi-Accent Audio..."
+                      : "Menyiapkan Audio Multi-Aksen..."
                     : isPlaying
-                      ? "Sedang Diputar (Neural Voice)"
-                      : "Putar Audio Percakapan"}
+                      ? isEn
+                        ? "Playing (Neural Voice)"
+                        : "Sedang Diputar (Neural Voice)"
+                      : isEn
+                        ? "Play Conversation Audio"
+                        : "Putar Audio Percakapan"}
                 </span>
                 {isPlaying && (
                   <span
@@ -378,8 +409,12 @@ export function IeltsListeningPanel({
         <div className="flex items-center justify-between pt-2 border-t border-white/[0.08]">
           <span className="text-[11px] text-[#8E8E93]">
             {submitted
-              ? "Transkrip tersedia untuk evaluasi."
-              : "Transkrip terbuka otomatis setelah kamu submit jawaban."}
+              ? isEn
+                ? "Transcript unlocked for review."
+                : "Transkrip tersedia untuk evaluasi."
+              : isEn
+                ? "Transcript unlocks automatically after you submit your answers."
+                : "Transkrip terbuka otomatis setelah kamu submit jawaban."}
           </span>
 
           <button
@@ -423,11 +458,11 @@ export function IeltsListeningPanel({
         <div className="liquid-glass-elevated rounded-3xl p-5 flex items-center justify-between gap-3 border-[#30D158]/35">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
-              Hasil Listening IELTS
+              {isEn ? "IELTS Listening Result" : "Hasil Listening IELTS"}
             </p>
             <p className="text-xl font-bold text-white">
               Est. Band {resultBand.toFixed(1)} ({correctCount}/
-              {pack.questions.length} benar)
+              {pack.questions.length} {isEn ? "correct" : "benar"})
             </p>
           </div>
           <CheckCircle2 className="h-7 w-7 text-[#30D158] shrink-0" />
@@ -471,7 +506,11 @@ export function IeltsListeningPanel({
                       [q.id]: e.target.value,
                     }))
                   }
-                  placeholder="Ketik jawaban singkat sesuai rekaman..."
+                  placeholder={
+                    isEn
+                      ? "Type a short answer from the recording..."
+                      : "Ketik jawaban singkat sesuai rekaman..."
+                  }
                   className="w-full rounded-2xl bg-white/[0.05] border border-white/[0.12] px-3.5 py-2.5 text-base sm:text-sm text-white placeholder:text-[#8E8E93] focus:outline-none focus:border-[#0A84FF]/60"
                 />
               ) : (
@@ -510,11 +549,14 @@ export function IeltsListeningPanel({
               {submitted && (
                 <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-1 text-xs">
                   <p className="font-semibold text-[#7CF099]">
-                    Jawaban: {q.answer}
+                    {isEn ? "Answer: " : "Jawaban: "}
+                    {q.answer}
                   </p>
-                  <p className="text-[#D1D1D6] leading-relaxed">
-                    {q.explanation_id}
-                  </p>
+                  {!isEn && q.explanation_id && (
+                    <p className="text-[#D1D1D6] leading-relaxed">
+                      {q.explanation_id}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -529,7 +571,7 @@ export function IeltsListeningPanel({
           onClick={() => void handleSubmit()}
           className="w-full rounded-full bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] py-3 text-sm font-semibold text-white cursor-pointer"
         >
-          Submit Jawaban Listening
+          {isEn ? "Submit Listening Answers" : "Submit Jawaban Listening"}
         </motion.button>
       )}
     </div>

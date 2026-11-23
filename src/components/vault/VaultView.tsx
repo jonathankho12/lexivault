@@ -2,8 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BookMarked, Clock, FileText, Search, X } from "lucide-react";
+import {
+  BookMarked,
+  Clock,
+  FileText,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { ShimmerWordSkeleton } from "@/components/ui/ShimmerWordSkeleton";
+import { AiSuggestSheet } from "@/components/vault/AiSuggestSheet";
 import { QuickCaptureBar } from "@/components/vault/QuickCaptureBar";
 import { TextExtractorSheet } from "@/components/vault/TextExtractorSheet";
 import { VaultWordCard } from "@/components/vault/VaultWordCard";
@@ -11,7 +19,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePronunciation } from "@/hooks/usePronunciation";
 import { STAGGER_CONTAINER, TAP_SCALE } from "@/lib/motion";
-import { cn } from "@/lib/utils";
+import { cn, formatSourceTagLabel, normalizeSourceTag } from "@/lib/utils";
 import type { RegisterType, WordType } from "@/types/lexivault";
 
 type TypeFilter = "all" | WordType;
@@ -20,10 +28,11 @@ type RegisterFilter = "all" | RegisterType;
 export function VaultView() {
   const { words, accent, isCapturing, isHydrated, launchCommuteMode } =
     useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const { prefetchMany } = usePronunciation();
 
   const [pendingTerm, setPendingTerm] = useState("");
+  const [suggestOpen, setSuggestOpen] = useState(false);
   const [extractorOpen, setExtractorOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -33,7 +42,7 @@ export function VaultView() {
   const availableSources = useMemo(() => {
     const set = new Set<string>();
     for (const w of words) {
-      if (w.source_tag) set.add(w.source_tag);
+      set.add(normalizeSourceTag(w.source_tag));
     }
     return ["all", ...Array.from(set)];
   }, [words]);
@@ -46,7 +55,7 @@ export function VaultView() {
         return false;
       if (
         sourceFilter !== "all" &&
-        (word.source_tag || "Umum") !== sourceFilter
+        normalizeSourceTag(word.source_tag) !== sourceFilter
       )
         return false;
 
@@ -54,6 +63,7 @@ export function VaultView() {
       return (
         word.term.toLowerCase().includes(q) ||
         word.meaning_id.toLowerCase().includes(q) ||
+        (word.meaning_en?.toLowerCase().includes(q) ?? false) ||
         word.synonyms.some((s) => s.toLowerCase().includes(q)) ||
         word.word_families_json.some((wf) => wf.word.toLowerCase().includes(q))
       );
@@ -89,6 +99,16 @@ export function VaultView() {
           <motion.button
             type="button"
             whileTap={TAP_SCALE}
+            onClick={() => setSuggestOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#5E5CE6] to-[#0A84FF] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_4px_16px_rgba(94,92,230,0.38)] hover:brightness-110 transition-all cursor-pointer"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>{t.vault.aiSuggestBtn}</span>
+          </motion.button>
+
+          <motion.button
+            type="button"
+            whileTap={TAP_SCALE}
             onClick={() => setExtractorOpen(true)}
             className="liquid-glass-pill inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-[#70BCFF] border-[#0A84FF]/35 hover:bg-[#0A84FF]/15 cursor-pointer"
           >
@@ -111,6 +131,11 @@ export function VaultView() {
           </span>
         </div>
       </div>
+
+      <AiSuggestSheet
+        open={suggestOpen}
+        onClose={() => setSuggestOpen(false)}
+      />
 
       <TextExtractorSheet
         open={extractorOpen}
@@ -202,7 +227,9 @@ export function VaultView() {
                   : "bg-white/[0.05] border-white/[0.09] text-[#8E8E93] hover:text-[#F5F5F7]"
               )}
             >
-              {src === "all" ? t.vault.allSources : src}
+              {src === "all"
+                ? t.vault.allSources
+                : formatSourceTagLabel(src, lang)}
             </button>
           ))}
         </div>

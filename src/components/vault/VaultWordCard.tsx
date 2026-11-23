@@ -5,21 +5,26 @@ import { ChevronRight, Tag } from "lucide-react";
 import { AudioButton } from "@/components/ui/AudioButton";
 import { HighlightedText } from "@/components/ui/HighlightedText";
 import { PronunciationText } from "@/components/ui/PronunciationText";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { STAGGER_ITEM, TAP_SCALE } from "@/lib/motion";
 import {
   cn,
   formatRegisterBadgeClass,
+  formatSourceTagLabel,
   formatTypeLabel,
+  getLocalizedMeaning,
   getWordAccuracy,
 } from "@/lib/utils";
 import type { WordEntry } from "@/types/lexivault";
 
 export function VaultWordCard({ word }: { word: WordEntry }) {
   const { accent, setSelectedWord } = useLexiVault();
+  const { lang, t } = useLanguage();
   const accuracy = getWordAccuracy(word);
   const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
   const firstExample = word.examples_json?.[0];
+  const meaning = getLocalizedMeaning(word, lang);
 
   return (
     <motion.article
@@ -42,9 +47,14 @@ export function VaultWordCard({ word }: { word: WordEntry }) {
             >
               {word.register}
             </span>
+            {word.cefr && (
+              <span className="rounded-full px-2 py-0.5 text-[10px] font-bold bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 text-[#C8C6FF]">
+                {word.cefr}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-[#8E8E93] bg-white/[0.04]">
               <Tag className="h-2.5 w-2.5" />
-              {word.source_tag || "Umum"}
+              {formatSourceTagLabel(word.source_tag, lang)}
             </span>
           </div>
 
@@ -69,7 +79,7 @@ export function VaultWordCard({ word }: { word: WordEntry }) {
       </div>
 
       <p className="mt-2 text-sm leading-relaxed text-[#E5E5EA] line-clamp-2">
-        {word.meaning_id}
+        {meaning}
       </p>
 
       {firstExample && (
@@ -116,7 +126,9 @@ export function VaultWordCard({ word }: { word: WordEntry }) {
               {accuracy}%
             </span>
           ) : (
-            <span className="text-[11px] font-medium text-[#0A84FF]">Baru</span>
+            <span className="text-[11px] font-medium text-[#0A84FF]">
+              {t.vault.newBadge}
+            </span>
           )}
           <ChevronRight className="h-3.5 w-3.5 text-[#8E8E93] group-hover:text-white transition-transform group-hover:translate-x-0.5" />
         </div>

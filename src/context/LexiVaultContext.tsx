@@ -9,6 +9,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useLanguage } from "@/context/LanguageContext";
 import {
   changeUserPassword,
   continueAsGuestSession,
@@ -44,6 +45,7 @@ import {
   recordPracticeAttempt,
   recordSm2ReviewAttempt,
   saveWordEntry,
+  seedStarterWordsForSupabaseUser,
   subscribeRealtimeSync,
   updateWordAudioUrls,
   updateWordEntry,
@@ -51,18 +53,21 @@ import {
 import {
   calculateStreak,
   getLocalDateString,
+  normalizeSourceTag,
   normalizeTermKey,
 } from "@/lib/utils";
 import type {
   AccentType,
   AuthUser,
   AutofillPayload,
+  CaptureToastState,
   DailyRingsProgress,
   DiscoveryItem,
   ExtractedVocabItem,
   PracticeMode,
   Sm2Rating,
   StudyLog,
+  SuggestedWordItem,
   SyncMode,
   TabId,
   WordEntry,
@@ -123,7 +128,7 @@ interface LexiVaultContextValue {
   selectedWord: WordEntry | null;
   setSelectedWord: (word: WordEntry | null) => void;
   isCapturing: boolean;
-  captureToast: string | null;
+  captureToast: CaptureToastState | null;
   clearCaptureToast: () => void;
   practiceLaunch: PracticeLaunchRequest | null;
   clearPracticeLaunch: () => void;
@@ -133,6 +138,7 @@ interface LexiVaultContextValue {
     items: ExtractedVocabItem[],
     sourceTag: string
   ) => Promise<number>;
+  addSuggestedWordToVault: (item: SuggestedWordItem) => Promise<WordEntry | null>;
   refreshWordWithAI: (wordId: string) => Promise<RefreshWordResult>;
   saveDiscoveryItemToVault: (item: DiscoveryItem) => Promise<WordEntry | null>;
   removeWord: (id: string) => Promise<void>;
@@ -172,6 +178,7 @@ export function LexiVaultProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const { lang } = useLanguage();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authInitialMode, setAuthInitialMode] = useState<"login" | "register">(
     "login"
@@ -191,7 +198,9 @@ export function LexiVaultProvider({
   );
   const [selectedWord, setSelectedWord] = useState<WordEntry | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [captureToast, setCaptureToast] = useState<string | null>(null);
+  const [captureToast, setCaptureToast] = useState<CaptureToastState | null>(
+    null
+  );
   const [practiceLaunch, setPracticeLaunch] =
     useState<PracticeLaunchRequest | null>(null);
   const [streakFocusNonce, setStreakFocusNonce] = useState(0);
@@ -366,13 +375,24 @@ export function LexiVaultProvider({
 
   const addWordViaAI = useCallback(
     async (rawTerm: string, sourceTag: string): Promise<AddWordResult> => {
+      const isEn = lang === "en";
       if (!user) {
-        return { ok: false, error: "Silakan login terlebih dahulu." };
+        return {
+          ok: false,
+          error: isEn
+            ? "Please sign in first."
+            : "Silakan login terlebih dahulu.",
+        };
       }
 
       const trimmed = rawTerm.trim();
       if (!trimmed) {
-        return { ok: false, error: "Masukkan kata atau idiom terlebih dahulu." };
+        return {
+          ok: false,
+          error: isEn
+            ? "Please enter a word or idiom first."
+            : "Masukkan kata atau idiom terlebih dahulu.",
+        };
       }
 
       const normalized = normalizeTermKey(trimmed);
@@ -381,21 +401,65 @@ export function LexiVaultProvider({
       );
       if (existing) {
         setSelectedWord(existing);
-        setCaptureToast(`"${existing.term}" sudah ada di Vault.`);
+        setCaptureToast({
+          type: "info",
+          message: isEn
+            ? `"${existing.term}" is already in your Vault.`
+            : `"${existing.term}" sudah ada di Vault.`,
+        });
         return { ok: false, duplicate: true, word: existing };
       }
 
       setIsCapturing(true);
       setCaptureToast(null);
       try {
+        const canonicalSource = normalizeSourceTag(sourceTag || "general");
         const res = await fetch("/api/autofill", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ term: trimmed, sourceTag }),
+          body: JSON.stringify({
+            term: trimmed,
+            sourceTag: canonicalSource,
+            lang,
+          }),
         });
 
         if (!res.ok) {
-          throw new Error("Gagal menganalisis kata");
+          let apiCode = "";
+          let apiError = "";
+          try {
+            const errJson = (await res.json()) as {
+              error?: string;
+              code?: string;
+            };
+            apiCode = errJson.code ?? "";
+            apiError = errJson.error ?? "";
+          } catch {
+            // Non-JSON error body
+          }
+          console.error(
+            `[LexiVault] /api/autofill failed (HTTP ${res.status}, code=${apiCode || "unknown"}):`,
+            apiError || res.statusText
+          );
+          const reasonSuffix =
+            apiCode === "quota"
+              ? isEn
+                ? " (AI quota limit reached)"
+                : " (batas kuota AI tercapai)"
+              : apiCode === "auth"
+                ? isEn
+                  ? " (API authentication error)"
+                  : " (kendala autentikasi API)"
+                : apiCode === "network"
+                  ? isEn
+                    ? " (network timeout)"
+                    : " (jaringan timeout)"
+                  : "";
+          const errMsg = isEn
+            ? `Failed to save word. Please try again.${reasonSuffix}`
+            : `Gagal menyimpan kata. Coba lagi.${reasonSuffix}`;
+          setCaptureToast({ type: "error", message: errMsg });
+          return { ok: false, error: errMsg };
         }
 
         const json = (await res.json()) as { data: AutofillPayload };
@@ -411,14 +475,16 @@ export function LexiVaultProvider({
           term: aiData.term,
           pronunciation: aiData.pronunciation,
           ipa: aiData.ipa,
+          cefr: aiData.cefr,
           type: aiData.type,
           meaning_id: aiData.meaning_id,
+          meaning_en: aiData.meaning_en,
           examples_json: aiData.examples,
           synonyms: aiData.synonyms,
           antonyms: aiData.antonyms,
           word_families_json: aiData.word_families,
           register: aiData.register,
-          source_tag: sourceTag || "Umum",
+          source_tag: canonicalSource,
           audio_us_url: null,
           audio_uk_url: null,
           correct_count: 0,
@@ -449,24 +515,33 @@ export function LexiVaultProvider({
         setXp(newXp);
 
         preGenerateDualAudio(saved);
-        setCaptureToast(
-          `"${saved.term}" tersimpan (${saved.type} · ${saved.register})`
-        );
+        setCaptureToast({
+          type: "success",
+          message: isEn
+            ? `"${saved.term}" saved (${saved.type} · ${saved.register})`
+            : `"${saved.term}" tersimpan (${saved.type} · ${saved.register})`,
+        });
 
         return { ok: true, word: saved };
-      } catch {
-        setCaptureToast("Gagal menyimpan kata. Coba lagi.");
-        return { ok: false, error: "Gagal menyimpan kata" };
+      } catch (err) {
+        console.error("[LexiVault] addWordViaAI network/client error:", err);
+        const errMsg = isEn
+          ? "Failed to save word. Please try again."
+          : "Gagal menyimpan kata. Coba lagi.";
+        setCaptureToast({ type: "error", message: errMsg });
+        return { ok: false, error: errMsg };
       } finally {
         setIsCapturing(false);
       }
     },
-    [preGenerateDualAudio, todayStr, user]
+    [lang, preGenerateDualAudio, todayStr, user]
   );
 
   const addExtractedWordsBatch = useCallback(
     async (items: ExtractedVocabItem[], sourceTag: string): Promise<number> => {
       if (!user || items.length === 0) return 0;
+      const isEn = lang === "en";
+      const canonicalSource = normalizeSourceTag(sourceTag || "article");
 
       const existingKeys = new Set(
         wordsRef.current.map((w) => normalizeTermKey(w.term))
@@ -488,14 +563,16 @@ export function LexiVaultProvider({
           term: item.term,
           pronunciation: item.pronunciation,
           ipa: item.ipa,
+          cefr: item.cefr,
           type: item.type,
           meaning_id: item.meaning_id,
+          meaning_en: item.meaning_en,
           examples_json: item.examples,
           synonyms: item.synonyms,
           antonyms: item.antonyms,
           word_families_json: item.word_families,
           register: item.register,
-          source_tag: sourceTag || "Artikel",
+          source_tag: canonicalSource,
           audio_us_url: null,
           audio_uk_url: null,
           correct_count: 0,
@@ -530,19 +607,104 @@ export function LexiVaultProvider({
           ...prev.filter((l) => l.study_date !== updatedLog.study_date),
         ]);
         setXp(newXp);
-        setCaptureToast(`${savedList.length} kosakata baru diekstrak ke Vault`);
+        setCaptureToast({
+          type: "success",
+          message: isEn
+            ? `${savedList.length} new expression(s) extracted to Vault`
+            : `${savedList.length} kosakata baru diekstrak ke Vault`,
+        });
       }
 
       return savedList.length;
     },
-    [preGenerateDualAudio, todayStr, user]
+    [lang, preGenerateDualAudio, todayStr, user]
+  );
+
+  const addSuggestedWordToVault = useCallback(
+    async (item: SuggestedWordItem): Promise<WordEntry | null> => {
+      if (!user) return null;
+      const isEn = lang === "en";
+      const normalized = normalizeTermKey(item.term);
+      const existing = wordsRef.current.find(
+        (w) => normalizeTermKey(w.term) === normalized
+      );
+      if (existing) {
+        return existing;
+      }
+
+      const nowIso = new Date().toISOString();
+      const draft: WordEntry = {
+        id:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `local-sug-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        user_id: user.id,
+        term: item.term,
+        pronunciation: item.pronunciation,
+        ipa: item.ipa,
+        cefr: item.cefr,
+        type: item.type,
+        meaning_id: item.meaning_id,
+        meaning_en: item.meaning_en,
+        examples_json: item.examples,
+        synonyms: item.synonyms,
+        antonyms: item.antonyms,
+        word_families_json: item.word_families,
+        register: item.register,
+        source_tag: normalizeSourceTag(item.source_tag || "article"),
+        audio_us_url: null,
+        audio_uk_url: null,
+        correct_count: 0,
+        wrong_count: 0,
+        last_practiced_at: null,
+        next_review_at: nowIso,
+        interval_days: 0,
+        ease_factor: 2.5,
+        repetitions: 0,
+        created_at: nowIso,
+      };
+
+      const saved = await saveWordEntry(draft, user.id);
+      setWords((prev) => [saved, ...prev.filter((w) => w.id !== saved.id)]);
+
+      const { updatedLog, newXp } = await incrementWordsAddedLog(
+        todayStr,
+        user.id,
+        1
+      );
+      setStudyLogs((prev) => [
+        updatedLog,
+        ...prev.filter((l) => l.study_date !== updatedLog.study_date),
+      ]);
+      setXp(newXp);
+      preGenerateDualAudio(saved);
+      setCaptureToast({
+        type: "success",
+        message: isEn
+          ? `"${saved.term}" added to your Vault`
+          : `"${saved.term}" ditambahkan ke Vault`,
+      });
+      return saved;
+    },
+    [lang, preGenerateDualAudio, todayStr, user]
   );
 
   const refreshWordWithAI = useCallback(
     async (wordId: string): Promise<RefreshWordResult> => {
-      if (!user) return { ok: false, error: "Belum login" };
+      const isEn = lang === "en";
+      if (!user) {
+        return {
+          ok: false,
+          error: isEn ? "Not signed in." : "Belum login.",
+        };
+      }
       const target = wordsRef.current.find((w) => w.id === wordId);
-      if (!target) return { ok: false, error: "Kata tidak ditemukan" };
+      if (!target) {
+        return {
+          ok: false,
+          error: isEn ? "Word not found." : "Kata tidak ditemukan.",
+        };
+      }
 
       try {
         const res = await fetch("/api/autofill", {
@@ -550,10 +712,11 @@ export function LexiVaultProvider({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             term: target.term,
-            sourceTag: target.source_tag,
+            sourceTag: normalizeSourceTag(target.source_tag),
+            lang,
           }),
         });
-        if (!res.ok) throw new Error("AI request failed");
+        if (!res.ok) throw new Error(`AI request failed (${res.status})`);
 
         const json = (await res.json()) as {
           data: AutofillPayload;
@@ -566,8 +729,10 @@ export function LexiVaultProvider({
           term: aiData.term,
           pronunciation: aiData.pronunciation || target.pronunciation,
           ipa: aiData.ipa || target.ipa,
+          cefr: aiData.cefr || target.cefr,
           type: aiData.type,
           meaning_id: aiData.meaning_id,
+          meaning_en: aiData.meaning_en || target.meaning_en,
           examples_json: aiData.examples,
           synonyms: aiData.synonyms,
           antonyms: aiData.antonyms,
@@ -584,11 +749,17 @@ export function LexiVaultProvider({
         );
 
         return { ok: true, source: json.source };
-      } catch {
-        return { ok: false, error: "Gagal memperbarui dengan AI." };
+      } catch (err) {
+        console.error("[LexiVault] refreshWordWithAI failed:", err);
+        return {
+          ok: false,
+          error: isEn
+            ? "Failed to refresh details with AI."
+            : "Gagal memperbarui dengan AI.",
+        };
       }
     },
-    [user]
+    [lang, user]
   );
 
   const saveDiscoveryItemToVault = useCallback(
@@ -612,14 +783,16 @@ export function LexiVaultProvider({
         term: item.term,
         pronunciation: item.pronunciation,
         ipa: item.ipa,
+        cefr: item.cefr,
         type: item.type,
         meaning_id: item.meaning_id,
+        meaning_en: item.meaning_en,
         examples_json: item.examples_json,
         synonyms: item.synonyms,
         antonyms: item.antonyms,
         word_families_json: item.word_families_json,
         register: item.register,
-        source_tag: "Discover",
+        source_tag: "discover",
         audio_us_url: null,
         audio_uk_url: null,
         correct_count: 0,
@@ -840,11 +1013,15 @@ export function LexiVaultProvider({
   const changePassword = useCallback(
     async (newPassword: string): Promise<AuthActionResult> => {
       if (!user) {
-        return { ok: false, error: "Pengguna belum masuk." };
+        return {
+          ok: false,
+          error:
+            lang === "en" ? "User is not signed in." : "Pengguna belum masuk.",
+        };
       }
-      return changeUserPassword(user, newPassword);
+      return changeUserPassword(user, newPassword, lang);
     },
-    [user]
+    [lang, user]
   );
 
   const continueAsGuest = useCallback(() => {
@@ -871,7 +1048,12 @@ export function LexiVaultProvider({
       password: string,
       rememberMe: boolean
     ): Promise<AuthActionResult> => {
-      const res = await signInWithUsername(username, password, rememberMe);
+      const res = await signInWithUsername(
+        username,
+        password,
+        rememberMe,
+        lang
+      );
       if (res.user) {
         setAuthInitialMode("login");
         setUser(res.user);
@@ -880,7 +1062,7 @@ export function LexiVaultProvider({
       }
       return { ok: false, error: res.error };
     },
-    []
+    [lang]
   );
 
   const register = useCallback(
@@ -889,8 +1071,19 @@ export function LexiVaultProvider({
       password: string,
       rememberMe: boolean
     ): Promise<AuthActionResult> => {
-      const res = await signUpWithUsername(username, password, rememberMe);
+      const res = await signUpWithUsername(
+        username,
+        password,
+        rememberMe,
+        lang
+      );
       if (res.user) {
+        if (res.user.provider === "supabase") {
+          await seedStarterWordsForSupabaseUser(
+            getLocalDateString(),
+            res.user.id
+          );
+        }
         setAuthInitialMode("login");
         setUser(res.user);
         setActiveTab("vault");
@@ -898,7 +1091,7 @@ export function LexiVaultProvider({
       }
       return { ok: false, error: res.error };
     },
-    []
+    [lang]
   );
 
   const logout = useCallback(async () => {
@@ -948,6 +1141,7 @@ export function LexiVaultProvider({
     launchPractice,
     addWordViaAI,
     addExtractedWordsBatch,
+    addSuggestedWordToVault,
     refreshWordWithAI,
     saveDiscoveryItemToVault,
     removeWord,

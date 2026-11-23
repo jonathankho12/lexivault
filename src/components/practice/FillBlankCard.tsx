@@ -6,9 +6,10 @@ import { ArrowRight, CheckCircle2, HelpCircle, XCircle } from "lucide-react";
 import { AudioButton } from "@/components/ui/AudioButton";
 import { HighlightedText } from "@/components/ui/HighlightedText";
 import { PronunciationText } from "@/components/ui/PronunciationText";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
-import { cn, normalizeTermKey } from "@/lib/utils";
+import { cn, getLocalizedMeaning, normalizeTermKey } from "@/lib/utils";
 import type { PracticeQuestion } from "@/types/lexivault";
 
 export function FillBlankCard({
@@ -19,6 +20,9 @@ export function FillBlankCard({
   onComplete: (isCorrect: boolean) => void;
 }) {
   const { accent } = useLexiVault();
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
+
   const [inputValue, setInputValue] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
@@ -27,9 +31,14 @@ export function FillBlankCard({
     word,
     blankSentence = "",
     blankTarget = word.term,
-    blankTranslation = word.meaning_id,
+    blankTranslation,
     choices = [],
   } = question;
+
+  const meaningHint =
+    isEn
+      ? getLocalizedMeaning(word, "en")
+      : blankTranslation || getLocalizedMeaning(word, "id");
 
   const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
 
@@ -66,7 +75,9 @@ export function FillBlankCard({
             text={word.term}
             remoteUrl={remoteUrl}
             wordId={word.id}
-            label={submitted ? word.term : "Dengar Target"}
+            label={
+              submitted ? word.term : isEn ? "Hear Target" : "Dengar Target"
+            }
             size="sm"
           />
         </div>
@@ -97,7 +108,8 @@ export function FillBlankCard({
         <div className="flex items-start gap-2 rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 text-xs text-[#8E8E93]">
           <HelpCircle className="h-4 w-4 shrink-0 text-[#0A84FF] mt-0.5" />
           <span className="leading-relaxed">
-            Petunjuk makna: {blankTranslation}
+            {isEn ? "Meaning hint: " : "Petunjuk makna: "}
+            {meaningHint}
           </span>
         </div>
       </div>
@@ -109,7 +121,11 @@ export function FillBlankCard({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           disabled={submitted}
-          placeholder="Ketik kata/frasa atau pilih di bawah..."
+          placeholder={
+            isEn
+              ? "Type the expression or pick below..."
+              : "Ketik kata/frasa atau pilih di bawah..."
+          }
           className="liquid-glass-pill min-w-0 flex-1 rounded-full px-4 py-3 text-base text-[#F5F5F7] placeholder:text-[#8E8E93] focus:outline-none focus:border-[#0A84FF]/55"
         />
         <motion.button
@@ -123,14 +139,16 @@ export function FillBlankCard({
               : "bg-white/[0.08] text-[#8E8E93] cursor-not-allowed"
           )}
         >
-          Cek
+          {isEn ? "Check" : "Cek"}
         </motion.button>
       </form>
 
       {/* Quick Word Bank Pills */}
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93] px-1">
-          Atau pilih cepat dari Word Bank:
+          {isEn
+            ? "Or pick quickly from the Word Bank:"
+            : "Atau pilih cepat dari Word Bank:"}
         </p>
         <div className="grid grid-cols-2 gap-2.5">
           {choices.map((choice, idx) => {
@@ -147,7 +165,8 @@ export function FillBlankCard({
               } else if (isUserPick) {
                 btnStyle = "bg-[#FF453A]/20 border-[#FF453A]/55 text-[#FFB4AE]";
               } else {
-                btnStyle = "bg-white/[0.03] border-white/[0.07] text-[#8E8E93] opacity-60";
+                btnStyle =
+                  "bg-white/[0.03] border-white/[0.07] text-[#8E8E93] opacity-60";
               }
             }
 
@@ -192,8 +211,12 @@ export function FillBlankCard({
                 )}
               >
                 {isCorrect
-                  ? "Benar! Penggunaan kontekstual tepat."
-                  : `Jawaban yang tepat: "${blankTarget}"`}
+                  ? isEn
+                    ? "Correct! Accurate contextual usage."
+                    : "Benar! Penggunaan kontekstual tepat."
+                  : isEn
+                    ? `Correct answer: "${blankTarget}"`
+                    : `Jawaban yang tepat: "${blankTarget}"`}
               </span>
             </div>
           </div>
@@ -219,7 +242,7 @@ export function FillBlankCard({
               onClick={() => onComplete(isCorrect)}
               className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
             >
-              <span>Lanjut</span>
+              <span>{isEn ? "Next" : "Lanjut"}</span>
               <ArrowRight className="h-4 w-4" />
             </motion.button>
           </div>

@@ -136,7 +136,11 @@ export function SettingsModal({
       } else {
         setPwdFeedback({
           ok: false,
-          message: res.error || "Failed to update password.",
+          message:
+            res.error ||
+            (lang === "en"
+              ? "Failed to update password."
+              : "Gagal memperbarui password."),
         });
       }
     } finally {

@@ -1,4 +1,5 @@
 import type { User } from "@supabase/supabase-js";
+import type { AppLanguage } from "@/lib/i18n";
 import {
   getSupabaseClient,
   isSupabaseConfigured,
@@ -34,13 +35,20 @@ export function normalizeUsername(raw: string): string {
   return raw.trim().replace(/^@+/, "").toLowerCase();
 }
 
-export function validateUsername(raw: string): string | null {
+export function validateUsername(
+  raw: string,
+  lang: AppLanguage = "id"
+): string | null {
   const clean = normalizeUsername(raw);
   if (clean.length < 3 || clean.length > 24) {
-    return "Username harus 3–24 karakter.";
+    return lang === "en"
+      ? "Username must be 3–24 characters."
+      : "Username harus 3–24 karakter.";
   }
   if (!/^[a-z0-9._-]+$/.test(clean)) {
-    return "Username hanya boleh berisi huruf kecil, angka, titik, underscore, atau strip.";
+    return lang === "en"
+      ? "Username may only contain lowercase letters, numbers, dots, underscores, or hyphens."
+      : "Username hanya boleh berisi huruf kecil, angka, titik, underscore, atau strip.";
   }
   return null;
 }
@@ -108,7 +116,7 @@ export function continueAsGuestSession(): AuthUser {
   const id = getOrCreateGuestDeviceId();
   const guestUser: AuthUser = {
     id,
-    username: "tamu",
+    username: "guest",
     email: `${id}@guest.local`,
     provider: "guest",
   };
@@ -186,12 +194,18 @@ export async function getCurrentSessionUser(): Promise<AuthUser | null> {
 export async function signInWithUsername(
   rawUsername: string,
   password: string,
-  rememberMe: boolean
+  rememberMe: boolean,
+  lang: AppLanguage = "id"
 ): Promise<{ user?: AuthUser; error?: string }> {
-  const usernameErr = validateUsername(rawUsername);
+  const isEn = lang === "en";
+  const usernameErr = validateUsername(rawUsername, lang);
   if (usernameErr) return { error: usernameErr };
   if (password.length < 6) {
-    return { error: "Password minimal 6 karakter." };
+    return {
+      error: isEn
+        ? "Password must be at least 6 characters."
+        : "Password minimal 6 karakter.",
+    };
   }
 
   const username = normalizeUsername(rawUsername);
@@ -207,13 +221,21 @@ export async function signInWithUsername(
 
     if (error) {
       if (error.message.toLowerCase().includes("invalid login")) {
-        return { error: "Username atau password salah." };
+        return {
+          error: isEn
+            ? "Invalid username or password."
+            : "Username atau password salah.",
+        };
       }
       return { error: error.message };
     }
 
     if (!data.user) {
-      return { error: "Gagal memuat sesi pengguna." };
+      return {
+        error: isEn
+          ? "Failed to load user session."
+          : "Gagal memuat sesi pengguna.",
+      };
     }
 
     clearLocalSession();
@@ -225,13 +247,15 @@ export async function signInWithUsername(
   const target = users.find((u) => u.username === username);
   if (!target) {
     return {
-      error: `Akun @${username} belum terdaftar di perangkat ini. Silakan buka tab Daftar Akun.`,
+      error: isEn
+        ? `Account @${username} is not registered on this device yet. Switch to the Create Account tab.`
+        : `Akun @${username} belum terdaftar di perangkat ini. Silakan buka tab Daftar Akun.`,
     };
   }
 
   const candidateHash = await hashPassword(password);
   if (candidateHash !== target.passwordHash) {
-    return { error: "Password salah." };
+    return { error: isEn ? "Incorrect password." : "Password salah." };
   }
 
   const authUser: AuthUser = {
@@ -247,12 +271,18 @@ export async function signInWithUsername(
 export async function signUpWithUsername(
   rawUsername: string,
   password: string,
-  rememberMe: boolean
+  rememberMe: boolean,
+  lang: AppLanguage = "id"
 ): Promise<{ user?: AuthUser; error?: string }> {
-  const usernameErr = validateUsername(rawUsername);
+  const isEn = lang === "en";
+  const usernameErr = validateUsername(rawUsername, lang);
   if (usernameErr) return { error: usernameErr };
   if (password.length < 6) {
-    return { error: "Password minimal 6 karakter." };
+    return {
+      error: isEn
+        ? "Password must be at least 6 characters."
+        : "Password minimal 6 karakter.",
+    };
   }
 
   const username = normalizeUsername(rawUsername);
@@ -271,20 +301,29 @@ export async function signUpWithUsername(
 
     if (error) {
       if (error.message.toLowerCase().includes("already registered")) {
-        return { error: `Username @${username} sudah digunakan.` };
+        return {
+          error: isEn
+            ? `Username @${username} is already taken.`
+            : `Username @${username} sudah digunakan.`,
+        };
       }
       return { error: error.message };
     }
 
     if (data.user && !data.session) {
       return {
-        error:
-          "Akun dibuat, namun Supabase Auth masih mengaktifkan 'Confirm email'. Matikan 'Confirm email' di Supabase Dashboard → Authentication → Providers → Email agar login langsung aktif tanpa verifikasi email.",
+        error: isEn
+          ? "Account created, but Supabase Auth still has 'Confirm email' enabled. Disable 'Confirm email' in Supabase Dashboard → Authentication → Providers → Email to allow instant sign-in."
+          : "Akun dibuat, namun Supabase Auth masih mengaktifkan 'Confirm email'. Matikan 'Confirm email' di Supabase Dashboard → Authentication → Providers → Email agar login langsung aktif tanpa verifikasi email.",
       };
     }
 
     if (!data.user) {
-      return { error: "Gagal membuat akun baru." };
+      return {
+        error: isEn
+          ? "Failed to create a new account."
+          : "Gagal membuat akun baru.",
+      };
     }
 
     clearLocalSession();
@@ -294,7 +333,11 @@ export async function signUpWithUsername(
   // Local fallback multi-user registration
   const users = readLocalUsers();
   if (users.some((u) => u.username === username)) {
-    return { error: `Username @${username} sudah terdaftar.` };
+    return {
+      error: isEn
+        ? `Username @${username} is already registered.`
+        : `Username @${username} sudah terdaftar.`,
+    };
   }
 
   const newRecord: LocalUserRecord = {
@@ -322,19 +365,36 @@ export async function signUpWithUsername(
 
 export async function changeUserPassword(
   user: AuthUser,
-  newPassword: string
+  newPassword: string,
+  lang: AppLanguage = "id"
 ): Promise<{ ok: boolean; error?: string }> {
+  const isEn = lang === "en";
   if (user.provider === "guest") {
-    return { ok: false, error: "Mode Tamu tidak menggunakan password." };
+    return {
+      ok: false,
+      error: isEn
+        ? "Guest Mode does not use a password."
+        : "Mode Tamu tidak menggunakan password.",
+    };
   }
   if (newPassword.length < 6) {
-    return { ok: false, error: "Password baru minimal 6 karakter." };
+    return {
+      ok: false,
+      error: isEn
+        ? "New password must be at least 6 characters."
+        : "Password baru minimal 6 karakter.",
+    };
   }
 
   if (user.provider === "supabase") {
     const supabase = getSupabaseClient();
     if (!supabase || !isSupabaseConfigured()) {
-      return { ok: false, error: "Supabase Auth tidak tersedia." };
+      return {
+        ok: false,
+        error: isEn
+          ? "Supabase Auth is unavailable."
+          : "Supabase Auth tidak tersedia.",
+      };
     }
     try {
       const { error } = await supabase.auth.updateUser({
@@ -345,20 +405,35 @@ export async function changeUserPassword(
       }
       return { ok: true };
     } catch {
-      return { ok: false, error: "Gagal mengubah password Cloud." };
+      return {
+        ok: false,
+        error: isEn
+          ? "Failed to update Cloud password."
+          : "Gagal mengubah password Cloud.",
+      };
     }
   }
 
   // Local multi-user password update
   if (typeof window === "undefined") {
-    return { ok: false, error: "Penyimpanan lokal tidak tersedia." };
+    return {
+      ok: false,
+      error: isEn
+        ? "Local storage is unavailable."
+        : "Penyimpanan lokal tidak tersedia.",
+    };
   }
   const users = readLocalUsers();
   const idx = users.findIndex(
     (u) => u.id === user.id || u.username === user.username
   );
   if (idx === -1) {
-    return { ok: false, error: "Akun lokal tidak ditemukan di perangkat ini." };
+    return {
+      ok: false,
+      error: isEn
+        ? "Local account not found on this device."
+        : "Akun lokal tidak ditemukan di perangkat ini.",
+    };
   }
 
   const nextHash = await hashPassword(newPassword);

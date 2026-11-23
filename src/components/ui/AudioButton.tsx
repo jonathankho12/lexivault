@@ -3,6 +3,7 @@
 import type React from "react";
 import { motion } from "framer-motion";
 import { Loader2, Volume2 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePronunciation } from "@/hooks/usePronunciation";
 import { TAP_SCALE } from "@/lib/motion";
@@ -29,6 +30,7 @@ export function AudioButton({
   className,
 }: AudioButtonProps) {
   const { accent: globalAccent, updateWordAudioUrl } = useLexiVault();
+  const { lang } = useLanguage();
   const { play, isPlaying, isLoading } = usePronunciation();
 
   const targetAccent = accentOverride ?? globalAccent;
@@ -55,7 +57,11 @@ export function AudioButton({
       type="button"
       whileTap={TAP_SCALE}
       onClick={handleClick}
-      aria-label={`Putar pengucapan ${targetAccent} untuk ${text}`}
+      aria-label={
+        lang === "en"
+          ? `Play ${targetAccent} pronunciation for ${text}`
+          : `Putar pengucapan ${targetAccent} untuk ${text}`
+      }
       className={cn(
         "inline-flex items-center justify-center gap-1.5 rounded-full transition-colors cursor-pointer select-none",
         "border border-white/[0.14] shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]",

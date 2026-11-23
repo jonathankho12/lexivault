@@ -15,6 +15,7 @@ import {
   Square,
 } from "lucide-react";
 import { AudioButton } from "@/components/ui/AudioButton";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { FALLBACK_SPEAKING_PACKS } from "@/lib/ieltsMockData";
 import { saveSkillAttempt } from "@/lib/ieltsStorage";
@@ -66,6 +67,8 @@ export function IeltsSpeakingPanel({
   onProfileUpdated: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
 }) {
   const { user, todayStr, syncExternalStudyLog } = useLexiVault();
+  const { lang } = useLanguage();
+  const isEn = lang === "en";
 
   const [part, setPart] = useState<SpeakingPart>("part2");
   const [pack, setPack] = useState<SpeakingPromptPack>(
@@ -147,7 +150,9 @@ export function IeltsSpeakingPanel({
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
       setMicError(
-        "Browser ini belum mendukung Web Speech API. Kamu bisa langsung mengetik atau mendikte jawaban di kolom teks."
+        isEn
+          ? "This browser does not support the Web Speech API yet. You can type or dictate your response directly below."
+          : "Browser ini belum mendukung Web Speech API. Kamu bisa langsung mengetik atau mendikte jawaban di kolom teks."
       );
       return;
     }
@@ -182,10 +187,16 @@ export function IeltsSpeakingPanel({
       rec.onerror = (ev) => {
         if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
           setMicError(
-            "Izin mikrofon ditolak. Aktifkan izin mic di browser atau ketik jawaban di bawah."
+            isEn
+              ? "Microphone permission was denied. Enable mic access in your browser or type your answer below."
+              : "Izin mikrofon ditolak. Aktifkan izin mic di browser atau ketik jawaban di bawah."
           );
         } else {
-          setMicError("Perekaman suara berhenti sementara. Silakan lanjutkan atau edit teks.");
+          setMicError(
+            isEn
+              ? "Voice recording paused. You can resume or edit the transcript."
+              : "Perekaman suara berhenti sementara. Silakan lanjutkan atau edit teks."
+          );
         }
         setIsRecording(false);
       };
@@ -199,7 +210,11 @@ export function IeltsSpeakingPanel({
       rec.start();
       setIsRecording(true);
     } catch {
-      setMicError("Tidak dapat memulai mikrofon pada perangkat ini.");
+      setMicError(
+        isEn
+          ? "Unable to start microphone on this device."
+          : "Tidak dapat memulai mikrofon pada perangkat ini."
+      );
       setIsRecording(false);
     }
   };
@@ -296,7 +311,11 @@ export function IeltsSpeakingPanel({
         syncExternalStudyLog(saved.updatedLog, saved.newXp);
       }
     } catch {
-      setMicError("Gagal menilai jawaban Speaking. Silakan coba lagi.");
+      setMicError(
+        isEn
+          ? "Failed to evaluate Speaking response. Please try again."
+          : "Gagal menilai jawaban Speaking. Silakan coba lagi."
+      );
     } finally {
       setGrading(false);
     }
@@ -345,7 +364,15 @@ export function IeltsSpeakingPanel({
           ) : (
             <Sparkles className="h-3.5 w-3.5" />
           )}
-          <span>{generating ? "Membuat..." : "Generate Topik Baru (AI)"}</span>
+          <span>
+            {generating
+              ? isEn
+                ? "Generating..."
+                : "Membuat..."
+              : isEn
+                ? "Generate New Topic (AI)"
+                : "Generate Topik Baru (AI)"}
+          </span>
         </motion.button>
       </div>
 
@@ -381,7 +408,9 @@ export function IeltsSpeakingPanel({
           {pack.followUpQuestions && pack.followUpQuestions.length > 0 && (
             <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3.5 space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-                Pertanyaan Lanjutan Examiner:
+                {isEn
+                  ? "Examiner Follow-Up Questions:"
+                  : "Pertanyaan Lanjutan Examiner:"}
               </p>
               <ul className="space-y-1 text-xs text-[#D1D1D6]">
                 {pack.followUpQuestions.map((fq, idx) => (
@@ -397,7 +426,10 @@ export function IeltsSpeakingPanel({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFD18C]">
                   <Clock className="h-3.5 w-3.5" />
-                  <span>Prep 1 Menit: {formatSec(prepLeft)}</span>
+                  <span>
+                    {isEn ? "1-Min Prep: " : "Prep 1 Menit: "}
+                    {formatSec(prepLeft)}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -407,14 +439,24 @@ export function IeltsSpeakingPanel({
                   }}
                   className="rounded-full bg-[#FF9F0A]/20 px-3 py-1 text-[11px] font-semibold text-[#FFD18C] cursor-pointer"
                 >
-                  {prepActive ? "Jeda Prep" : "Mulai Prep 1m"}
+                  {prepActive
+                    ? isEn
+                      ? "Pause Prep"
+                      : "Jeda Prep"
+                    : isEn
+                      ? "Start 1m Prep"
+                      : "Mulai Prep 1m"}
                 </button>
               </div>
               <textarea
                 rows={2}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Catatan poin cepat selama 1 menit persiapan..."
+                placeholder={
+                  isEn
+                    ? "Jot down quick bullet points during 1-minute prep..."
+                    : "Catatan poin cepat selama 1 menit persiapan..."
+                }
                 className="w-full rounded-xl bg-black/30 border border-white/[0.08] p-2.5 text-xs text-[#F5F5F7] placeholder:text-[#8E8E93] focus:outline-none"
               />
             </div>
@@ -423,7 +465,7 @@ export function IeltsSpeakingPanel({
           {/* Target C1/C2 Phrases */}
           <div className="space-y-1.5">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-              Target Frasa Bonus:
+              {isEn ? "Bonus Target Phrases:" : "Target Frasa Bonus:"}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {pack.targetPhrases.map((phr) => (
@@ -453,7 +495,15 @@ export function IeltsSpeakingPanel({
                     ? "bg-[#FF453A] shadow-[0_0_24px_rgba(255,69,58,0.45)]"
                     : "bg-gradient-to-br from-[#0A84FF] to-[#5E5CE6]"
                 )}
-                aria-label={isRecording ? "Stop merekam" : "Mulai rekam suara"}
+                aria-label={
+                  isRecording
+                    ? isEn
+                      ? "Stop recording"
+                      : "Stop merekam"
+                    : isEn
+                      ? "Start voice recording"
+                      : "Mulai rekam suara"
+                }
               >
                 {isRecording ? (
                   <Square className="h-4.5 w-4.5 fill-current" />
@@ -467,14 +517,22 @@ export function IeltsSpeakingPanel({
               <div>
                 <p className="text-sm font-semibold text-white">
                   {isRecording
-                    ? "Merekam & Mentranskrip..."
+                    ? isEn
+                      ? "Recording & Transcribing..."
+                      : "Merekam & Mentranskrip..."
                     : speechSupported
-                      ? "Tekan Mic untuk Berbicara"
-                      : "Mode Teks (Speech API tidak tersedia)"}
+                      ? isEn
+                        ? "Tap Mic to Start Speaking"
+                        : "Tekan Mic untuk Berbicara"
+                      : isEn
+                        ? "Text Mode (Speech API unavailable)"
+                        : "Mode Teks (Speech API tidak tersedia)"}
                 </p>
                 <p className="text-xs text-[#8E8E93] tabular-nums">
-                  Durasi: {formatSec(speakElapsed)} / target{" "}
-                  {formatSec(pack.speakSeconds)} · {wordCount} kata
+                  {isEn ? "Duration: " : "Durasi: "}
+                  {formatSec(speakElapsed)} / target{" "}
+                  {formatSec(pack.speakSeconds)} · {wordCount}{" "}
+                  {isEn ? "words" : "kata"}
                 </p>
               </div>
             </div>
@@ -523,8 +581,9 @@ export function IeltsSpeakingPanel({
               htmlFor="ielts-speaking-transcript"
               className="block text-xs font-medium text-[#8E8E93]"
             >
-              Transkrip Jawaban (otomatis terisi dari suara, atau ketik/edit
-              langsung):
+              {isEn
+                ? "Response Transcript (auto-transcribed from mic, or type/edit directly):"
+                : "Transkrip Jawaban (otomatis terisi dari suara, atau ketik/edit langsung):"}
             </label>
             <textarea
               id="ielts-speaking-transcript"
@@ -538,7 +597,11 @@ export function IeltsSpeakingPanel({
                 setInterimText("");
                 setTranscript(e.target.value);
               }}
-              placeholder="Mulai berbicara dengan tombol mic di atas, atau ketik jawaban Speaking kamu di sini..."
+              placeholder={
+                isEn
+                  ? "Tap the mic button above to speak, or type your IELTS Speaking response here..."
+                  : "Mulai berbicara dengan tombol mic di atas, atau ketik jawaban Speaking kamu di sini..."
+              }
               className="w-full resize-y rounded-2xl bg-black/35 border border-white/[0.1] p-4 text-base leading-relaxed text-[#F5F5F7] placeholder:text-[#8E8E93]/70 focus:outline-none focus:border-[#0A84FF]/60"
             />
           </div>
@@ -554,7 +617,7 @@ export function IeltsSpeakingPanel({
               }}
               className="text-xs font-medium text-[#8E8E93] hover:text-white cursor-pointer"
             >
-              Reset Transkrip
+              {isEn ? "Reset Transcript" : "Reset Transkrip"}
             </button>
 
             <motion.button
@@ -567,12 +630,18 @@ export function IeltsSpeakingPanel({
               {grading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Examiner Menilai...</span>
+                  <span>
+                    {isEn ? "Examiner Evaluating..." : "Examiner Menilai..."}
+                  </span>
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
-                  <span>Nilai Speaking (AI Examiner)</span>
+                  <span>
+                    {isEn
+                      ? "Evaluate Speaking (AI Examiner)"
+                      : "Nilai Speaking (AI Examiner)"}
+                  </span>
                 </>
               )}
             </motion.button>
@@ -647,7 +716,7 @@ export function IeltsSpeakingPanel({
 
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-4 space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-              Feedback Examiner
+              {isEn ? "Examiner Feedback" : "Feedback Examiner"}
             </p>
             <p className="text-sm leading-relaxed text-[#F5F5F7]">
               {grade.summary_id}
@@ -657,7 +726,9 @@ export function IeltsSpeakingPanel({
           {grade.phrase_upgrades.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">
-                Koreksi Frasa Kaku → Natural
+                {isEn
+                  ? "Awkward → Natural Phrase Upgrades"
+                  : "Koreksi Frasa Kaku → Natural"}
               </p>
               {grade.phrase_upgrades.map((up, idx) => (
                 <div
@@ -685,8 +756,12 @@ export function IeltsSpeakingPanel({
             >
               <span>
                 {showSample
-                  ? "Sembunyikan Contoh Band 8.5+"
-                  : "Lihat Contoh Jawaban Band 8.5+"}
+                  ? isEn
+                    ? "Hide Band 8.5+ Model Answer"
+                    : "Sembunyikan Contoh Band 8.5+"
+                  : isEn
+                    ? "View Band 8.5+ Model Answer"
+                    : "Lihat Contoh Jawaban Band 8.5+"}
               </span>
               {showSample ? (
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -698,7 +773,11 @@ export function IeltsSpeakingPanel({
             {showSample && (
               <div className="mt-3 rounded-2xl bg-[#0A84FF]/10 border border-[#0A84FF]/25 p-4 space-y-2">
                 <div className="flex justify-end">
-                  <AudioButton text={grade.band_85_sample} size="sm" label="Dengar" />
+                  <AudioButton
+                    text={grade.band_85_sample}
+                    size="sm"
+                    label={isEn ? "Listen" : "Dengar"}
+                  />
                 </div>
                 <p className="text-xs sm:text-sm leading-relaxed text-[#F5F5F7]">
                   {grade.band_85_sample}
