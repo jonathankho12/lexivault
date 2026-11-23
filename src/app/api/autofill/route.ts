@@ -3,9 +3,10 @@ import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
   classifyGeminiError,
+  DEFAULT_GEMINI_MODEL,
   emptyGeminiResponseError,
   getGeminiClient,
-  getGeminiFlashModel,
+  getGeminiModel,
   logGeminiRouteError,
   missingGeminiKeyError,
 } from "@/lib/gemini";
@@ -110,7 +111,7 @@ function normalizeAutofillPayload(
 }
 
 export async function POST(request: Request) {
-  let model = "gemini-2.5-flash";
+  let model = DEFAULT_GEMINI_MODEL;
   try {
     const body = (await request.json()) as {
       term?: string;
@@ -141,7 +142,7 @@ export async function POST(request: Request) {
       );
     }
 
-    model = await getGeminiFlashModel();
+    model = await getGeminiModel();
 
     const prompt = `You are an expert bilingual English-Indonesian lexicographer and C1–C2 ESL linguistic coach.
 Analyze the English expression: "${term}".

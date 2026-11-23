@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
-import { pcmToWav, resolveGeminiApiKey } from "@/lib/gemini";
+import { getGeminiTtsModel, pcmToWav, resolveGeminiApiKey } from "@/lib/gemini";
 import { getSupabaseClient } from "@/lib/supabase";
 import { normalizeTermKey } from "@/lib/utils";
 import type { AccentType } from "@/types/lexivault";
@@ -40,9 +40,10 @@ async function generateGeminiTtsWav(
       ? "a clear, natural British English (Received Pronunciation) accent"
       : "a clear, natural American English accent";
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${encodeURIComponent(
-    apiKey
-  )}`;
+  const ttsModel = await getGeminiTtsModel();
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    ttsModel
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   try {
     const res = await fetch(endpoint, {

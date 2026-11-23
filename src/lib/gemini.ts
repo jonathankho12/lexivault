@@ -71,12 +71,39 @@ export async function getGeminiClient(): Promise<GoogleGenAI | null> {
   return new GoogleGenAI({ apiKey });
 }
 
+export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
+export const DEFAULT_GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
+
+/**
+ * Centralized Gemini model resolver.
+ * Priority: GEMINI_MODEL -> GEMINI_FLASH_MODEL -> "gemini-3.8-flash".
+ * Reads from both Cloudflare Workers runtime bindings and process.env.
+ */
+export async function getGeminiModel(): Promise<string> {
+  return (
+    (await resolveRuntimeEnvVar("GEMINI_MODEL")) ||
+    (await resolveRuntimeEnvVar("GEMINI_FLASH_MODEL")) ||
+    DEFAULT_GEMINI_MODEL
+  );
+}
+
 export async function getGeminiFlashModel(): Promise<string> {
-  return (await resolveRuntimeEnvVar("GEMINI_FLASH_MODEL")) || "gemini-2.5-flash";
+  return getGeminiModel();
 }
 
 export async function getGeminiProModel(): Promise<string> {
-  return (await resolveRuntimeEnvVar("GEMINI_PRO_MODEL")) || "gemini-2.5-pro";
+  return (
+    (await resolveRuntimeEnvVar("GEMINI_PRO_MODEL")) ||
+    (await resolveRuntimeEnvVar("GEMINI_MODEL")) ||
+    DEFAULT_GEMINI_MODEL
+  );
+}
+
+export async function getGeminiTtsModel(): Promise<string> {
+  return (
+    (await resolveRuntimeEnvVar("GEMINI_TTS_MODEL")) ||
+    DEFAULT_GEMINI_TTS_MODEL
+  );
 }
 
 export function missingGeminiKeyError(): ClassifiedGeminiError {
