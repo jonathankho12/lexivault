@@ -19,6 +19,7 @@ import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   CANONICAL_SOURCE_TAGS,
   cn,
+  formatGeminiClientError,
   formatRegisterBadgeClass,
   formatSourceTagLabel,
   formatTypeLabel,
@@ -90,21 +91,12 @@ export function TextExtractorSheet({
         } catch {
           // Non-JSON error body
         }
-        const isEn = lang === "en";
-        const reason =
-          apiCode === "missing_key"
-            ? isEn
-              ? "GEMINI_API_KEY is not configured on the server."
-              : "GEMINI_API_KEY belum terkonfigurasi di server."
-            : apiCode === "quota"
-              ? isEn
-                ? "Gemini AI quota limit reached. Please retry shortly."
-                : "Batas kuota Gemini AI tercapai. Coba lagi sebentar lagi."
-              : apiCode === "auth"
-                ? isEn
-                  ? "Gemini API key authentication failed."
-                  : "Autentikasi Gemini API key gagal."
-                : apiError || `${t.extractor.genericErr} (HTTP ${res.status})`;
+        const reason = formatGeminiClientError(
+          apiCode,
+          res.status,
+          apiError || `${t.extractor.genericErr} (HTTP ${res.status})`,
+          lang
+        );
         setErrorMsg(reason);
         return;
       }

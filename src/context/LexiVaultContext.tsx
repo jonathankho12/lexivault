@@ -56,6 +56,7 @@ import {
 } from "@/lib/storage";
 import {
   calculateStreak,
+  formatGeminiClientError,
   getLocalDateString,
   normalizeSourceTag,
   normalizeTermKey,
@@ -565,23 +566,15 @@ export function LexiVaultProvider({
             } catch {
               // Non-JSON error body
             }
-            const reason =
-              apiCode === "missing_key"
-                ? lang === "en"
-                  ? "GEMINI_API_KEY is not configured on the server."
-                  : "GEMINI_API_KEY belum terkonfigurasi di server."
-                : apiCode === "quota"
-                  ? lang === "en"
-                    ? "AI quota limit reached. Please retry shortly."
-                    : "Batas kuota AI tercapai. Coba lagi sebentar lagi."
-                  : apiCode === "auth"
-                    ? lang === "en"
-                      ? "Gemini API key authentication failed."
-                      : "Autentikasi Gemini API key gagal."
-                    : apiErr ||
-                      (lang === "en"
-                        ? `Failed to load today's Daily Pack (HTTP ${res.status}).`
-                        : `Gagal memuat Target Harian hari ini (HTTP ${res.status}).`);
+            const reason = formatGeminiClientError(
+              apiCode,
+              res.status,
+              apiErr ||
+                (lang === "en"
+                  ? `Failed to load today's Daily Pack (HTTP ${res.status}).`
+                  : `Gagal memuat Target Harian hari ini (HTTP ${res.status}).`),
+              lang
+            );
             setDailyPackError(reason);
             return null;
           }
@@ -896,31 +889,14 @@ export function LexiVaultProvider({
             `[LexiVault] /api/autofill failed (HTTP ${res.status}, code=${apiCode || "unknown"}):`,
             apiDetail || apiError || res.statusText
           );
-          const reasonSuffix =
-            apiCode === "missing_key"
-              ? isEn
-                ? " (GEMINI_API_KEY not configured on server)"
-                : " (GEMINI_API_KEY belum terkonfigurasi di server)"
-              : apiCode === "quota"
-                ? isEn
-                  ? " (AI quota limit reached)"
-                  : " (batas kuota AI tercapai)"
-                : apiCode === "auth"
-                  ? isEn
-                    ? " (API key authentication error)"
-                    : " (kendala autentikasi API key)"
-                  : apiCode === "model"
-                    ? isEn
-                      ? " (AI model unavailable)"
-                      : " (model AI tidak tersedia)"
-                    : apiCode === "network"
-                      ? isEn
-                        ? " (network timeout)"
-                        : " (jaringan timeout)"
-                      : ` (HTTP ${res.status})`;
-          const errMsg = isEn
-            ? `Failed to save word. Please try again.${reasonSuffix}`
-            : `Gagal menyimpan kata. Coba lagi.${reasonSuffix}`;
+          const errMsg = formatGeminiClientError(
+            apiCode,
+            res.status,
+            isEn
+              ? `Failed to save word. Please try again. (HTTP ${res.status})`
+              : `Gagal menyimpan kata. Coba lagi. (HTTP ${res.status})`,
+            lang
+          );
           setCaptureToast({ type: "error", message: errMsg });
           return { ok: false, error: errMsg };
         }
@@ -1203,15 +1179,15 @@ export function LexiVaultProvider({
           }
           return {
             ok: false,
-            error:
-              apiCode === "missing_key"
-                ? isEn
-                  ? "GEMINI_API_KEY is not configured on the server."
-                  : "GEMINI_API_KEY belum terkonfigurasi di server."
-                : apiError ||
-                  (isEn
-                    ? `Failed to refresh details with AI (HTTP ${res.status}).`
-                    : `Gagal memperbarui dengan AI (HTTP ${res.status}).`),
+            error: formatGeminiClientError(
+              apiCode,
+              res.status,
+              apiError ||
+                (isEn
+                  ? `Failed to refresh details with AI (HTTP ${res.status}).`
+                  : `Gagal memperbarui dengan AI (HTTP ${res.status}).`),
+              lang
+            ),
           };
         }
 

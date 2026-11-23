@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import {
   classifyGeminiError,
-  getGeminiClient,
-  getGeminiFlashModel,
+  generateStructuredWithHybridModel,
   logGeminiRouteError,
 } from "@/lib/gemini";
 import type {
@@ -424,22 +423,6 @@ export async function POST(request: Request) {
       });
     }
 
-    const ai = await getGeminiClient();
-    if (!ai) {
-      return NextResponse.json({
-        result: buildFallbackGrade(
-          term,
-          meaning,
-          sentence,
-          wordFamilies,
-          lang,
-          exampleSentence
-        ),
-        source: "fallback",
-      });
-    }
-
-    const model = await getGeminiFlashModel();
     const verdictEnum = isEn
       ? ["Natural", "Good", "Needs Work", "No Valid Attempt"]
       : [
@@ -497,38 +480,37 @@ Return strictly valid JSON:
 - "native_rewrite": a polished, natural native-speaker English sentence using "${term}" (if the learner didn't write a real idea, provide a clean everyday example sentence using "${term}").
 - "tip": 1 short actionable tip in Indonesian on register, collocation, or phrasing.`;
 
-    const response = await ai.models.generateContent({
-      model,
+    const aiRes = await generateStructuredWithHybridModel<
+      Partial<SentenceGradeResult>
+    >({
+      tier: "flash",
+      routeName: "api/grade-sentence",
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            is_correct: { type: Type.BOOLEAN },
-            verdict: {
-              type: Type.STRING,
-              enum: verdictEnum,
-            },
-            score: { type: Type.INTEGER },
-            feedback_id: { type: Type.STRING },
-            native_rewrite: { type: Type.STRING },
-            tip: { type: Type.STRING },
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          is_correct: { type: Type.BOOLEAN },
+          verdict: {
+            type: Type.STRING,
+            enum: verdictEnum,
           },
-          required: [
-            "is_correct",
-            "verdict",
-            "score",
-            "feedback_id",
-            "native_rewrite",
-            "tip",
-          ],
+          score: { type: Type.INTEGER },
+          feedback_id: { type: Type.STRING },
+          native_rewrite: { type: Type.STRING },
+          tip: { type: Type.STRING },
         },
+        required: [
+          "is_correct",
+          "verdict",
+          "score",
+          "feedback_id",
+          "native_rewrite",
+          "tip",
+        ],
       },
     });
 
-    const parsedText = response.text?.trim() ?? "";
-    if (!parsedText) {
+    if (!aiRes.ok) {
       return NextResponse.json({
         result: buildFallbackGrade(
           term,
@@ -542,7 +524,7 @@ Return strictly valid JSON:
       });
     }
 
-    const parsed = JSON.parse(parsedText) as Partial<SentenceGradeResult>;
+    const parsed = aiRes.data;
     const rawScore =
       typeof parsed.score === "number" && Number.isFinite(parsed.score)
         ? Math.max(0, Math.min(100, Math.round(parsed.score)))

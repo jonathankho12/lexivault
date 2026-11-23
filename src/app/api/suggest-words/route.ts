@@ -3,11 +3,8 @@ import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
   classifyGeminiError,
-  emptyGeminiResponseError,
-  getGeminiClient,
-  getGeminiFlashModel,
+  generateStructuredWithHybridModel,
   logGeminiRouteError,
-  missingGeminiKeyError,
 } from "@/lib/gemini";
 import { FALLBACK_SUGGESTED_WORDS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
@@ -250,24 +247,6 @@ export async function POST(request: Request) {
       : [];
     const excludeKeys = new Set(rawExisting.map(normalizeTermKey));
 
-    const ai = await getGeminiClient();
-    if (!ai) {
-      const missingErr = missingGeminiKeyError();
-      logGeminiRouteError("api/suggest-words", missingErr, {
-        category,
-        register,
-      });
-      return NextResponse.json(
-        {
-          error: missingErr.detail,
-          code: missingErr.code,
-          detail: missingErr.rawMessage,
-        },
-        { status: missingErr.status }
-      );
-    }
-
-    const model = await getGeminiFlashModel();
     const categoryInstruction =
       category === "mix"
         ? 'Return a rich C1–C2 mix: 2 idiomatic expressions ("idiom"), 1 advanced single word ("vocab"), and 1 natural collocation ("collocation").'
@@ -301,114 +280,109 @@ STRICT RULES:
    - "word_families": array of { "word": string, "pos": string }
    - "source_tag": best canonical source key from "film", "book", "lecture", "article", "general"`;
 
-    const response = await ai.models.generateContent({
-      model,
+    const aiRes = await generateStructuredWithHybridModel<{
+      items?: Partial<SuggestedWordItem>[];
+    }>({
+      tier: "flash",
+      routeName: "api/suggest-words",
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          items: {
+            type: Type.ARRAY,
             items: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  term: { type: Type.STRING },
-                  pronunciation: { type: Type.STRING },
-                  ipa: { type: Type.STRING },
-                  cefr: { type: Type.STRING, enum: ["C1", "C2"] },
-                  type: {
-                    type: Type.STRING,
-                    enum: ["vocab", "idiom", "collocation"],
-                  },
-                  register: {
-                    type: Type.STRING,
-                    enum: ["Academic", "Formal", "Casual"],
-                  },
-                  meaning_en: { type: Type.STRING },
-                  meaning_id: { type: Type.STRING },
-                  examples: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        sentence: { type: Type.STRING },
-                        translation_id: { type: Type.STRING },
-                        context: { type: Type.STRING },
-                      },
-                      required: ["sentence", "translation_id", "context"],
+              type: Type.OBJECT,
+              properties: {
+                term: { type: Type.STRING },
+                pronunciation: { type: Type.STRING },
+                ipa: { type: Type.STRING },
+                cefr: { type: Type.STRING, enum: ["C1", "C2"] },
+                type: {
+                  type: Type.STRING,
+                  enum: ["vocab", "idiom", "collocation"],
+                },
+                register: {
+                  type: Type.STRING,
+                  enum: ["Academic", "Formal", "Casual"],
+                },
+                meaning_en: { type: Type.STRING },
+                meaning_id: { type: Type.STRING },
+                examples: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      sentence: { type: Type.STRING },
+                      translation_id: { type: Type.STRING },
+                      context: { type: Type.STRING },
                     },
-                  },
-                  synonyms: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                  },
-                  antonyms: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                  },
-                  word_families: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        word: { type: Type.STRING },
-                        pos: { type: Type.STRING },
-                      },
-                      required: ["word", "pos"],
-                    },
-                  },
-                  source_tag: {
-                    type: Type.STRING,
-                    enum: ["film", "book", "lecture", "article", "general"],
+                    required: ["sentence", "translation_id", "context"],
                   },
                 },
-                required: [
-                  "term",
-                  "pronunciation",
-                  "ipa",
-                  "cefr",
-                  "type",
-                  "register",
-                  "meaning_en",
-                  "meaning_id",
-                  "examples",
-                  "synonyms",
-                  "antonyms",
-                  "word_families",
-                  "source_tag",
-                ],
+                synonyms: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                antonyms: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                word_families: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      word: { type: Type.STRING },
+                      pos: { type: Type.STRING },
+                    },
+                    required: ["word", "pos"],
+                  },
+                },
+                source_tag: {
+                  type: Type.STRING,
+                  enum: ["film", "book", "lecture", "article", "general"],
+                },
               },
+              required: [
+                "term",
+                "pronunciation",
+                "ipa",
+                "cefr",
+                "type",
+                "register",
+                "meaning_en",
+                "meaning_id",
+                "examples",
+                "synonyms",
+                "antonyms",
+                "word_families",
+                "source_tag",
+              ],
             },
           },
-          required: ["items"],
         },
+        required: ["items"],
       },
     });
 
-    const parsedText = response.text?.trim() ?? "";
-    if (!parsedText) {
-      const emptyErr = emptyGeminiResponseError(model);
-      logGeminiRouteError("api/suggest-words", emptyErr, { model });
+    if (!aiRes.ok) {
       return NextResponse.json(
         {
-          error: emptyErr.detail,
-          code: emptyErr.code,
-          detail: emptyErr.rawMessage,
+          error: aiRes.error.detail,
+          code: aiRes.error.code,
+          detail: aiRes.error.rawMessage,
+          upstreamStatus: aiRes.error.upstreamStatus,
         },
-        { status: emptyErr.status }
+        { status: aiRes.error.status }
       );
     }
 
-    const parsed = JSON.parse(parsedText) as {
-      items?: Partial<SuggestedWordItem>[];
-    };
     const seenBatch = new Set<string>(excludeKeys);
     const uniqueItems: SuggestedWordItem[] = [];
 
-    if (Array.isArray(parsed.items)) {
-      for (const rawItem of parsed.items) {
+    if (Array.isArray(aiRes.data.items)) {
+      for (const rawItem of aiRes.data.items) {
         const normalized = normalizeSuggestedItem(rawItem);
         if (!normalized) continue;
         const key = normalizeTermKey(normalized.term);
@@ -432,7 +406,7 @@ STRICT RULES:
     return NextResponse.json({
       items: uniqueItems,
       source: "gemini",
-      modelUsed: model,
+      modelUsed: aiRes.modelUsed,
     });
   } catch (err) {
     const classified = classifyGeminiError(err);

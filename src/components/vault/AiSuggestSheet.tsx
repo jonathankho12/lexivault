@@ -23,6 +23,7 @@ import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
 import {
   cn,
+  formatGeminiClientError,
   formatRegisterBadgeClass,
   formatSourceTagLabel,
   formatTypeLabel,
@@ -44,7 +45,6 @@ export function AiSuggestSheet({
 }) {
   const { words, addSuggestedWordToVault } = useLexiVault();
   const { lang, t } = useLanguage();
-  const isEn = lang === "en";
 
   const [mounted, setMounted] = useState(false);
   const [category, setCategory] = useState<SuggestCategory>("mix");
@@ -123,24 +123,12 @@ export function AiSuggestSheet({
             apiDetail || apiError || res.statusText
           );
 
-          const reason =
-            apiCode === "missing_key"
-              ? isEn
-                ? "GEMINI_API_KEY is not configured on the server."
-                : "GEMINI_API_KEY belum terkonfigurasi di server."
-              : apiCode === "quota"
-                ? isEn
-                  ? "Gemini AI quota limit reached. Please retry in a moment."
-                  : "Batas kuota Gemini AI tercapai. Coba lagi sebentar lagi."
-                : apiCode === "auth"
-                  ? isEn
-                    ? "Gemini API key authentication failed."
-                    : "Autentikasi Gemini API key gagal."
-                  : apiCode === "network"
-                    ? isEn
-                      ? "Network timeout contacting Gemini AI."
-                      : "Koneksi ke Gemini AI timeout."
-                    : apiError || `${t.suggest.errorFallback} (HTTP ${res.status})`;
+          const reason = formatGeminiClientError(
+            apiCode,
+            res.status,
+            apiError || `${t.suggest.errorFallback} (HTTP ${res.status})`,
+            lang
+          );
 
           setErrorMsg(reason);
           setItems([]);
@@ -170,7 +158,7 @@ export function AiSuggestSheet({
         }
       }
     },
-    [isEn, lang, t.suggest.errorFallback]
+    [lang, t.suggest.errorFallback]
   );
 
   // Immediately kick off suggestion fetch when modal opens; abort on close

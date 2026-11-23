@@ -197,3 +197,59 @@ export function isValidUuid(value: string): boolean {
     value
   );
 }
+
+/**
+ * Formats API error codes returned by Gemini routes into friendly, localized EN/ID copy.
+ * Strictly distinguishes temporary 503 overload & 429 rate-limit spikes from 404 model errors.
+ */
+export function formatGeminiClientError(
+  code: string | undefined,
+  httpStatus: number,
+  fallbackMessage: string,
+  lang: AppLanguage
+): string {
+  const isEn = lang === "en";
+  switch (code) {
+    case "overload":
+      return isEn
+        ? "Gemini AI is experiencing high demand right now. Please try again in a moment."
+        : "Server Gemini AI sedang sibuk. Silakan coba lagi sebentar.";
+    case "rate_limit":
+    case "quota":
+      return isEn
+        ? "Gemini AI rate limit reached right now. Please try again in a moment."
+        : "Batas permintaan Gemini AI sedang penuh. Silakan coba lagi sebentar.";
+    case "network":
+      return isEn
+        ? "Unable to reach Gemini AI right now (network timeout). Please try again."
+        : "Koneksi ke server Gemini AI timeout. Silakan coba lagi.";
+    case "missing_key":
+      return isEn
+        ? "GEMINI_API_KEY is not configured on the server."
+        : "GEMINI_API_KEY belum terkonfigurasi di server.";
+    case "auth":
+      return isEn
+        ? "Gemini API key authentication failed."
+        : "Autentikasi Gemini API key gagal.";
+    case "model":
+      return isEn
+        ? "Configured Gemini model is unavailable or rejected the request."
+        : "Model Gemini yang dikonfigurasi tidak tersedia atau menolak permintaan.";
+    case "empty_response":
+      return isEn
+        ? "Gemini AI returned an empty response. Please try again."
+        : "Server Gemini AI mengembalikan respons kosong. Silakan coba lagi.";
+    default:
+      if (httpStatus === 503) {
+        return isEn
+          ? "Gemini AI is experiencing high demand right now. Please try again in a moment."
+          : "Server Gemini AI sedang sibuk. Silakan coba lagi sebentar.";
+      }
+      if (httpStatus === 429) {
+        return isEn
+          ? "Gemini AI rate limit reached right now. Please try again in a moment."
+          : "Batas permintaan Gemini AI sedang penuh. Silakan coba lagi sebentar.";
+      }
+      return fallbackMessage;
+  }
+}

@@ -4,11 +4,8 @@ import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import { pickFallbackDailyPack } from "@/lib/dailyPackFallback";
 import {
   classifyGeminiError,
-  emptyGeminiResponseError,
-  getGeminiClient,
-  getGeminiFlashModel,
+  generateStructuredWithHybridModel,
   logGeminiRouteError,
-  missingGeminiKeyError,
 } from "@/lib/gemini";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { getLocalDateString, normalizeTermKey } from "@/lib/utils";
@@ -178,25 +175,6 @@ export async function POST(request: Request) {
       : [];
     const excludeKeys = new Set(rawExisting.map(normalizeTermKey));
 
-    const ai = await getGeminiClient();
-    if (!ai) {
-      const missingErr = missingGeminiKeyError();
-      logGeminiRouteError("api/daily-pack", missingErr, {
-        dateStr,
-        wordsQuota,
-        idiomsQuota,
-      });
-      return NextResponse.json(
-        {
-          error: missingErr.detail,
-          code: missingErr.code,
-          detail: missingErr.rawMessage,
-        },
-        { status: missingErr.status }
-      );
-    }
-
-    const model = await getGeminiFlashModel();
     const prompt = `You are a master C1–C2 English lexicographer and IELTS Band 8.5+ coach designing a fresh Daily Learning Pack for date ${dateStr}.
 
 Generate EXACTLY ${wordsQuota} advanced C1–C2 single-word vocabulary items (type: "vocab") AND EXACTLY ${idiomsQuota} authentic C1–C2 idiomatic expressions (type: "idiom"), for a total of ${totalNeeded} unique items.
@@ -220,108 +198,103 @@ STRICT RULES:
    - "antonyms": 1-2 contrasting expressions
    - "word_families": array of { "word": string, "pos": string }`;
 
-    const response = await ai.models.generateContent({
-      model,
+    const aiRes = await generateStructuredWithHybridModel<{
+      items?: Partial<DailyPackItem>[];
+    }>({
+      tier: "flash",
+      routeName: "api/daily-pack",
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          items: {
+            type: Type.ARRAY,
             items: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  term: { type: Type.STRING },
-                  pronunciation: { type: Type.STRING },
-                  ipa: { type: Type.STRING },
-                  cefr: { type: Type.STRING, enum: ["C1", "C2"] },
-                  type: { type: Type.STRING, enum: ["vocab", "idiom"] },
-                  register: {
-                    type: Type.STRING,
-                    enum: ["Academic", "Formal", "Casual"],
-                  },
-                  meaning_en: { type: Type.STRING },
-                  meaning_id: { type: Type.STRING },
-                  examples: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        sentence: { type: Type.STRING },
-                        translation_id: { type: Type.STRING },
-                        context: { type: Type.STRING },
-                      },
-                      required: ["sentence", "translation_id", "context"],
+              type: Type.OBJECT,
+              properties: {
+                term: { type: Type.STRING },
+                pronunciation: { type: Type.STRING },
+                ipa: { type: Type.STRING },
+                cefr: { type: Type.STRING, enum: ["C1", "C2"] },
+                type: { type: Type.STRING, enum: ["vocab", "idiom"] },
+                register: {
+                  type: Type.STRING,
+                  enum: ["Academic", "Formal", "Casual"],
+                },
+                meaning_en: { type: Type.STRING },
+                meaning_id: { type: Type.STRING },
+                examples: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      sentence: { type: Type.STRING },
+                      translation_id: { type: Type.STRING },
+                      context: { type: Type.STRING },
                     },
-                  },
-                  synonyms: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                  },
-                  antonyms: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                  },
-                  word_families: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        word: { type: Type.STRING },
-                        pos: { type: Type.STRING },
-                      },
-                      required: ["word", "pos"],
-                    },
+                    required: ["sentence", "translation_id", "context"],
                   },
                 },
-                required: [
-                  "term",
-                  "pronunciation",
-                  "ipa",
-                  "cefr",
-                  "type",
-                  "register",
-                  "meaning_en",
-                  "meaning_id",
-                  "examples",
-                  "synonyms",
-                  "antonyms",
-                  "word_families",
-                ],
+                synonyms: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                antonyms: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                word_families: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      word: { type: Type.STRING },
+                      pos: { type: Type.STRING },
+                    },
+                    required: ["word", "pos"],
+                  },
+                },
               },
+              required: [
+                "term",
+                "pronunciation",
+                "ipa",
+                "cefr",
+                "type",
+                "register",
+                "meaning_en",
+                "meaning_id",
+                "examples",
+                "synonyms",
+                "antonyms",
+                "word_families",
+              ],
             },
           },
-          required: ["items"],
         },
+        required: ["items"],
       },
     });
 
-    const parsedText = response.text?.trim() ?? "";
-    if (!parsedText) {
-      const emptyErr = emptyGeminiResponseError(model);
-      logGeminiRouteError("api/daily-pack", emptyErr, { model, dateStr });
+    if (!aiRes.ok) {
       return NextResponse.json(
         {
-          error: emptyErr.detail,
-          code: emptyErr.code,
-          detail: emptyErr.rawMessage,
+          error: aiRes.error.detail,
+          code: aiRes.error.code,
+          detail: aiRes.error.rawMessage,
+          upstreamStatus: aiRes.error.upstreamStatus,
         },
-        { status: emptyErr.status }
+        { status: aiRes.error.status }
       );
     }
 
-    const parsed = JSON.parse(parsedText) as {
-      items?: Partial<DailyPackItem>[];
-    };
     const seenKeys = new Set<string>(excludeKeys);
     const pickedWords: DailyPackItem[] = [];
     const pickedIdioms: DailyPackItem[] = [];
 
-    if (Array.isArray(parsed.items)) {
-      for (let i = 0; i < parsed.items.length; i += 1) {
-        const normalized = normalizeDailyPackItem(parsed.items[i], dateStr, i);
+    if (Array.isArray(aiRes.data.items)) {
+      for (let i = 0; i < aiRes.data.items.length; i += 1) {
+        const normalized = normalizeDailyPackItem(aiRes.data.items[i], dateStr, i);
         if (!normalized) continue;
         const key = normalizeTermKey(normalized.term);
         if (seenKeys.has(key)) continue;
@@ -362,7 +335,7 @@ STRICT RULES:
       idioms_quota: idiomsQuota,
       items: finalItems,
       source: "gemini",
-      modelUsed: model,
+      modelUsed: aiRes.modelUsed,
     });
   } catch (err) {
     const classified = classifyGeminiError(err);

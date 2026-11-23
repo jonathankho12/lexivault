@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
-import {
-  classifyGeminiError,
-  getGeminiClient,
-  getGeminiFlashModel,
-  logGeminiRouteError,
-  missingGeminiKeyError,
-} from "@/lib/gemini";
+import { generateStructuredWithHybridModel } from "@/lib/gemini";
 import { FALLBACK_DISCOVERY_PACKS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
 import { normalizeTermKey } from "@/lib/utils";
@@ -92,14 +86,7 @@ export async function POST(request: Request) {
       : [];
     const lang = body.lang === "en" ? "en" : "id";
 
-    const ai = await getGeminiClient();
-    if (!ai) {
-      logGeminiRouteError("api/discover", missingGeminiKeyError(), { dateStr });
-    }
-    if (ai) {
-      const model = await getGeminiFlashModel();
-      try {
-        const prompt = `Generate today's curated English Daily Discovery Pack for date ${dateStr} (active learner UI language: ${lang}).
+    const prompt = `Generate today's curated English Daily Discovery Pack for date ${dateStr} (active learner UI language: ${lang}).
 Provide EXACTLY 7 items in this exact order:
 - 3 items with type "vocab" (C1/C2 advanced versatile English vocabulary)
 - 2 items with type "idiom" (high-utility modern C1/C2 English idioms)
@@ -121,107 +108,94 @@ For EVERY item return BOTH bilingual meanings and rich linguistic details:
 - "pronunciation": easy-to-read Google "Sounds like" phonetic respelling separating syllables with "·" and putting STRESSED syllables in ALL CAPS (e.g. "am·BIV·uh·luhnt", "bair thuh BRUHNT")
 - "ipa": IPA transcription enclosed in slashes (e.g. "/æmˈbɪv.ə.lənt/")`;
 
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
+    const aiRes = await generateStructuredWithHybridModel<{
+      items?: Partial<DiscoveryItem>[];
+    }>({
+      tier: "flash",
+      routeName: "api/discover",
+      contents: prompt,
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          items: {
+            type: Type.ARRAY,
+            items: {
               type: Type.OBJECT,
               properties: {
-                items: {
+                term: { type: Type.STRING },
+                pronunciation: { type: Type.STRING },
+                ipa: { type: Type.STRING },
+                cefr: { type: Type.STRING, enum: ["C1", "C2"] },
+                type: {
+                  type: Type.STRING,
+                  enum: ["vocab", "idiom", "collocation"],
+                },
+                meaning_en: { type: Type.STRING },
+                meaning_id: { type: Type.STRING },
+                examples_json: {
                   type: Type.ARRAY,
                   items: {
                     type: Type.OBJECT,
                     properties: {
-                      term: { type: Type.STRING },
-                      pronunciation: { type: Type.STRING },
-                      ipa: { type: Type.STRING },
-                      cefr: { type: Type.STRING, enum: ["C1", "C2"] },
-                      type: {
-                        type: Type.STRING,
-                        enum: ["vocab", "idiom", "collocation"],
-                      },
-                      meaning_en: { type: Type.STRING },
-                      meaning_id: { type: Type.STRING },
-                      examples_json: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            sentence: { type: Type.STRING },
-                            translation_id: { type: Type.STRING },
-                            context: { type: Type.STRING },
-                          },
-                          required: ["sentence", "translation_id", "context"],
-                        },
-                      },
-                      synonyms: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                      },
-                      antonyms: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                      },
-                      word_families_json: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            word: { type: Type.STRING },
-                            pos: { type: Type.STRING },
-                          },
-                          required: ["word", "pos"],
-                        },
-                      },
-                      register: {
-                        type: Type.STRING,
-                        enum: ["Formal", "Academic", "Casual", "Slang"],
-                      },
+                      sentence: { type: Type.STRING },
+                      translation_id: { type: Type.STRING },
+                      context: { type: Type.STRING },
                     },
-                    required: [
-                      "term",
-                      "pronunciation",
-                      "ipa",
-                      "cefr",
-                      "type",
-                      "meaning_en",
-                      "meaning_id",
-                      "examples_json",
-                      "synonyms",
-                      "antonyms",
-                      "word_families_json",
-                      "register",
-                    ],
+                    required: ["sentence", "translation_id", "context"],
                   },
                 },
+                synonyms: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                antonyms: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                word_families_json: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      word: { type: Type.STRING },
+                      pos: { type: Type.STRING },
+                    },
+                    required: ["word", "pos"],
+                  },
+                },
+                register: {
+                  type: Type.STRING,
+                  enum: ["Formal", "Academic", "Casual", "Slang"],
+                },
               },
-              required: ["items"],
+              required: [
+                "term",
+                "pronunciation",
+                "ipa",
+                "cefr",
+                "type",
+                "meaning_en",
+                "meaning_id",
+                "examples_json",
+                "synonyms",
+                "antonyms",
+                "word_families_json",
+                "register",
+              ],
             },
           },
-        });
+        },
+        required: ["items"],
+      },
+    });
 
-        const parsedText = response.text?.trim() ?? "";
-        if (parsedText) {
-          const parsed = JSON.parse(parsedText) as {
-            items?: Partial<DiscoveryItem>[];
-          };
-          if (Array.isArray(parsed.items) && parsed.items.length >= 7) {
-            const pack: DailyDiscoveryPack = {
-              discovery_date: dateStr,
-              items: normalizeItems(parsed.items, dateStr),
-              source: "gemini",
-            };
-            return NextResponse.json(pack);
-          }
-        }
-      } catch (err) {
-        logGeminiRouteError("api/discover", classifyGeminiError(err), {
-          model,
-          dateStr,
-        });
-      }
+    if (aiRes.ok && Array.isArray(aiRes.data.items) && aiRes.data.items.length >= 7) {
+      const pack: DailyDiscoveryPack = {
+        discovery_date: dateStr,
+        items: normalizeItems(aiRes.data.items, dateStr),
+        source: "gemini",
+      };
+      return NextResponse.json(pack);
     }
 
     const pack: DailyDiscoveryPack = {
