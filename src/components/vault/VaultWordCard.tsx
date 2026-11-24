@@ -97,7 +97,7 @@ export function VaultWordCard({ word }: { word: WordEntry }) {
       {/* Footer Metadata */}
       <div className="mt-3.5 pt-3 border-t border-white/[0.08] flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          {word.word_families_json.length > 0 && (
+          {word.type !== "idiom" && word.word_families_json.length > 0 && (
             <span className="text-[11px] text-[#8E8E93] truncate">
               {word.word_families_json
                 .slice(0, 2)

@@ -481,7 +481,7 @@ function SwipeableFlashcard({
               )}
 
               {/* Word Family */}
-              {word.word_families_json.length > 0 && (
+              {word.type !== "idiom" && word.word_families_json.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pb-1">
                   {word.word_families_json.slice(0, 4).map((wf, idx) => (
                     <span

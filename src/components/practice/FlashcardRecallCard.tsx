@@ -216,7 +216,9 @@ export function FlashcardRecallCard({
               </div>
             )}
 
-            {answered && word.word_families_json.length > 0 && (
+            {answered &&
+              word.type !== "idiom" &&
+              word.word_families_json.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {word.word_families_json.slice(0, 4).map((wf, idx) => (
                   <span

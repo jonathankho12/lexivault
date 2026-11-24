@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
+  CEFR_CALIBRATION_RULE,
   classifyGeminiError,
   formatCompactExistingTerms,
   generateStructuredWithHybridModel,
+  IDIOM_WORD_FAMILY_RULE,
   logGeminiRouteError,
+  REGISTER_CLASSIFICATION_RULE,
 } from "@/lib/gemini";
 import { FALLBACK_SUGGESTED_WORDS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
@@ -110,15 +113,18 @@ function normalizeSuggestedItem(
     return null;
   }
 
-  const word_families: WordFamilyItem[] = Array.isArray(raw.word_families)
-    ? raw.word_families
-        .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
-        .slice(0, 4)
-        .map((wf) => ({
-          word: wf.word.trim(),
-          pos: (wf.pos || type).trim(),
-        }))
-    : [];
+  const word_families: WordFamilyItem[] =
+    type === "idiom"
+      ? []
+      : Array.isArray(raw.word_families)
+        ? raw.word_families
+            .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
+            .slice(0, 4)
+            .map((wf) => ({
+              word: wf.word.trim(),
+              pos: (wf.pos || type).trim(),
+            }))
+        : [];
 
   return {
     term,
@@ -282,9 +288,12 @@ export async function POST(request: Request) {
     const prompt = `Generate 4 fresh C1–C2 English expressions (ui: ${lang}).
 ${categoryInstruction} ${registerInstruction}
 EXCLUDE (no exact or variant matches): ${existingCsv}
+${CEFR_CALIBRATION_RULE}
+${REGISTER_CLASSIFICATION_RULE}
+${IDIOM_WORD_FAMILY_RULE}
 
 Concise complete JSON per item:
-term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Casual), pronunciation ("·" dots + ALL CAPS stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural figurative Indonesian sentence), examples (2 short sentences — 1 Daily, 1 Academic — wrapping target in **bold**, with translation_id & context), synonyms (2-3), antonyms (1-2), word_families (1-2 real {word,pos}), source_tag (film|book|lecture|article|general).`;
+term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Casual), pronunciation ("·" dots + ALL CAPS stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural figurative Indonesian sentence), examples (2 short sentences — 1 Daily, 1 Academic — wrapping target in **bold**, with translation_id & context), synonyms (2-3), antonyms (1-2), word_families (1-2 real {word,pos} for vocab/collocation ONLY; [] for idioms), source_tag (film|book|lecture|article|general).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items?: Partial<SuggestedWordItem>[];

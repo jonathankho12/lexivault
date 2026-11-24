@@ -9,6 +9,7 @@ import {
   Clock,
   Flame,
   Layers,
+  Loader2,
   Play,
   RotateCcw,
   Sparkles,
@@ -22,8 +23,13 @@ import { FlashcardRecallCard } from "@/components/practice/FlashcardRecallCard";
 import { SentenceMakerCard } from "@/components/practice/SentenceMakerCard";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
+import {
+  fetchAiMeaningDistractorsBatch,
+  getCachedAiMeaningDistractors,
+} from "@/lib/distractorEngine";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
+  applyAiDistractorsToPracticeQuestions,
   buildDailyMiniQuizSession,
   buildFullMarathonSession,
   buildSmartMixSession,
@@ -34,7 +40,7 @@ import {
   playGlassClick,
   playWrongThud,
 } from "@/lib/soundEffects";
-import { cn, getWeakestWords } from "@/lib/utils";
+import { cn, getLocalizedMeaning, getWeakestWords } from "@/lib/utils";
 import type {
   DiscoveryItem,
   PracticeMode,
@@ -67,11 +73,19 @@ export function PracticeView() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState<SessionResultItem[]>([]);
   const [combo, setCombo] = useState(0);
+  const [isPreparingQuiz, setIsPreparingQuiz] = useState(false);
 
   const transitionLockRef = useRef(false);
   const scoredQuestionIdsRef = useRef<Set<string>>(new Set());
+  const sessionAbortRef = useRef<AbortController | null>(null);
 
   const weakestWords = useMemo(() => getWeakestWords(words), [words]);
+
+  useEffect(() => {
+    return () => {
+      sessionAbortRef.current?.abort();
+    };
+  }, []);
 
   // Browser / Mobile Back exits active quiz, summary, or commute back to Practice launcher
   useOverlayBackGuard(
@@ -91,7 +105,7 @@ export function PracticeView() {
   }, [currentIndex, phase]);
 
   const startSession = useCallback(
-    (mode: PracticeMode, customItems?: DiscoveryItem[]) => {
+    async (mode: PracticeMode, customItems?: DiscoveryItem[]) => {
       let generated: PracticeQuestion[] = [];
       if (mode === "smart_mix") {
         generated = buildSmartMixSession(words, 20, lang);
@@ -106,10 +120,61 @@ export function PracticeView() {
       if (generated.length === 0) return;
 
       playGlassClick();
+      sessionAbortRef.current?.abort();
+      const abortController = new AbortController();
+      sessionAbortRef.current = abortController;
+
+      const meaningTargets = generated
+        .filter((q) => q.kind === "flashcard")
+        .slice(0, 12)
+        .map((q) => ({
+          id: q.id,
+          term: q.word.term,
+          type: q.word.type,
+          register: q.word.register,
+          cefr: q.word.cefr,
+          meaning: getLocalizedMeaning(q.word, lang),
+        }));
+
+      const hasUncached = meaningTargets.some(
+        (t) => !getCachedAiMeaningDistractors(t.term, t.meaning, lang)
+      );
+
+      let finalQuestions = generated;
+      if (hasUncached && meaningTargets.length > 0) {
+        setIsPreparingQuiz(true);
+        try {
+          const aiMap = await fetchAiMeaningDistractorsBatch(
+            meaningTargets,
+            lang,
+            { signal: abortController.signal, timeoutMs: 4200 }
+          );
+          if (abortController.signal.aborted) return;
+          if (Object.keys(aiMap).length > 0) {
+            const poolForMerge =
+              mode === "daily_mini"
+                ? [...generated.map((g) => g.word), ...words]
+                : words;
+            finalQuestions = applyAiDistractorsToPracticeQuestions(
+              generated,
+              poolForMerge,
+              lang,
+              aiMap
+            );
+          }
+        } finally {
+          if (!abortController.signal.aborted) {
+            setIsPreparingQuiz(false);
+          }
+        }
+      }
+
+      if (abortController.signal.aborted) return;
+
       transitionLockRef.current = false;
       scoredQuestionIdsRef.current = new Set();
       setActiveMode(mode);
-      setQuestions(generated);
+      setQuestions(finalQuestions);
       setCurrentIndex(0);
       setResults([]);
       setCombo(0);
@@ -182,6 +247,28 @@ export function PracticeView() {
 
   if (phase === "commute") {
     return <CommuteModeFlow onExit={() => setPhase("launcher")} />;
+  }
+
+  if (isPreparingQuiz) {
+    return (
+      <div className="max-w-xl mx-auto py-16">
+        <div className="liquid-glass rounded-3xl p-8 text-center space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0A84FF]/20 border border-[#0A84FF]/35 text-[#70BCFF]">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+          <p className="text-base font-bold text-white">
+            {lang === "en"
+              ? "Crafting plausible quiz distractors..."
+              : "Menyiapkan opsi kuis pengecoh..."}
+          </p>
+          <p className="text-xs text-[#8E8E93]">
+            {lang === "en"
+              ? "Matching register, part of speech, and semantic nuance."
+              : "Menyelaraskan register, jenis kata, dan nuansa makna."}
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (phase === "active" && questions[currentIndex]) {

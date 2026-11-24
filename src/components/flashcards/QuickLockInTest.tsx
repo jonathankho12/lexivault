@@ -18,6 +18,11 @@ import { AudioButton } from "@/components/ui/AudioButton";
 import { HighlightedText } from "@/components/ui/HighlightedText";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
+import {
+  buildNormalizedMeaningChoices,
+  buildNormalizedTermChoices,
+  fetchAiMeaningDistractorsBatch,
+} from "@/lib/distractorEngine";
 import type { AppLanguage } from "@/lib/i18n";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
@@ -26,7 +31,7 @@ import {
   playRingCompleteChord,
   playWrongThud,
 } from "@/lib/soundEffects";
-import { cn, getLocalizedMeaning, normalizeTermKey } from "@/lib/utils";
+import { cn, getLocalizedMeaning } from "@/lib/utils";
 import type { WordEntry } from "@/types/lexivault";
 
 export type RoundConfidence = "forgot" | "shaky" | "solid";
@@ -58,38 +63,6 @@ interface LockInResult {
   wordId: string;
   term: string;
   isCorrect: boolean;
-}
-
-const FALLBACK_MEANING_DISTRACTORS_EN = [
-  "Acting hastily without considering long-term consequences.",
-  "A situation where two sides refuse to compromise under pressure.",
-  "Sticking rigidly to outdated routines despite major changes.",
-  "Deliberately hiding key details to avoid public scrutiny.",
-];
-
-const FALLBACK_MEANING_DISTRACTORS_ID = [
-  "Bertindak tergesa-gesa tanpa mempertimbangkan dampak jangka panjang.",
-  "Keadaan saat dua pihak menolak berkompromi di bawah tekanan.",
-  "Mempertahankan kebiasaan lama meski situasi sudah berubah drastis.",
-  "Sengaja menyembunyikan informasi penting agar terhindar dari kritik.",
-];
-
-const FALLBACK_TERM_DISTRACTORS = [
-  "pragmatic",
-  "mitigate",
-  "resilient",
-  "cut corners",
-  "strike a balance",
-  "ubiquitous",
-];
-
-function shuffleArray<T>(items: T[]): T[] {
-  const copy = [...items];
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
 }
 
 function escapeRegExp(text: string): string {
@@ -157,63 +130,35 @@ function buildLockInQuestions(
     const blankInfo = preferFillBlank ? buildBlankContext(word) : null;
 
     if (blankInfo) {
-      const targetNorm = normalizeTermKey(blankInfo.blankTarget);
-      const otherTerms = shuffleArray(
-        pool
-          .filter(
-            (w) =>
-              w.id !== word.id && normalizeTermKey(w.term) !== targetNorm
-          )
-          .map((w) => w.term)
-      );
-      const seen = new Set<string>([targetNorm]);
-      const distractors: string[] = [];
-      for (const cand of [...otherTerms, ...FALLBACK_TERM_DISTRACTORS]) {
-        const key = normalizeTermKey(cand);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        distractors.push(cand);
-        if (distractors.length >= 3) break;
-      }
+      const { choices, correctChoice } = buildNormalizedTermChoices({
+        target: word,
+        blankTarget: blankInfo.blankTarget,
+        pool,
+      });
 
       return {
         id: `lockin-${idx}-${word.id}-fb`,
         word,
         mode: "fill_blank",
         blankSentence: blankInfo.blankSentence,
-        blankTarget: blankInfo.blankTarget,
-        choices: shuffleArray([blankInfo.blankTarget, ...distractors]),
-        correctChoice: blankInfo.blankTarget,
+        blankTarget: correctChoice,
+        choices,
+        correctChoice,
       };
     }
 
-    const correctMeaning = getLocalizedMeaning(word, lang);
-    const seenMeanings = new Set<string>([correctMeaning.toLowerCase()]);
-    const otherMeanings = shuffleArray(
-      pool
-        .filter((w) => w.id !== word.id)
-        .map((w) => getLocalizedMeaning(w, lang))
-        .filter(Boolean)
-    );
-    const fallbacks =
-      lang === "en"
-        ? FALLBACK_MEANING_DISTRACTORS_EN
-        : FALLBACK_MEANING_DISTRACTORS_ID;
-    const distractors: string[] = [];
-    for (const cand of [...otherMeanings, ...fallbacks]) {
-      const key = cand.toLowerCase();
-      if (!cand || seenMeanings.has(key)) continue;
-      seenMeanings.add(key);
-      distractors.push(cand);
-      if (distractors.length >= 3) break;
-    }
+    const { choices, correctChoice } = buildNormalizedMeaningChoices({
+      target: word,
+      pool,
+      lang,
+    });
 
     return {
       id: `lockin-${idx}-${word.id}-mc`,
       word,
       mode: "meaning_mc",
-      choices: shuffleArray([correctMeaning, ...distractors]),
-      correctChoice: correctMeaning,
+      choices,
+      correctChoice,
     };
   });
 }
@@ -235,14 +180,63 @@ export function QuickLockInTest({
   // Browser / Mobile Back exits Lock-In Test back to Flashcards
   useOverlayBackGuard("lock_in_test", true, onExit);
 
-  const questions = useMemo(
+  const initialQuestions = useMemo(
     () => buildLockInQuestions(roundCards, roundRatings, allWords, lang),
-    // Freeze question set for the duration of this Lock-In Test instance
+    // Freeze initial question set for the duration of this Lock-In Test instance
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
+  const [questions, setQuestions] = useState<LockInQuestion[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const currentIndexRef = useRef(0);
+  currentIndexRef.current = currentIndex;
+
+  // Hydrate upcoming meaning_mc questions with Layer 1 AI plausible distractors
+  useEffect(() => {
+    const meaningQuestions = initialQuestions.filter(
+      (q) => q.mode === "meaning_mc"
+    );
+    if (meaningQuestions.length === 0) return;
+
+    const controller = new AbortController();
+    const pool = allWords.length >= 4 ? allWords : [...allWords, ...roundCards];
+
+    void fetchAiMeaningDistractorsBatch(
+      meaningQuestions.map((q) => ({
+        id: q.id,
+        term: q.word.term,
+        type: q.word.type,
+        register: q.word.register,
+        cefr: q.word.cefr,
+        meaning: getLocalizedMeaning(q.word, lang),
+      })),
+      lang,
+      { signal: controller.signal, timeoutMs: 5500 }
+    ).then((aiMap) => {
+      if (controller.signal.aborted || Object.keys(aiMap).length === 0) return;
+      setQuestions((prev) =>
+        prev.map((q, idx) => {
+          // Never swap choices on the question currently being read or already answered
+          if (idx <= currentIndexRef.current || q.mode !== "meaning_mc") {
+            return q;
+          }
+          const aiList = aiMap[q.id];
+          if (!aiList || aiList.length === 0) return q;
+          const { choices, correctChoice } = buildNormalizedMeaningChoices({
+            target: q.word,
+            pool,
+            lang,
+            aiDistractors: aiList,
+          });
+          return { ...q, choices, correctChoice };
+        })
+      );
+    });
+
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [combo, setCombo] = useState(0);

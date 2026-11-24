@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
+  CEFR_CALIBRATION_RULE,
   classifyGeminiError,
   emptyGeminiResponseError,
   generateStructuredWithHybridModel,
+  IDIOM_WORD_FAMILY_RULE,
   incompleteGeminiResponseError,
   logGeminiRouteError,
   REGISTER_CLASSIFICATION_RULE,
@@ -53,13 +55,15 @@ export async function POST(request: Request) {
       return rateLimit.response;
     }
 
-    const prompt = `Extract 6–10 notable English vocab, idioms, or collocations from this text (ui: ${lang}). Assign each expression its true objective CEFR level (A1|A2|B1|B2|C1|C2) without inflating basic words.
+    const prompt = `Extract 6–10 notable English vocab, idioms, or collocations from this text (ui: ${lang}).
+${CEFR_CALIBRATION_RULE}
 ${REGISTER_CLASSIFICATION_RULE}
+${IDIOM_WORD_FAMILY_RULE}
 Text:
 """
 ${rawText}
 """
-Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|collocation), register (Casual|Formal|Academic|Slang), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural Indonesian sentence), examples (2 short sentences with **bold** term + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-3 real {word,pos}).`;
+Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|collocation), register (Casual|Formal|Academic|Slang), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 concise sentence), meaning_id (1 natural Indonesian sentence), examples (2 short sentences with **bold** term + translation_id + context), synonyms (2-3), antonyms (1-2), word_families (1-3 real {word,pos} for vocab/collocation ONLY; [] for idioms).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items: Partial<ExtractedVocabItem>[];
@@ -216,6 +220,9 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
           return null;
         }
 
+        const resolvedType: WordType =
+          it.type && validTypes.has(it.type) ? it.type : "vocab";
+
         return {
           term: cleanTerm,
           pronunciation:
@@ -224,16 +231,19 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
             undefined,
           ipa: (it.ipa || "").trim() || builtIn?.ipa || undefined,
           cefr: normalizeCefrLevel(it.cefr) ?? builtInBilingual?.cefr,
-          type: it.type && validTypes.has(it.type) ? it.type : "vocab",
+          type: resolvedType,
           register: normalizeRegister(it.register, "Casual"),
           meaning_en,
           meaning_id,
           examples,
           synonyms: Array.isArray(it.synonyms) ? it.synonyms.slice(0, 4) : [],
           antonyms: Array.isArray(it.antonyms) ? it.antonyms.slice(0, 3) : [],
-          word_families: Array.isArray(it.word_families)
-            ? it.word_families
-            : [],
+          word_families:
+            resolvedType === "idiom"
+              ? []
+              : Array.isArray(it.word_families)
+                ? it.word_families
+                : [],
         };
       })
       .filter((item): item is ExtractedVocabItem => item !== null);

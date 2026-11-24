@@ -3,10 +3,12 @@ import { Type, type Schema } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import { pickFallbackDailyPack } from "@/lib/dailyPackFallback";
 import {
+  CEFR_CALIBRATION_RULE,
   classifyGeminiError,
   formatCompactExistingTerms,
   generateStructuredWithHybridModel,
   logGeminiRouteError,
+  REGISTER_CLASSIFICATION_RULE,
   type HybridModelResult,
   type ProviderAttemptFailure,
 } from "@/lib/gemini";
@@ -217,15 +219,18 @@ function normalizeDailyPackItem(
     return null;
   }
 
-  const word_families: WordFamilyItem[] = Array.isArray(raw.word_families)
-    ? raw.word_families
-        .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
-        .slice(0, 4)
-        .map((wf) => ({
-          word: wf.word.trim(),
-          pos: (wf.pos || type).trim(),
-        }))
-    : [];
+  const word_families: WordFamilyItem[] =
+    type === "idiom"
+      ? []
+      : Array.isArray(raw.word_families)
+        ? raw.word_families
+            .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
+            .slice(0, 4)
+            .map((wf) => ({
+              word: wf.word.trim(),
+              pos: (wf.pos || type).trim(),
+            }))
+        : [];
 
   return {
     id: `${dateStr}-ai-${type}-${index}-${key
@@ -288,12 +293,14 @@ async function generateDailyPackBatch(params: {
 
   const prompt = `Daily Pack (${dateStr}, ${batchId}): generate ${label} focused on ${themeHint}.
 EXCLUDE: ${existingCsv}
+${CEFR_CALIBRATION_RULE}
+${REGISTER_CLASSIFICATION_RULE}
 
 Return compact JSON {items:[...]} with brief, crisp fields:
-- term: English ${isIdiom ? "idiom" : "single word"}
+- term: English ${isIdiom ? "opaque/figurative C1-C2 idiom" : "single C1-C2 word"}
 - pronunciation: "·" syllable dots + ALL CAPS primary stress
 - ipa: /.../
-- cefr: "C1" or "C2"
+- cefr: "C1" or "C2" (strictly per Cambridge EVP / Oxford 5000; opaque idioms can be Casual register and still C1-C2)
 - register: ${isIdiom ? '"Casual", "Formal", or "Academic"' : '"Academic", "Formal", or "Casual"'}
 - meaning_en: 1 short English definition
 - meaning_id: 1 natural Indonesian figurative definition

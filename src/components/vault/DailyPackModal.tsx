@@ -28,6 +28,12 @@ import {
   FALLBACK_DAILY_IDIOMS,
   FALLBACK_DAILY_WORDS,
 } from "@/lib/dailyPackFallback";
+import {
+  buildNormalizedMeaningChoices,
+  buildNormalizedTermChoices,
+  fetchAiMeaningDistractorsBatch,
+  shuffleOptions,
+} from "@/lib/distractorEngine";
 import type { AppLanguage } from "@/lib/i18n";
 import { IOS_SHEET_SPRING, IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
@@ -81,24 +87,14 @@ function buildBlankSentence(item: DailyPackItem): string | null {
   return null;
 }
 
-function shuffleArray<T>(arr: T[]): T[] {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = copy[i];
-    copy[i] = copy[j];
-    copy[j] = tmp;
-  }
-  return copy;
-}
-
 function buildQuizCard(
   item: DailyPackItem,
   preferredMode: QuizQuestionMode,
   pool: DailyPackItem[],
   lang: AppLanguage,
   requeued = false,
-  nonce = 0
+  nonce = 0,
+  aiDistractors?: string[]
 ): QuizCard {
   const blanked = buildBlankSentence(item);
   const mode: QuizQuestionMode =
@@ -109,53 +105,39 @@ function buildQuizCard(
     ...(item.type === "idiom" ? FALLBACK_DAILY_IDIOMS : FALLBACK_DAILY_WORDS),
     ...FALLBACK_DAILY_WORDS,
     ...FALLBACK_DAILY_IDIOMS,
-  ].filter((cand) => normalizeTermKey(cand.term) !== normalizeTermKey(item.term));
+  ];
 
   if (mode === "fill_blank" && blanked) {
-    const seen = new Set<string>([normalizeTermKey(item.term)]);
-    const distractors: string[] = [];
-    const preferredTypeFirst = [
-      ...distractorPool.filter((d) => d.type === item.type),
-      ...distractorPool.filter((d) => d.type !== item.type),
-    ];
-    for (const cand of shuffleArray(preferredTypeFirst)) {
-      const k = normalizeTermKey(cand.term);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      distractors.push(cand.term);
-      if (distractors.length >= 3) break;
-    }
+    const { choices, correctChoice } = buildNormalizedTermChoices({
+      target: item,
+      blankTarget: item.term,
+      pool: distractorPool,
+    });
 
     return {
       uid: `${item.id}-fb-${nonce}`,
       item,
       mode: "fill_blank",
       promptSentence: blanked,
-      choices: shuffleArray([item.term, ...distractors]),
-      correctChoice: item.term,
+      choices,
+      correctChoice,
       requeued,
     };
   }
 
-  const correctMeaning = getLocalizedMeaning(item, lang);
-  const seenMeanings = new Set<string>([correctMeaning.toLowerCase()]);
-  const distractorMeanings: string[] = [];
-
-  for (const cand of shuffleArray(distractorPool)) {
-    const m = getLocalizedMeaning(cand, lang);
-    const key = m.toLowerCase();
-    if (!m || seenMeanings.has(key)) continue;
-    seenMeanings.add(key);
-    distractorMeanings.push(m);
-    if (distractorMeanings.length >= 3) break;
-  }
+  const { choices, correctChoice } = buildNormalizedMeaningChoices({
+    target: item,
+    pool: distractorPool,
+    lang,
+    aiDistractors,
+  });
 
   return {
     uid: `${item.id}-mc-${nonce}`,
     item,
     mode: "meaning_mc",
-    choices: shuffleArray([correctMeaning, ...distractorMeanings]),
-    correctChoice: correctMeaning,
+    choices,
+    correctChoice,
     requeued,
   };
 }
@@ -285,10 +267,29 @@ export function DailyPackModal() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [dailyPackModalOpen, dismissDailyPackForSession]);
 
+  // Prefetch Layer 1 AI distractors silently while the user studies in Memorize stage
+  useEffect(() => {
+    if (!dailyPackModalOpen || activeChunk.length === 0) return;
+    const controller = new AbortController();
+    void fetchAiMeaningDistractorsBatch(
+      activeChunk.map((it) => ({
+        id: it.id,
+        term: it.term,
+        type: it.type,
+        register: it.register,
+        cefr: it.cefr,
+        meaning: getLocalizedMeaning(it, lang),
+      })),
+      lang,
+      { signal: controller.signal, timeoutMs: 6000 }
+    );
+    return () => controller.abort();
+  }, [activeChunk, dailyPackModalOpen, lang]);
+
   const handleStartQuizStage = () => {
     if (!dailyPack || activeChunk.length === 0) return;
     playGlassClick();
-    const cards = shuffleArray(activeChunk).map((item, idx) =>
+    const cards = shuffleOptions(activeChunk).map((item, idx) =>
       buildQuizCard(
         item,
         idx % 2 === 0 ? "meaning_mc" : "fill_blank",

@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
+  CEFR_CALIBRATION_RULE,
   classifyGeminiError,
   formatCompactExistingTerms,
   generateStructuredWithHybridModel,
+  IDIOM_WORD_FAMILY_RULE,
   logGeminiRouteError,
+  REGISTER_CLASSIFICATION_RULE,
 } from "@/lib/gemini";
 import { FALLBACK_DISCOVERY_PACKS } from "@/lib/mockData";
 import { BUILT_IN_PRONUNCIATIONS } from "@/lib/pronunciation";
@@ -89,6 +92,9 @@ function normalizeItems(
       continue;
     }
 
+    const resolvedType: WordType =
+      item.type && validTypes.has(item.type) ? item.type : "vocab";
+
     out.push({
       id: item.id || `disc-${dateStr}-${nonce}-${idx + 1}`,
       term: cleanTerm,
@@ -96,15 +102,18 @@ function normalizeItems(
         (item.pronunciation || "").trim() || builtIn?.pronunciation || undefined,
       ipa: (item.ipa || "").trim() || builtIn?.ipa || undefined,
       cefr: item.cefr || builtInBilingual?.cefr || "C1",
-      type: item.type && validTypes.has(item.type) ? item.type : "vocab",
+      type: resolvedType,
       meaning_id,
       meaning_en,
       examples_json: examples,
       synonyms: Array.isArray(item.synonyms) ? item.synonyms.slice(0, 3) : [],
       antonyms: Array.isArray(item.antonyms) ? item.antonyms.slice(0, 2) : [],
-      word_families_json: Array.isArray(item.word_families_json)
-        ? item.word_families_json.slice(0, 4)
-        : [],
+      word_families_json:
+        resolvedType === "idiom"
+          ? []
+          : Array.isArray(item.word_families_json)
+            ? item.word_families_json.slice(0, 4)
+            : [],
       register:
         item.register && validRegisters.has(item.register)
           ? item.register
@@ -186,9 +195,12 @@ export async function POST(request: Request) {
 ${categoryRule}
 ${toneRule}
 EXCLUDE (no exact or variant matches): ${existingCsv}
+${CEFR_CALIBRATION_RULE}
+${REGISTER_CLASSIFICATION_RULE}
+${IDIOM_WORD_FAMILY_RULE}
 
 Concise JSON per item:
-term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Casual|Slang), pronunciation ("·" syllable dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 crisp sentence), meaning_id (1 natural figurative Indonesian sentence), examples_json (2 concise sentences with **bold** target + translation_id + context Daily/Academic), synonyms (2-3), antonyms (1-2), word_families_json (1-3 {word,pos}).`;
+term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Casual|Slang), pronunciation ("·" syllable dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 crisp sentence), meaning_id (1 natural figurative Indonesian sentence), examples_json (2 concise sentences with **bold** target + translation_id + context Daily/Academic), synonyms (2-3), antonyms (1-2), word_families_json (1-3 {word,pos} for vocab/collocation ONLY; [] for idioms).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items?: Partial<DiscoveryItem>[];

@@ -22,6 +22,7 @@ import { HighlightedText } from "@/components/ui/HighlightedText";
 import { PronunciationText } from "@/components/ui/PronunciationText";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
+import { normalizeUniformMcqOptions } from "@/lib/distractorEngine";
 import { COMMUTE_MINI_CLIPS } from "@/lib/ieltsMockData";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
@@ -104,7 +105,20 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
     setIsGradingCard(false);
   }, [cardIndex, stage, sessionSeed]);
 
-  const activeClip = COMMUTE_MINI_CLIPS[clipIndex % COMMUTE_MINI_CLIPS.length];
+  const activeClip = useMemo(() => {
+    const raw = COMMUTE_MINI_CLIPS[clipIndex % COMMUTE_MINI_CLIPS.length];
+    return {
+      ...raw,
+      questions: raw.questions.map((q) => {
+        const normalized = normalizeUniformMcqOptions(q.options, q.answer);
+        return {
+          ...q,
+          options: normalized.options,
+          answer: normalized.correctAnswer,
+        };
+      }),
+    };
+  }, [clipIndex]);
 
   // Freeze up to 5 due flashcards on mount/hydration
   useEffect(() => {

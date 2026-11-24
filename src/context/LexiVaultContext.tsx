@@ -135,7 +135,8 @@ const INITIAL_BATCH_REFRESH_STATE: BatchRefreshState = {
   failedCount: 0,
 };
 
-const BATCH_REFRESH_DELAY_MS = 400;
+const BATCH_REFRESH_DELAY_MS = 650;
+const BATCH_REFRESH_429_BACKOFF_MS = 3500;
 // Comfortably above worst-case server-side fallback budget (Gemini 10s + Groq 10s + CF Workers AI 10s = 30s)
 const DAILY_PACK_CLIENT_TIMEOUT_MS = 40_000;
 
@@ -1568,7 +1569,8 @@ export function LexiVaultProvider({
           examples_json: aiData.examples,
           synonyms: aiData.synonyms,
           antonyms: aiData.antonyms,
-          word_families_json: aiData.word_families,
+          word_families_json:
+            aiData.type === "idiom" ? [] : aiData.word_families,
           register: aiData.register,
         };
 
@@ -1654,9 +1656,28 @@ export function LexiVaultProvider({
           failedCount,
         });
 
-        const res = await refreshWordWithAI(item.id, {
+        let res = await refreshWordWithAI(item.id, {
           signal: abortController.signal,
         });
+
+        // Gentle single retry if a transient rate-limit (429) or overload occurred mid-batch
+        if (
+          !res.ok &&
+          !res.aborted &&
+          !abortController.signal.aborted &&
+          res.error &&
+          /429|rate limit|batas permintaan|sibuk|high demand/i.test(res.error)
+        ) {
+          await sleepAbortable(
+            BATCH_REFRESH_429_BACKOFF_MS,
+            abortController.signal
+          );
+          if (!abortController.signal.aborted) {
+            res = await refreshWordWithAI(item.id, {
+              signal: abortController.signal,
+            });
+          }
+        }
 
         if (abortController.signal.aborted || res.aborted) {
           break;

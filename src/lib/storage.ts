@@ -305,9 +305,12 @@ function sanitizeWordForCloud(
   const antonyms = Array.isArray(word.antonyms)
     ? word.antonyms.filter((s): s is string => typeof s === "string")
     : [];
-  const word_families_json = Array.isArray(word.word_families_json)
-    ? word.word_families_json
-    : [];
+  const word_families_json =
+    type === "idiom"
+      ? []
+      : Array.isArray(word.word_families_json)
+        ? word.word_families_json
+        : [];
   const correct_count = Math.max(
     0,
     Math.round(Number(word.correct_count ?? 0) || 0)
@@ -484,6 +487,7 @@ function mergeTwoWordEntries(
   const localAnts = Array.isArray(localWord.antonyms) ? localWord.antonyms : [];
   const antonyms = localAnts.length > cloudAnts.length ? localAnts : cloudAnts;
 
+  const resolvedType = cloudWord.type || localWord.type;
   const cloudFamilies = Array.isArray(cloudWord.word_families_json)
     ? cloudWord.word_families_json
     : [];
@@ -491,7 +495,11 @@ function mergeTwoWordEntries(
     ? localWord.word_families_json
     : [];
   const word_families_json =
-    localFamilies.length > cloudFamilies.length ? localFamilies : cloudFamilies;
+    resolvedType === "idiom"
+      ? []
+      : localFamilies.length > cloudFamilies.length
+        ? localFamilies
+        : cloudFamilies;
 
   const localHasNewerData =
     localPracticedMs > cloudPracticedMs ||

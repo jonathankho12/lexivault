@@ -1,3 +1,8 @@
+import {
+  buildNormalizedMeaningChoices,
+  buildNormalizedTermChoices,
+  shuffleOptions,
+} from "@/lib/distractorEngine";
 import type { AppLanguage } from "@/lib/i18n";
 import { getLocalizedMeaning, getWeakestWords } from "@/lib/utils";
 import type {
@@ -6,38 +11,6 @@ import type {
   QuestionKind,
   WordEntry,
 } from "@/types/lexivault";
-
-const FALLBACK_MEANING_DISTRACTORS_ID = [
-  "Melakukan sesuatu secara tergesa-gesa tanpa pertimbangan jangka panjang.",
-  "Keadaan ketika dua pihak menolak berkompromi dalam situasi mendesak.",
-  "Kebiasaan menjaga rutinitas lama meskipun lingkungan sudah berubah drastis.",
-  "Upaya menyembunyikan informasi penting agar terhindar dari kritik publik.",
-];
-
-const FALLBACK_MEANING_DISTRACTORS_EN = [
-  "Acting hastily without considering the long-term consequences of a decision.",
-  "A deadlock in which two sides refuse to compromise despite urgent pressure.",
-  "Clinging rigidly to outdated habits even after circumstances have shifted.",
-  "Deliberately concealing inconvenient details to avoid public criticism.",
-];
-
-const FALLBACK_TERM_DISTRACTORS = [
-  "pragmatic",
-  "mitigate",
-  "resilient",
-  "cut corners",
-  "strike a balance",
-  "ubiquitous",
-];
-
-function shuffleArray<T>(items: T[]): T[] {
-  const copy = [...items];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -106,56 +79,38 @@ function createQuestionForWord(
   const id = `q-${index}-${word.id}-${kind}`;
 
   if (kind === "flashcard") {
-    const targetMeaning = getLocalizedMeaning(word, lang);
-    const fallbackDistractors =
-      lang === "en"
-        ? FALLBACK_MEANING_DISTRACTORS_EN
-        : FALLBACK_MEANING_DISTRACTORS_ID;
-    const otherMeanings = shuffleArray(
-      pool
-        .filter((item) => item.id !== word.id)
-        .map((item) => getLocalizedMeaning(item, lang))
-        .filter((m) => m && m !== targetMeaning)
-    );
-    const distractors = [...otherMeanings, ...fallbackDistractors]
-      .filter((m) => m !== targetMeaning)
-      .slice(0, 3);
-    const choices = shuffleArray([targetMeaning, ...distractors]);
+    const { choices, correctChoice } = buildNormalizedMeaningChoices({
+      target: word,
+      pool,
+      lang,
+    });
 
     return {
       id,
       word,
       kind,
       choices,
-      correctChoice: targetMeaning,
+      correctChoice,
     };
   }
 
   if (kind === "fill_blank") {
     const { blankSentence, blankTarget, blankTranslation } =
       buildFillBlankPrompt(word, lang);
-    const otherTerms = shuffleArray(
-      pool
-        .filter(
-          (item) =>
-            item.id !== word.id &&
-            item.term.toLowerCase() !== word.term.toLowerCase()
-        )
-        .map((item) => item.term)
-    );
-    const distractors = [...otherTerms, ...FALLBACK_TERM_DISTRACTORS]
-      .filter((t) => t.toLowerCase() !== blankTarget.toLowerCase())
-      .slice(0, 3);
-    const choices = shuffleArray([blankTarget, ...distractors]);
+    const { choices, correctChoice } = buildNormalizedTermChoices({
+      target: word,
+      blankTarget,
+      pool,
+    });
 
     return {
       id,
       word,
       kind,
       choices,
-      correctChoice: blankTarget,
+      correctChoice,
       blankSentence,
-      blankTarget,
+      blankTarget: correctChoice,
       blankTranslation,
     };
   }
@@ -165,6 +120,30 @@ function createQuestionForWord(
     word,
     kind: "make_sentence",
   };
+}
+
+export function applyAiDistractorsToPracticeQuestions(
+  questions: PracticeQuestion[],
+  pool: WordEntry[],
+  lang: AppLanguage,
+  aiDistractorsByQuestionId: Record<string, string[]>
+): PracticeQuestion[] {
+  return questions.map((q) => {
+    if (q.kind !== "flashcard") return q;
+    const aiList = aiDistractorsByQuestionId[q.id];
+    if (!aiList || aiList.length === 0) return q;
+    const { choices, correctChoice } = buildNormalizedMeaningChoices({
+      target: q.word,
+      pool,
+      lang,
+      aiDistractors: aiList,
+    });
+    return {
+      ...q,
+      choices,
+      correctChoice,
+    };
+  });
 }
 
 function assignQuestionKinds(
@@ -215,7 +194,7 @@ export function buildSmartMixSession(
     .slice(0, Math.min(maxCount, scored.length))
     .map((s) => s.word);
 
-  return assignQuestionKinds(shuffleArray(selected), words, lang);
+  return assignQuestionKinds(shuffleOptions(selected), words, lang);
 }
 
 export function buildFullMarathonSession(
@@ -223,7 +202,7 @@ export function buildFullMarathonSession(
   lang: AppLanguage = "id"
 ): PracticeQuestion[] {
   if (words.length === 0) return [];
-  const shuffled = shuffleArray(words);
+  const shuffled = shuffleOptions(words);
   return assignQuestionKinds(shuffled, words, lang);
 }
 
@@ -240,7 +219,7 @@ export function buildWeakestDrillSession(
           .sort((a, b) => a.correct_count - b.correct_count)
           .slice(0, Math.min(10, words.length));
 
-  return assignQuestionKinds(shuffleArray(targetPool), words, lang);
+  return assignQuestionKinds(shuffleOptions(targetPool), words, lang);
 }
 
 export function buildDailyMiniQuizSession(

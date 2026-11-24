@@ -948,10 +948,16 @@ function formatSchemaSkeleton(schema: Schema, depth = 0): string {
 }
 
 export const AUTOFILL_SYSTEM_INSTRUCTION =
-  "Strict English-only lexicographer for an English-Indonesian vocabulary vault. First verify whether the input is a real, established English word, phrasal verb, idiom, collocation, or genuine English slang/loanword used in English dictionaries. Strictly reject non-English words (including Indonesian/Malay words or slang such as 'goblok', 'anjay', 'baper', 'makan', 'gabut', or other foreign words not used in English) and gibberish by setting is_valid_english=false. Return complete, valid JSON matching the exact schema. Classify CEFR (A1-C2) and register (Casual, Formal, Academic, Slang) honestly without inflating basic or conversational words. Never invent fake derivatives, non-English examples, or placeholder text.";
+  "Strict English-only lexicographer for an English-Indonesian vocabulary vault. First verify whether the input is a real, established English word, phrasal verb, idiom, collocation, or genuine English slang/loanword used in English dictionaries. Strictly reject non-English words (including Indonesian/Malay words or slang such as 'goblok', 'anjay', 'baper', 'makan', 'gabut', or other foreign words not used in English) and gibberish by setting is_valid_english=false. Return complete, valid JSON matching the exact schema. Strictly separate Register (Casual, Formal, Academic, Slang) from CEFR level (A1-C2) using Cambridge English Dictionary / English Vocabulary Profile (EVP) and Oxford 3000/5000 standards. Never downgrade opaque/figurative idioms to B1/B2 just because their register is Casual. For idioms (type='idiom'), always return word_families=[]. Never invent fake derivatives, non-English examples, or placeholder text.";
 
 export const REGISTER_CLASSIFICATION_RULE =
-  'Strict register rule: "Formal" is STRICTLY reserved for elevated formal, official, diplomatic, legal, or polished business/written vocabulary (e.g. "furthermore", "commence", "notwithstanding"); "Academic" is strictly for scholarly, scientific, research, or analytical discourse (e.g. "hypothesis", "empirical", "corroborate"); "Slang" is for very informal street/youth/internet colloquialisms (e.g. "spill the tea", "ghosting", "rizz"); tag all everyday greetings, basic/neutral concrete nouns/verbs/adjectives, and conversational expressions (e.g. "hi", "hello", "apple", "good", "break the ice") as "Casual" — NEVER classify basic or everyday words as "Formal".';
+  'Strict register rule (INDEPENDENT of CEFR): "Formal" is STRICTLY reserved for elevated formal, official, diplomatic, legal, or polished business/written vocabulary (e.g. "furthermore", "commence", "notwithstanding"); "Academic" is strictly for scholarly, scientific, research, or analytical discourse (e.g. "hypothesis", "empirical", "corroborate"); "Slang" is for very informal street/youth/internet colloquialisms (e.g. "spill the tea", "ghosting", "rizz"); tag all everyday greetings, basic/neutral concrete nouns/verbs/adjectives, and conversational expressions (e.g. "hi", "hello", "apple", "good", "play it by ear", "break the ice") as "Casual" — NEVER classify basic or everyday words as "Formal".';
+
+export const CEFR_CALIBRATION_RULE =
+  'Strict CEFR calibration rule (Cambridge English Dictionary / English Vocabulary Profile [EVP] & Oxford 3000/5000): NEVER conflate Register (Casual/Formal/Academic/Slang) with CEFR level (A1-C2). Register measures social tone; CEFR measures lexical proficiency. Calibration anchors: A1 = core starter words ("hi", "hello", "apple", "good"); A2 = basic everyday words ("holiday", "weather", "borrow"); B1 = intermediate everyday words ("achieve", "opinion", "environment"); B2 = upper-intermediate / Oxford 5000 words ("sustainable", "negotiate", "crucial"); C1-C2 = advanced/proficient vocabulary ("ubiquitous"=C1, "pragmatic"=C1, "mitigate"=C1, "ephemeral"=C2, "obfuscate"=C2) AND opaque/figurative idioms even when their register is Casual — e.g. "play it by ear" (C1, Casual), "bite the bullet" (C1/C2, Casual), "call it a day" (C1, Casual), "cut corners" (C1, Casual), "burn the midnight oil" (C1/C2, Casual). NEVER downgrade an opaque figurative idiom to B1/B2 merely because it is conversational, and NEVER inflate basic A1-B1 words to B2/C1.';
+
+export const IDIOM_WORD_FAMILY_RULE =
+  'Idiom word_families rule: When type is "idiom", ALWAYS return an empty array [] for word_families (or word_families_json). NEVER output literal root-word derivatives (e.g., do NOT return play (verb) or player (noun) for "play it by ear") and do NOT repeat the idiom itself.';
 
 export function buildAutofillPrompt(params: {
   term: string;
@@ -985,7 +991,7 @@ Required fields (when is_valid_english=true and not a duplicate):
 - term: canonical English spelling/casing
 - pronunciation: Google "Sounds like" phonetic spelling with "·" syllable dots & ALL CAPS primary stress (e.g. "am·BIV·uh·luhnt")
 - ipa: standard IPA inside slashes (e.g. "/æmˈbɪv.ə.lənt/")
-- cefr: true, objective CEFR level ("A1", "A2", "B1", "B2", "C1", or "C2") — classify honestly across the full spectrum (e.g. "hi", "hello", "apple", "good" = A1; "holiday", "weather" = A2; "achieve", "opinion" = B1; "sustainable" = B2; "ubiquitous", "pragmatic" = C1; "ephemeral", "obfuscate" = C2); NEVER inflate beginner words to B2 or C1
+- cefr: true, objective CEFR level ("A1", "A2", "B1", "B2", "C1", or "C2") — ${CEFR_CALIBRATION_RULE}
 - type: vocab, idiom, or collocation
 - register: "Casual", "Formal", "Academic", or "Slang" — ${REGISTER_CLASSIFICATION_RULE}
 - meaning_en: 1 clear, natural English definition (figurative meaning for idioms)
@@ -993,7 +999,7 @@ Required fields (when is_valid_english=true and not a duplicate):
 - examples: 2 natural ENGLISH example sentences (1 Daily, 1 Academic) wrapping the target term in **bold**, each with natural Indonesian translation_id and context
 - synonyms: 2–4 register-matched English synonyms
 - antonyms: 1–3 contrasting English antonyms (or contextual opposites)
-- word_families: 1–4 real English {word, pos} morphological forms (for idioms, use base form or key lemma; never invent fake or non-English words)`;
+- word_families: 1–4 real English {word, pos} morphological forms for vocab/collocation ONLY; ${IDIOM_WORD_FAMILY_RULE}`;
 }
 
 function buildBackupSystemPrompt(
@@ -1007,7 +1013,15 @@ function buildBackupSystemPrompt(
   const registerHint = skeleton.includes('"register":')
     ? `\n${REGISTER_CLASSIFICATION_RULE}`
     : "";
-  return `${base}${registerHint}
+  const cefrHint = skeleton.includes('"cefr":')
+    ? `\n${CEFR_CALIBRATION_RULE}`
+    : "";
+  const idiomHint =
+    skeleton.includes('"word_families":') ||
+    skeleton.includes('"word_families_json":')
+      ? `\n${IDIOM_WORD_FAMILY_RULE}`
+      : "";
+  return `${base}${registerHint}${cefrHint}${idiomHint}
 CRITICAL: Return ONLY a single valid raw JSON object matching this exact schema (no markdown fences, no commentary, no placeholders):
 ${skeleton}`;
 }

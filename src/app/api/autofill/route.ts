@@ -204,15 +204,18 @@ function validateAndNormalizeAutofillPayload(
     return { ok: false, missing };
   }
 
-  const word_families: WordFamilyItem[] = Array.isArray(raw.word_families)
-    ? raw.word_families
-        .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
-        .slice(0, 5)
-        .map((wf) => ({
-          word: wf.word.trim(),
-          pos: (wf.pos || type).trim(),
-        }))
-    : [];
+  const word_families: WordFamilyItem[] =
+    type === "idiom"
+      ? []
+      : Array.isArray(raw.word_families)
+        ? raw.word_families
+            .filter((wf) => wf && typeof wf.word === "string" && wf.word.trim())
+            .slice(0, 5)
+            .map((wf) => ({
+              word: wf.word.trim(),
+              pos: (wf.pos || type).trim(),
+            }))
+        : [];
 
   const cefr: CefrLevel =
     normalizeCefrLevel(raw.cefr) ?? builtInBilingual?.cefr ?? "B1";
