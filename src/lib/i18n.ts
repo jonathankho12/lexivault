@@ -50,6 +50,7 @@ export interface TranslationDictionary {
     syncLabel: string;
     syncSupabase: string;
     syncing: string;
+    syncError: string;
     syncLocal: string;
     syncGuest: string;
     cloudAccount: string;
@@ -450,9 +451,16 @@ export interface TranslationDictionary {
     dataStorage: {
       connectionLabel: string;
       connCloud: string;
+      connError: string;
       connLocal: string;
       connGuest: string;
       savedExpressions: string;
+      forceSyncTitle: string;
+      forceSyncDesc: string;
+      forceSyncDisabledDesc: string;
+      forceSyncBtn: string;
+      forceSyncingBtn: string;
+      syncErrorTitle: string;
       refreshAllBtn: string;
       refreshAllDesc: string;
       refreshAllEmpty: string;
@@ -555,6 +563,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       syncLabel: "Sync",
       syncSupabase: "Cloud Tersinkron",
       syncing: "Menyinkronkan...",
+      syncError: "Sync Error",
       syncLocal: "Local Vault",
       syncGuest: "Local Vault (Tamu)",
       cloudAccount: "Cloud Akun",
@@ -980,9 +989,18 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       dataStorage: {
         connectionLabel: "Status Koneksi",
         connCloud: "Supabase Cloud Live",
+        connError: "Sync Error (Lihat Detail di Bawah)",
         connLocal: "Local Vault (Perangkat)",
         connGuest: "Mode Tamu · LocalStorage Perangkat",
         savedExpressions: "Total Kosakata",
+        forceSyncTitle: "Sinkronisasi Cloud Vault",
+        forceSyncDesc:
+          "Gabungkan & unggah seluruh kata lokal, progres review, dan pengaturan ke Supabase Cloud.",
+        forceSyncDisabledDesc:
+          "Masuk dengan akun Cloud untuk menyinkronkan Vault antar perangkat.",
+        forceSyncBtn: "Force Sync Now",
+        forceSyncingBtn: "Menyinkronkan...",
+        syncErrorTitle: "Error Sinkronisasi Supabase",
         refreshAllBtn: "Refresh All AI Details",
         refreshAllDesc:
           "Perbarui ulang CEFR (A1–C2), register, fonetik, arti & contoh kalimat satu per satu (~400ms jeda aman).",
@@ -1088,6 +1106,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       syncLabel: "Sync",
       syncSupabase: "Cloud Synced",
       syncing: "Syncing...",
+      syncError: "Sync Error",
       syncLocal: "Local Vault",
       syncGuest: "Local Vault (Guest)",
       cloudAccount: "Cloud Account",
@@ -1510,9 +1529,18 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       dataStorage: {
         connectionLabel: "Connection Status",
         connCloud: "Supabase Cloud Live",
+        connError: "Sync Error (See Details Below)",
         connLocal: "Local Vault (Device)",
         connGuest: "Guest Mode · Device LocalStorage",
         savedExpressions: "Saved Expressions",
+        forceSyncTitle: "Cloud Vault Sync",
+        forceSyncDesc:
+          "Merge and upsert all local Vault items, study logs, and settings with Supabase Cloud.",
+        forceSyncDisabledDesc:
+          "Sign in with a Cloud account to sync your Vault across devices.",
+        forceSyncBtn: "Force Sync Now",
+        forceSyncingBtn: "Syncing...",
+        syncErrorTitle: "Supabase Sync Error",
         refreshAllBtn: "Refresh All AI Details",
         refreshAllDesc:
           "Sequentially re-analyze CEFR (A1–C2), register, phonetics, definitions & examples (~400ms safe delay).",

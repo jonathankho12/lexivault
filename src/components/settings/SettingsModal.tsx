@@ -65,6 +65,9 @@ export function SettingsModal({
     studyLogs,
     syncMode,
     syncStatus,
+    syncError,
+    isForceSyncing,
+    forceSyncNow,
     batchRefresh,
     startBatchRefreshAllWords,
     cancelBatchRefreshAllWords,
@@ -92,6 +95,10 @@ export function SettingsModal({
   const [applyingPack, setApplyingPack] = useState(false);
   const [applyPackMsg, setApplyPackMsg] = useState<string | null>(null);
   const [confirmBatchRefresh, setConfirmBatchRefresh] = useState(false);
+  const [forceSyncFeedback, setForceSyncFeedback] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -103,6 +110,7 @@ export function SettingsModal({
       setClearAudioMsg(null);
       setApplyPackMsg(null);
       setConfirmBatchRefresh(false);
+      setForceSyncFeedback(null);
       resetBatchRefreshStatus();
     }
   }, [open, resetBatchRefreshStatus]);
@@ -120,6 +128,36 @@ export function SettingsModal({
 
   const isGuest = user?.provider === "guest";
   const isCloud = user?.provider === "supabase";
+  const hasSyncError =
+    isCloud && (syncStatus === "error" || Boolean(syncError));
+
+  const handleForceSyncNow = async () => {
+    if (!isCloud || isForceSyncing) return;
+    playGlassClick();
+    setForceSyncFeedback(null);
+    const res = await forceSyncNow();
+    if (res.ok) {
+      playCorrectChime(2);
+      setForceSyncFeedback({
+        ok: true,
+        message:
+          lang === "en"
+            ? `Cloud sync complete — ${res.totalWords} Vault ${
+                res.totalWords === 1 ? "item" : "items"
+              } synced to Supabase.`
+            : `Sinkronisasi Cloud selesai — ${res.totalWords} item Vault tersinkron ke Supabase.`,
+      });
+    } else {
+      setForceSyncFeedback({
+        ok: false,
+        message:
+          res.error ||
+          (lang === "en"
+            ? "Failed to sync with Supabase Cloud."
+            : "Gagal menyinkronkan ke Supabase Cloud."),
+      });
+    }
+  };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -981,25 +1019,130 @@ export function SettingsModal({
               <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] divide-y divide-white/[0.08]">
                 <div className="flex flex-wrap items-center justify-between gap-2 p-4 text-xs">
                   <div className="flex items-center gap-2">
-                    <Database className="h-4 w-4 text-[#0A84FF]" />
+                    <Database
+                      className={cn(
+                        "h-4 w-4",
+                        hasSyncError ? "text-[#FF453A]" : "text-[#0A84FF]"
+                      )}
+                    />
                     <span className="text-[#8E8E93]">
                       {t.settings.dataStorage.connectionLabel}:
                     </span>
-                    <span className="font-semibold text-white">
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        hasSyncError ? "text-[#FF8982]" : "text-white"
+                      )}
+                    >
                       {isGuest
                         ? t.settings.dataStorage.connGuest
                         : isCloud
                           ? syncStatus === "syncing"
                             ? t.nav.syncing
-                            : syncStatus === "synced" || syncMode === "supabase"
-                              ? t.settings.dataStorage.connCloud
-                              : t.settings.dataStorage.connLocal
+                            : hasSyncError
+                              ? t.settings.dataStorage.connError
+                              : syncStatus === "synced" ||
+                                  syncMode === "supabase"
+                                ? t.settings.dataStorage.connCloud
+                                : t.settings.dataStorage.connLocal
                           : t.settings.dataStorage.connLocal}
                     </span>
                   </div>
                   <span className="font-semibold text-[#D1D1D6]">
                     {t.settings.dataStorage.savedExpressions}: {words.length}
                   </span>
+                </div>
+
+                {/* Force Sync Now + Supabase Diagnostics */}
+                <div className="p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <RefreshCw
+                        className={cn(
+                          "h-4 w-4 shrink-0 mt-0.5",
+                          hasSyncError
+                            ? "text-[#FF8982]"
+                            : isCloud
+                              ? "text-[#30D158]"
+                              : "text-[#8E8E93]",
+                          isForceSyncing && "animate-spin"
+                        )}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs sm:text-sm font-semibold text-white">
+                          {t.settings.dataStorage.forceSyncTitle}
+                        </p>
+                        <p className="text-[11px] text-[#8E8E93] leading-relaxed">
+                          {isCloud
+                            ? t.settings.dataStorage.forceSyncDesc
+                            : t.settings.dataStorage.forceSyncDisabledDesc}
+                        </p>
+                      </div>
+                    </div>
+
+                    <motion.button
+                      type="button"
+                      whileTap={TAP_SCALE}
+                      disabled={!isCloud || isForceSyncing}
+                      onClick={() => void handleForceSyncNow()}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed shrink-0 transition-colors",
+                        hasSyncError
+                          ? "bg-[#FF453A]/18 border-[#FF453A]/45 text-[#FFB4AE] hover:bg-[#FF453A]/28"
+                          : "bg-[#30D158]/16 border-[#30D158]/40 text-[#7CF099] hover:bg-[#30D158]/26"
+                      )}
+                    >
+                      {isForceSyncing ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      )}
+                      <span>
+                        {isForceSyncing
+                          ? t.settings.dataStorage.forceSyncingBtn
+                          : t.settings.dataStorage.forceSyncBtn}
+                      </span>
+                    </motion.button>
+                  </div>
+
+                  {forceSyncFeedback && (
+                    <div
+                      role="status"
+                      className={cn(
+                        "flex items-start gap-2 rounded-xl border px-3 py-2 text-xs font-medium",
+                        forceSyncFeedback.ok
+                          ? "bg-[#30D158]/15 border-[#30D158]/35 text-[#7CF099]"
+                          : "bg-[#FF453A]/15 border-[#FF453A]/35 text-[#FFB4AE]"
+                      )}
+                    >
+                      {forceSyncFeedback.ok ? (
+                        <Check className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      )}
+                      <span className="break-words">
+                        {forceSyncFeedback.message}
+                      </span>
+                    </div>
+                  )}
+
+                  {isCloud && syncError && (
+                    <div
+                      role="alert"
+                      className="rounded-xl bg-[#FF453A]/12 border border-[#FF453A]/35 p-3 space-y-1.5"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFB4AE]">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {t.settings.dataStorage.syncErrorTitle} (
+                          {syncError.operation})
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-mono text-[#FFD2CE] break-words leading-relaxed">
+                        {syncError.formatted}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Batch Refresh All AI Details */}

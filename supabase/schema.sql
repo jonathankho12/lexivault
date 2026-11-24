@@ -438,3 +438,10 @@ create policy "Allow update audio-cache"
   to anon, authenticated
   using (bucket_id = 'audio-cache')
   with check (bucket_id = 'audio-cache');
+
+-- Explicit table privileges + PostgREST schema cache reload
+grant usage on schema public to anon, authenticated;
+grant select on public.words to anon;
+grant select, insert, update, delete on public.words, public.study_logs, public.user_profiles, public.daily_packs, public.daily_discoveries, public.ielts_profiles, public.ielts_attempts to authenticated;
+
+notify pgrst, 'reload schema';

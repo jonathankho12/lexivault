@@ -57,6 +57,7 @@ export function AppShell({
     words,
     syncMode,
     syncStatus,
+    syncError,
     isHydrated,
     openStreakCalendar,
     openRegisterFromGuest,
@@ -89,6 +90,9 @@ export function AppShell({
   );
 
   const isGuest = user?.provider === "guest";
+  const hasSyncError =
+    user?.provider === "supabase" &&
+    (syncStatus === "error" || Boolean(syncError));
 
   useEffect(() => {
     if (
@@ -243,9 +247,22 @@ export function AppShell({
                   {isHydrated ? `${words.length} ${t.nav.itemsSuffix}` : "—"}
                 </span>
               </div>
-              <div className="flex items-center justify-between pt-1.5 border-t border-white/[0.08] text-[11px]">
+              <button
+                type="button"
+                onClick={() => {
+                  playGlassClick();
+                  setSettingsOpen(true);
+                }}
+                title={syncError?.formatted ?? t.nav.settings}
+                className="flex w-full items-center justify-between pt-1.5 border-t border-white/[0.08] text-[11px] text-left hover:opacity-90 cursor-pointer"
+              >
                 <span className="text-[#8E8E93]">{t.nav.syncLabel}</span>
-                <span className="inline-flex items-center gap-1.5 font-medium text-[#F5F5F7]">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 font-medium",
+                    hasSyncError ? "text-[#FF8982]" : "text-[#F5F5F7]"
+                  )}
+                >
                   <span
                     className={cn(
                       "h-1.5 w-1.5 rounded-full",
@@ -254,9 +271,12 @@ export function AppShell({
                         : user?.provider === "supabase"
                           ? syncStatus === "syncing"
                             ? "bg-[#0A84FF] animate-pulse"
-                            : syncStatus === "synced" || syncMode === "supabase"
-                              ? "bg-[#30D158]"
-                              : "bg-[#FF9F0A]"
+                            : hasSyncError
+                              ? "bg-[#FF453A] animate-pulse"
+                              : syncStatus === "synced" ||
+                                  syncMode === "supabase"
+                                ? "bg-[#30D158]"
+                                : "bg-[#FF9F0A]"
                           : "bg-[#0A84FF]"
                     )}
                   />
@@ -265,12 +285,14 @@ export function AppShell({
                     : user?.provider === "supabase"
                       ? syncStatus === "syncing"
                         ? t.nav.syncing
-                        : syncStatus === "synced" || syncMode === "supabase"
-                          ? t.nav.syncSupabase
-                          : t.nav.syncLocal
+                        : hasSyncError
+                          ? t.nav.syncError
+                          : syncStatus === "synced" || syncMode === "supabase"
+                            ? t.nav.syncSupabase
+                            : t.nav.syncLocal
                       : t.nav.syncLocal}
                 </span>
-              </div>
+              </button>
             </div>
 
             {/* Settings Trigger Button */}
@@ -459,11 +481,26 @@ export function AppShell({
                 playGlassClick();
                 setSettingsOpen(true);
               }}
-              aria-label={t.nav.settings}
-              title={t.nav.settings}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] border border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer"
+              aria-label={hasSyncError ? t.nav.syncError : t.nav.settings}
+              title={
+                hasSyncError
+                  ? syncError?.formatted ?? t.nav.syncError
+                  : t.nav.settings
+              }
+              className={cn(
+                "relative flex h-8 w-8 items-center justify-center rounded-full border cursor-pointer",
+                hasSyncError
+                  ? "bg-[#FF453A]/15 border-[#FF453A]/45 text-[#FF8982] hover:bg-[#FF453A]/25"
+                  : "bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12]"
+              )}
             >
               <Settings className="h-3.5 w-3.5" />
+              {hasSyncError && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[#FF453A] ring-2 ring-black/80 animate-pulse"
+                />
+              )}
             </motion.button>
 
             {user && isGuest && (

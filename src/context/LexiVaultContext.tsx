@@ -38,11 +38,15 @@ import {
 import {
   addUserXp,
   clearDemoData,
+  clearLastSupabaseSyncError,
   DEFAULT_DAILY_QUOTA,
   deleteWordEntry,
+  forceSyncVaultToCloud,
+  getLastSupabaseSyncError,
   incrementWordsAddedLog,
   loadInitialData,
   normalizeDailyQuota,
+  PENDING_GUEST_UPGRADE_KEY,
   recordPracticeAttempt,
   recordSm2ReviewAttempt,
   recordWrongQuizLogOnly,
@@ -51,8 +55,10 @@ import {
   saveWordEntry,
   seedStarterWordsForSupabaseUser,
   subscribeRealtimeSync,
+  subscribeSupabaseSyncErrors,
   updateWordAudioUrls,
   updateWordEntry,
+  type SupabaseSyncErrorInfo,
 } from "@/lib/storage";
 import {
   calculateStreak,
@@ -164,6 +170,14 @@ interface LexiVaultContextValue {
   studyLogs: StudyLog[];
   syncMode: SyncMode;
   syncStatus: CloudSyncStatus;
+  syncError: SupabaseSyncErrorInfo | null;
+  isForceSyncing: boolean;
+  forceSyncNow: () => Promise<{
+    ok: boolean;
+    uploadedCount: number;
+    totalWords: number;
+    error?: string;
+  }>;
   streak: number;
   xp: number;
   masteryRankInfo: MasteryRankInfo;
@@ -269,6 +283,8 @@ export function LexiVaultProvider({
   const [studyLogs, setStudyLogs] = useState<StudyLog[]>([]);
   const [syncMode, setSyncMode] = useState<SyncMode>("local");
   const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>("local");
+  const [syncError, setSyncError] = useState<SupabaseSyncErrorInfo | null>(null);
+  const [isForceSyncing, setIsForceSyncing] = useState(false);
   const [xp, setXp] = useState(0);
   const [sfxMuted, setSfxMutedState] = useState(false);
   const [ringTargets, setRingTargets] = useState<DailyRingTargets>(
@@ -332,14 +348,33 @@ export function LexiVaultProvider({
           pendingCloudOpsRef.current - 1
         );
         if (pendingCloudOpsRef.current === 0) {
-          setSyncStatus(
-            userRef.current?.provider === "supabase" ? "synced" : "local"
-          );
+          if (userRef.current?.provider !== "supabase") {
+            setSyncStatus("local");
+          } else if (getLastSupabaseSyncError()) {
+            setSyncStatus("error");
+          } else {
+            setSyncStatus("synced");
+          }
         }
       }
     },
     []
   );
+
+  // Subscribe to any Supabase sync errors so UI badges & Settings never hide failures
+  useEffect(() => {
+    setSyncError(getLastSupabaseSyncError());
+    return subscribeSupabaseSyncErrors((err) => {
+      setSyncError(err);
+      if (userRef.current?.provider === "supabase") {
+        if (err) {
+          setSyncStatus("error");
+        } else if (pendingCloudOpsRef.current === 0) {
+          setSyncStatus("synced");
+        }
+      }
+    });
+  }, []);
 
   // Initial client bootstrap + midnight calendar rollover watcher
   useEffect(() => {
@@ -410,6 +445,8 @@ export function LexiVaultProvider({
       setSelectedWord(null);
       setSyncMode("local");
       setSyncStatus("local");
+      setSyncError(null);
+      clearLastSupabaseSyncError();
       setIsHydrated(false);
       prevRingsRef.current = null;
       autoPopupCheckedKeyRef.current = null;
@@ -424,49 +461,56 @@ export function LexiVaultProvider({
     }
     setIsHydrated(false);
     setSyncStatus(user.provider === "supabase" ? "syncing" : "local");
+    if (user.provider !== "supabase") {
+      setSyncError(null);
+      clearLastSupabaseSyncError();
+    }
 
-    loadInitialData(localToday, user.id).then((res) => {
-      if (!active) return;
-      setWords(res.words);
-      setStudyLogs(res.studyLogs);
-      setXp(res.xp);
-      setDailyQuota(res.dailyQuota);
-      setRingTargets(res.ringTargets);
-      setDailyPack(res.dailyPack);
-      setSyncMode(res.syncMode);
-      setSyncStatus(
-        user.provider === "supabase"
-          ? res.cloudReachable
-            ? "synced"
-            : "error"
-          : "local"
-      );
-      prevRingsRef.current = computeDailyRings(
-        res.studyLogs,
-        localToday,
-        res.ringTargets
-      );
-      setIsHydrated(true);
+    loadInitialData(localToday, user.id, { username: user.username }).then(
+      (res) => {
+        if (!active) return;
+        setWords(res.words);
+        setStudyLogs(res.studyLogs);
+        setXp(res.xp);
+        setDailyQuota(res.dailyQuota);
+        setRingTargets(res.ringTargets);
+        setDailyPack(res.dailyPack);
+        setSyncMode(res.syncMode);
+        setSyncError(res.syncError);
+        setSyncStatus(
+          user.provider === "supabase"
+            ? res.cloudReachable && !res.syncError
+              ? "synced"
+              : "error"
+            : "local"
+        );
+        prevRingsRef.current = computeDailyRings(
+          res.studyLogs,
+          localToday,
+          res.ringTargets
+        );
+        setIsHydrated(true);
 
-      unsubscribeSync = subscribeRealtimeSync(localToday, user.id, {
-        onWordsRefresh: (freshWords) => setWords(freshWords),
-        onLogsRefresh: (freshLogs) => setStudyLogs(freshLogs),
-        onProfileRefresh: (profile) => {
-          if (typeof profile.xp === "number") {
-            setXp((prev) => Math.max(prev, profile.xp!));
-          }
-          if (profile.dailyQuota) {
-            setDailyQuota(profile.dailyQuota);
-          }
-          if (profile.ringTargets) {
-            setRingTargets(profile.ringTargets);
-          }
-        },
-        onDailyPackRefresh: (freshPack) => {
-          setDailyPack(freshPack);
-        },
-      });
-    });
+        unsubscribeSync = subscribeRealtimeSync(localToday, user.id, {
+          onWordsRefresh: (freshWords) => setWords(freshWords),
+          onLogsRefresh: (freshLogs) => setStudyLogs(freshLogs),
+          onProfileRefresh: (profile) => {
+            if (typeof profile.xp === "number") {
+              setXp((prev) => Math.max(prev, profile.xp!));
+            }
+            if (profile.dailyQuota) {
+              setDailyQuota(profile.dailyQuota);
+            }
+            if (profile.ringTargets) {
+              setRingTargets(profile.ringTargets);
+            }
+          },
+          onDailyPackRefresh: (freshPack) => {
+            setDailyPack(freshPack);
+          },
+        });
+      }
+    );
 
     return () => {
       active = false;
@@ -1868,7 +1912,79 @@ export function LexiVaultProvider({
     setActiveTab("vault");
   }, []);
 
+  const forceSyncNow = useCallback(async (): Promise<{
+    ok: boolean;
+    uploadedCount: number;
+    totalWords: number;
+    error?: string;
+  }> => {
+    const activeUser = userRef.current;
+    if (!activeUser || activeUser.provider !== "supabase") {
+      return {
+        ok: false,
+        uploadedCount: 0,
+        totalWords: wordsRef.current.length,
+        error:
+          lang === "en"
+            ? "Sign in with a Cloud account to sync with Supabase."
+            : "Masuk dengan akun Cloud untuk menyinkronkan ke Supabase.",
+      };
+    }
+
+    setIsForceSyncing(true);
+    setSyncStatus("syncing");
+    try {
+      const localToday = getLocalDateString();
+      const res = await forceSyncVaultToCloud(localToday, activeUser.id, {
+        username: activeUser.username,
+        inMemoryWords: wordsRef.current,
+      });
+
+      setWords(res.state.words);
+      setStudyLogs(res.state.studyLogs);
+      setXp(res.state.xp);
+      setDailyQuota(res.state.dailyQuota);
+      setRingTargets(res.state.ringTargets);
+      setDailyPack(res.state.dailyPack);
+      setSyncMode(res.state.syncMode);
+      setSyncError(res.error);
+      setSyncStatus(res.ok ? "synced" : "error");
+
+      return {
+        ok: res.ok,
+        uploadedCount: res.uploadedCount,
+        totalWords: res.totalWords,
+        error: res.error?.formatted,
+      };
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : String(err ?? "Sync failed");
+      setSyncStatus("error");
+      return {
+        ok: false,
+        uploadedCount: 0,
+        totalWords: wordsRef.current.length,
+        error: msg,
+      };
+    } finally {
+      setIsForceSyncing(false);
+    }
+  }, [lang]);
+
   const openRegisterFromGuest = useCallback(async () => {
+    if (
+      userRef.current?.provider === "guest" &&
+      typeof window !== "undefined"
+    ) {
+      try {
+        window.localStorage.setItem(
+          PENDING_GUEST_UPGRADE_KEY,
+          userRef.current.id
+        );
+      } catch {
+        // Ignore storage error
+      }
+    }
     await signOutUser();
     setAuthInitialMode("register");
     setUser(null);
@@ -1947,6 +2063,8 @@ export function LexiVaultProvider({
     setDailyPack(null);
     setDailyPackModalOpen(false);
     setSelectedWord(null);
+    setSyncError(null);
+    clearLastSupabaseSyncError();
     setActiveTab("vault");
   }, []);
 
@@ -1963,6 +2081,9 @@ export function LexiVaultProvider({
     studyLogs,
     syncMode,
     syncStatus,
+    syncError,
+    isForceSyncing,
+    forceSyncNow,
     streak,
     xp,
     masteryRankInfo,
