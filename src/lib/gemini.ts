@@ -1031,8 +1031,10 @@ async function invokeModelStructuredOnce<T>(
   const initialThinkingConfig = options.disableThinking
     ? resolveThinkingConfigForModel(model)
     : undefined;
+  const callDeadline = Date.now() + options.timeoutMs;
 
   const runCall = async (thinkingConfig?: ThinkingConfig) => {
+    const remainingMs = Math.max(1000, callDeadline - Date.now());
     const controller = new AbortController();
     let didTimeout = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1041,8 +1043,8 @@ async function invokeModelStructuredOnce<T>(
       timer = setTimeout(() => {
         didTimeout = true;
         controller.abort();
-        reject(new Error(`Gemini timeout after ${options.timeoutMs}ms`));
-      }, options.timeoutMs);
+        reject(new Error(`Gemini timeout after ${remainingMs}ms`));
+      }, remainingMs);
     });
 
     try {
@@ -1118,7 +1120,13 @@ async function invokeModelStructuredOnce<T>(
   const first = await runCall(initialThinkingConfig);
   if (first !== null) return first;
 
-  // Immediate retry on the SAME model without thinkingConfig (never treated as upstream error)
+  // Immediate retry on the SAME model without thinkingConfig (bounded by the same strict deadline)
+  if (callDeadline - Date.now() < 1500) {
+    return {
+      ok: false,
+      error: timeoutGeminiError(model, options.timeoutMs),
+    };
+  }
   const second = await runCall(undefined);
   return second ?? { ok: false, error: emptyGeminiResponseError(model) };
 }
@@ -1692,6 +1700,12 @@ export async function generateStructuredWithHybridModel<T>(
   if (geminiRes.providerFailures?.length) {
     providerFailures.push(...geminiRes.providerFailures);
   }
+  console.warn(
+    `[LexiVault][${routeName}] Provider "gemini" failed (${geminiRes.error.shortReason}: ${geminiRes.error.rawMessage.slice(
+      0,
+      160
+    )}) -> failing over to groq`
+  );
 
   // Tier 2: Groq (Optional fast backup — skipped in 0ms if GROQ_API_KEY unset)
   const groqRes = await runGroqTier<T>(options);
@@ -1708,6 +1722,12 @@ export async function generateStructuredWithHybridModel<T>(
     if (groqRes.providerFailures?.length) {
       providerFailures.push(...groqRes.providerFailures);
     }
+    console.warn(
+      `[LexiVault][${routeName}] Provider "groq" failed (${groqRes.error.shortReason}: ${groqRes.error.rawMessage.slice(
+        0,
+        160
+      )}) -> failing over to cf-workers-ai`
+    );
   }
 
   // Tier 3: Cloudflare Workers AI (Zero-account native `env.AI` backup)

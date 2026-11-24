@@ -307,8 +307,8 @@ Return compact JSON {items:[...]} with brief, crisp fields:
     systemInstruction:
       "Ultra-fast C1-C2 English-Indonesian lexicographer. Return compact valid JSON only with zero duplicates and concise text.",
     contents: prompt,
-    maxOutputTokens: Math.min(1800, Math.max(900, count * (isIdiom ? 220 : 200))),
-    fallbackMaxTokens: Math.min(1600, Math.max(850, count * (isIdiom ? 190 : 175))),
+    maxOutputTokens: Math.min(2200, Math.max(1300, count * (isIdiom ? 280 : 260))),
+    fallbackMaxTokens: Math.min(2000, Math.max(1200, count * (isIdiom ? 260 : 240))),
     temperature: 0.65,
     timeoutMs: DAILY_PACK_GEMINI_TIMEOUT_MS,
     fallbackTimeoutMs: DAILY_PACK_FALLBACK_TIMEOUT_MS,

@@ -80,7 +80,12 @@ export function QuickCaptureBar({
           <input
             type="text"
             value={term}
-            onChange={(e) => setTerm(e.target.value)}
+            onChange={(e) => {
+              setTerm(e.target.value);
+              if (captureToast?.type === "error") {
+                clearCaptureToast();
+              }
+            }}
             placeholder={t.vault.capturePlaceholder}
             disabled={isCapturing}
             className="min-w-0 flex-1 bg-transparent px-1.5 py-1.5 text-base text-[#F5F5F7] placeholder:text-[#8E8E93] focus:outline-none"

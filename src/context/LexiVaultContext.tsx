@@ -1072,11 +1072,14 @@ export function LexiVaultProvider({
 
       setIsCapturing(true);
       setCaptureToast(null);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 35_000);
       try {
         const canonicalSource = normalizeSourceTag(sourceTag || "general");
         const res = await fetch("/api/autofill", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             term: trimmed,
             sourceTag: canonicalSource,
@@ -1104,8 +1107,9 @@ export function LexiVaultProvider({
           } catch {
             // Non-JSON error body
           }
-          if (apiError === "NOT_ENGLISH" || apiCode === "NOT_ENGLISH") {
+          if (apiCode === "NOT_ENGLISH" || apiError === "NOT_ENGLISH") {
             const rejectionMsg =
+              (apiError && apiError !== "NOT_ENGLISH" ? apiError : "") ||
               apiMessage ||
               "Please enter a valid English word, idiom, or collocation.";
             setCaptureToast({ type: "error", message: rejectionMsg });
@@ -1263,6 +1267,7 @@ export function LexiVaultProvider({
         setCaptureToast({ type: "error", message: errMsg });
         return { ok: false, error: errMsg };
       } finally {
+        clearTimeout(timeoutId);
         setIsCapturing(false);
       }
     },
@@ -1503,10 +1508,11 @@ export function LexiVaultProvider({
           } catch {
             // Non-JSON error
           }
-          if (apiError === "NOT_ENGLISH" || apiCode === "NOT_ENGLISH") {
+          if (apiCode === "NOT_ENGLISH" || apiError === "NOT_ENGLISH") {
             return {
               ok: false,
               error:
+                (apiError && apiError !== "NOT_ENGLISH" ? apiError : "") ||
                 apiMessage ||
                 "Please enter a valid English word, idiom, or collocation.",
             };

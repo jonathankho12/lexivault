@@ -42,17 +42,29 @@ interface AutofillModelOutput extends Partial<AutofillPayload> {
 function notEnglishResponse() {
   return NextResponse.json(
     {
-      error: "NOT_ENGLISH",
+      error: NOT_ENGLISH_MESSAGE,
       code: "NOT_ENGLISH",
-      message: NOT_ENGLISH_MESSAGE,
     },
     { status: 400 }
   );
 }
 
+const KEYBOARD_MASH_SEQUENCES = [
+  "qwerty",
+  "asdfg",
+  "sdfgh",
+  "dfghj",
+  "fghjk",
+  "ghjkl",
+  "zxcvb",
+  "xcvbn",
+  "cvbnm",
+  "qazwsx",
+] as const;
+
 /**
  * Fast deterministic pre-filter for inputs that cannot possibly be valid English
- * (e.g. non-Latin scripts, pure numbers/symbols, or obvious repeated-char keysmashes).
+ * (e.g. non-Latin scripts, pure numbers/symbols, keyboard mashes, or impossible consonant clusters).
  */
 function isObviouslyNonEnglishOrGibberish(term: string): boolean {
   const trimmed = term.trim();
@@ -60,6 +72,21 @@ function isObviouslyNonEnglishOrGibberish(term: string): boolean {
   if (!/\p{Script=Latin}/u.test(trimmed)) return true;
   if (!/^[\p{Script=Latin}0-9\s'’\-.,/&!?]+$/u.test(trimmed)) return true;
   if (/(.)\1{4,}/i.test(trimmed)) return true;
+
+  const lower = trimmed.toLowerCase();
+  if (KEYBOARD_MASH_SEQUENCES.some((seq) => lower.includes(seq))) {
+    return true;
+  }
+
+  // Reject impossible 7+ consecutive consonants or single 6+ letter tokens with zero vowels (including y)
+  const tokens = lower.split(/[\s\-/]+/).filter(Boolean);
+  for (const tok of tokens) {
+    const lettersOnly = tok.replace(/[^a-z]/g, "");
+    if (!lettersOnly) continue;
+    if (/[bcdfghjklmnpqrstvwxz]{7,}/.test(lettersOnly)) return true;
+    if (lettersOnly.length >= 6 && !/[aeiouy]/.test(lettersOnly)) return true;
+  }
+
   return false;
 }
 
