@@ -35,18 +35,18 @@ export const DEFAULT_GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
 const MODEL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown for 503/429/404 models
 const MODEL_DISCOVERY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes per Worker isolate
 const MODEL_DISCOVERY_TIMEOUT_MS = 3500;
-const DEFAULT_ATTEMPT_TIMEOUT_MS = 9500;
+const DEFAULT_ATTEMPT_TIMEOUT_MS = 12000;
 const MAX_FALLBACK_MODELS = 1;
 
 // Backup providers (Tier 2: Groq, Tier 3: Cloudflare Workers AI)
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_DEFAULT_MODEL = "llama-3.1-8b-instant";
-const GROQ_TIMEOUT_MS = 6000;
+const GROQ_TIMEOUT_MS = 12000;
 const CF_AI_MODELS = [
   "@cf/meta/llama-3.1-8b-instruct-fast",
   "@cf/meta/llama-3.1-8b-instruct",
 ] as const;
-const CF_AI_TIMEOUT_MS = 8000;
+const CF_AI_TIMEOUT_MS = 12000;
 
 interface DiscoveredModelsCache {
   fetchedAt: number;
@@ -748,6 +748,44 @@ export function logGeminiRouteError(
 
 export type AiProviderName = "gemini" | "groq" | "cf-workers-ai";
 
+export interface ProviderAttemptFailure {
+  provider: AiProviderName;
+  model: string;
+  status: number | null;
+  timeout: boolean;
+  code: GeminiErrorCode;
+  reason: string;
+  elapsedMs: number;
+}
+
+function isTimeoutFailure(err: ClassifiedGeminiError): boolean {
+  const lowerRaw = err.rawMessage.toLowerCase();
+  return (
+    err.code === "network" &&
+    (err.shortReason.includes("timeout") ||
+      lowerRaw.includes("timed out") ||
+      lowerRaw.includes("timeout"))
+  );
+}
+
+function buildProviderFailure(
+  provider: AiProviderName,
+  model: string,
+  err: ClassifiedGeminiError,
+  elapsedMs: number,
+  explicitTimeout = false
+): ProviderAttemptFailure {
+  return {
+    provider,
+    model,
+    status: err.upstreamStatus ?? err.status ?? null,
+    timeout: explicitTimeout || isTimeoutFailure(err),
+    code: err.code,
+    reason: err.shortReason,
+    elapsedMs,
+  };
+}
+
 export interface StructuredGenerationOptions<T> {
   tier?: "flash" | "pro";
   contents: string;
@@ -758,6 +796,7 @@ export interface StructuredGenerationOptions<T> {
   systemInstruction?: string;
   temperature?: number;
   timeoutMs?: number;
+  fallbackTimeoutMs?: number;
   disableThinking?: boolean;
   validate?: (data: T) => string | null;
 }
@@ -770,7 +809,12 @@ export type HybridModelResult<T> =
       providerUsed: AiProviderName;
       attempts: number;
     }
-  | { ok: false; error: ClassifiedGeminiError; attempts: number };
+  | {
+      ok: false;
+      error: ClassifiedGeminiError;
+      attempts: number;
+      providerFailures?: ProviderAttemptFailure[];
+    };
 
 function extractOutermostJsonSlice(raw: string): string {
   const cleaned = raw
@@ -1079,10 +1123,14 @@ async function runGeminiTier<T>({
   validate,
 }: StructuredGenerationOptions<T>): Promise<HybridModelResult<T>> {
   const apiKey = await resolveGeminiApiKey();
+  const providerFailures: ProviderAttemptFailure[] = [];
   if (!apiKey) {
     const missingErr = missingGeminiKeyError();
     logGeminiRouteError(routeName, missingErr);
-    return { ok: false, error: missingErr, attempts: 0 };
+    providerFailures.push(
+      buildProviderFailure("gemini", "unconfigured", missingErr, 0)
+    );
+    return { ok: false, error: missingErr, attempts: 0, providerFailures };
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -1106,6 +1154,7 @@ async function runGeminiTier<T>({
   // Fast path: if primary model is healthy (not in 5m cooldown), try it first
   if (!primaryInCooldown) {
     attempts += 1;
+    const attemptStartedAt = Date.now();
     const res = await invokeModelStructuredOnce<T>(
       ai,
       primaryModel,
@@ -1124,6 +1173,14 @@ async function runGeminiTier<T>({
     }
 
     primaryError = res.error;
+    providerFailures.push(
+      buildProviderFailure(
+        "gemini",
+        primaryModel,
+        res.error,
+        Date.now() - attemptStartedAt
+      )
+    );
     console.warn(
       `[LexiVault][${routeName}] Primary "${primaryModel}" failed (${res.error.shortReason})`
     );
@@ -1135,7 +1192,7 @@ async function runGeminiTier<T>({
     }
 
     if (res.error.code === "auth") {
-      return { ok: false, error: res.error, attempts };
+      return { ok: false, error: res.error, attempts, providerFailures };
     }
   } else {
     console.info(
@@ -1179,6 +1236,7 @@ async function runGeminiTier<T>({
 
     for (const fallbackModel of candidatesToTry) {
       attempts += 1;
+      const attemptStartedAt = Date.now();
       const res = await invokeModelStructuredOnce<T>(
         ai,
         fallbackModel,
@@ -1197,6 +1255,14 @@ async function runGeminiTier<T>({
         };
       }
 
+      providerFailures.push(
+        buildProviderFailure(
+          "gemini",
+          fallbackModel,
+          res.error,
+          Date.now() - attemptStartedAt
+        )
+      );
       if (
         shouldCooldownModelForError(res.error) ||
         res.error.code === "network"
@@ -1217,6 +1283,7 @@ async function runGeminiTier<T>({
     ok: false,
     error: finalError,
     attempts,
+    providerFailures,
   };
 }
 
@@ -1247,15 +1314,18 @@ async function runGroqTier<T>(
 
   let attempts = 0;
   let lastError: ClassifiedGeminiError | null = null;
+  const providerFailures: ProviderAttemptFailure[] = [];
+  const attemptTimeoutMs = options.fallbackTimeoutMs ?? GROQ_TIMEOUT_MS;
 
   for (const model of modelsToTry) {
     attempts += 1;
+    const attemptStartedAt = Date.now();
     const controller = new AbortController();
     let didTimeout = false;
     const timer = setTimeout(() => {
       didTimeout = true;
       controller.abort();
-    }, GROQ_TIMEOUT_MS);
+    }, attemptTimeoutMs);
 
     try {
       const res = await fetch(GROQ_ENDPOINT, {
@@ -1282,10 +1352,25 @@ async function runGroqTier<T>(
         lastError = classifyGeminiError(
           new Error(`Groq HTTP ${res.status}: ${bodySnippet}`)
         );
+        providerFailures.push(
+          buildProviderFailure(
+            "groq",
+            model,
+            lastError,
+            Date.now() - attemptStartedAt
+          )
+        );
         console.warn(
           `[LexiVault][${routeName}] Tier 2 groq (${model}) failed (${lastError.shortReason})`
         );
-        if (res.status === 401 || res.status === 403) break;
+        if (
+          res.status === 401 ||
+          res.status === 403 ||
+          res.status === 429 ||
+          res.status === 503
+        ) {
+          break;
+        }
         continue;
       }
 
@@ -1299,6 +1384,14 @@ async function runGroqTier<T>(
       const finishReason = json.choices?.[0]?.finish_reason?.toUpperCase();
       if (!content) {
         lastError = emptyGeminiResponseError(model, finishReason);
+        providerFailures.push(
+          buildProviderFailure(
+            "groq",
+            model,
+            lastError,
+            Date.now() - attemptStartedAt
+          )
+        );
         continue;
       }
 
@@ -1319,22 +1412,44 @@ async function runGroqTier<T>(
         };
       }
       lastError = parsed.error;
+      providerFailures.push(
+        buildProviderFailure(
+          "groq",
+          model,
+          lastError,
+          Date.now() - attemptStartedAt
+        )
+      );
       console.warn(
         `[LexiVault][${routeName}] Tier 2 groq (${model}) invalid JSON (${parsed.error.shortReason})`
       );
     } catch (err) {
       lastError = didTimeout
-        ? timeoutGeminiError(model, GROQ_TIMEOUT_MS)
+        ? timeoutGeminiError(model, attemptTimeoutMs)
         : classifyGeminiError(err);
+      providerFailures.push(
+        buildProviderFailure(
+          "groq",
+          model,
+          lastError,
+          Date.now() - attemptStartedAt,
+          didTimeout
+        )
+      );
       console.warn(
         `[LexiVault][${routeName}] Tier 2 groq (${model}) error (${lastError.shortReason})`
       );
+      if (didTimeout || lastError.code === "network") {
+        break;
+      }
     } finally {
       clearTimeout(timer);
     }
   }
 
-  return lastError ? { ok: false, error: lastError, attempts } : null;
+  return lastError
+    ? { ok: false, error: lastError, attempts, providerFailures }
+    : null;
 }
 
 async function resolveWorkersAiBinding(): Promise<
@@ -1395,10 +1510,14 @@ async function runWorkersAiTier<T>(
 
   let attempts = 0;
   let lastError: ClassifiedGeminiError | null = null;
+  const providerFailures: ProviderAttemptFailure[] = [];
+  const attemptTimeoutMs = options.fallbackTimeoutMs ?? CF_AI_TIMEOUT_MS;
 
   for (const cfModel of CF_AI_MODELS) {
     attempts += 1;
+    const attemptStartedAt = Date.now();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let didTimeout = false;
 
     try {
       const runPromise = aiBinding.run(cfModel, {
@@ -1411,10 +1530,10 @@ async function runWorkersAiTier<T>(
       });
 
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`Workers AI timeout after ${CF_AI_TIMEOUT_MS}ms`)),
-          CF_AI_TIMEOUT_MS
-        );
+        timer = setTimeout(() => {
+          didTimeout = true;
+          reject(new Error(`Workers AI timeout after ${attemptTimeoutMs}ms`));
+        }, attemptTimeoutMs);
       });
 
       const rawResult = await Promise.race([runPromise, timeoutPromise]);
@@ -1425,6 +1544,14 @@ async function runWorkersAiTier<T>(
         (extracted.object ? JSON.stringify(extracted.object) : "");
       if (!rawText.trim()) {
         lastError = emptyGeminiResponseError(cfModel);
+        providerFailures.push(
+          buildProviderFailure(
+            "cf-workers-ai",
+            cfModel,
+            lastError,
+            Date.now() - attemptStartedAt
+          )
+        );
         continue;
       }
 
@@ -1446,20 +1573,44 @@ async function runWorkersAiTier<T>(
       }
 
       lastError = parsed.error;
+      providerFailures.push(
+        buildProviderFailure(
+          "cf-workers-ai",
+          cfModel,
+          lastError,
+          Date.now() - attemptStartedAt
+        )
+      );
       console.warn(
         `[LexiVault][${routeName}] Tier 3 cf-workers-ai (${cfModel}) invalid JSON (${parsed.error.shortReason})`
       );
     } catch (err) {
-      lastError = classifyGeminiError(err);
+      lastError = didTimeout
+        ? timeoutGeminiError(cfModel, attemptTimeoutMs)
+        : classifyGeminiError(err);
+      providerFailures.push(
+        buildProviderFailure(
+          "cf-workers-ai",
+          cfModel,
+          lastError,
+          Date.now() - attemptStartedAt,
+          didTimeout
+        )
+      );
       console.warn(
         `[LexiVault][${routeName}] Tier 3 cf-workers-ai (${cfModel}) failed (${lastError.shortReason})`
       );
+      if (didTimeout || lastError.code === "network") {
+        break;
+      }
     } finally {
       if (timer) clearTimeout(timer);
     }
   }
 
-  return lastError ? { ok: false, error: lastError, attempts } : null;
+  return lastError
+    ? { ok: false, error: lastError, attempts, providerFailures }
+    : null;
 }
 
 /**
@@ -1474,6 +1625,7 @@ export async function generateStructuredWithHybridModel<T>(
   const routeName = options.routeName ?? "gemini-structured";
   const startedAt = Date.now();
   let totalAttempts = 0;
+  const providerFailures: ProviderAttemptFailure[] = [];
 
   // Tier 1: Gemini (Primary)
   const geminiRes = await runGeminiTier<T>(options);
@@ -1485,6 +1637,9 @@ export async function generateStructuredWithHybridModel<T>(
       }ms`
     );
     return { ...geminiRes, attempts: totalAttempts };
+  }
+  if (geminiRes.providerFailures?.length) {
+    providerFailures.push(...geminiRes.providerFailures);
   }
 
   // Tier 2: Groq (Optional fast backup — skipped in 0ms if GROQ_API_KEY unset)
@@ -1498,6 +1653,9 @@ export async function generateStructuredWithHybridModel<T>(
         }ms (after gemini ${geminiRes.error.shortReason})`
       );
       return { ...groqRes, attempts: totalAttempts };
+    }
+    if (groqRes.providerFailures?.length) {
+      providerFailures.push(...groqRes.providerFailures);
     }
   }
 
@@ -1513,20 +1671,39 @@ export async function generateStructuredWithHybridModel<T>(
       );
       return { ...cfRes, attempts: totalAttempts };
     }
+    if (cfRes.providerFailures?.length) {
+      providerFailures.push(...cfRes.providerFailures);
+    }
   }
 
-  // All available tiers failed — log primary Gemini failure with full context
+  const elapsedMs = Date.now() - startedAt;
+
+  // All available tiers failed — log exact per-provider failure reasons (provider, status, timeout)
   logGeminiRouteError(routeName, geminiRes.error, {
     totalAttempts,
     groqAttempted: Boolean(groqRes),
     cfWorkersAiAttempted: Boolean(cfRes),
-    elapsedMs: Date.now() - startedAt,
+    elapsedMs,
+    providerFailures,
   });
+  console.error(
+    `[LexiVault][${routeName}] All AI providers failed (${totalAttempts} attempts, ${elapsedMs}ms):`,
+    providerFailures.map((f) => ({
+      provider: f.provider,
+      model: f.model,
+      status: f.status,
+      timeout: f.timeout,
+      code: f.code,
+      reason: f.reason,
+      elapsedMs: f.elapsedMs,
+    }))
+  );
 
   return {
     ok: false,
     error: geminiRes.error,
     attempts: totalAttempts,
+    providerFailures,
   };
 }
 

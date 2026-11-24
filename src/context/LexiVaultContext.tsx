@@ -135,6 +135,8 @@ const INITIAL_BATCH_REFRESH_STATE: BatchRefreshState = {
 };
 
 const BATCH_REFRESH_DELAY_MS = 400;
+// Slightly higher than server-side total fallback budget (Gemini 13s + Groq 12s + CF Workers AI 12s = 37s)
+const DAILY_PACK_CLIENT_TIMEOUT_MS = 45_000;
 
 function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.resolve();
@@ -706,10 +708,18 @@ export function LexiVaultProvider({
       const task = (async (): Promise<DailyPackRecord | null> => {
         setIsDailyPackLoading(true);
         setDailyPackError(null);
+        const controller = new AbortController();
+        let didClientTimeout = false;
+        const timeoutId = setTimeout(() => {
+          didClientTimeout = true;
+          controller.abort();
+        }, DAILY_PACK_CLIENT_TIMEOUT_MS);
+
         try {
           const res = await fetch("/api/daily-pack", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
             body: JSON.stringify({
               date: todayStr,
               wordsQuota: quota.wordsPerDay,
@@ -727,15 +737,30 @@ export function LexiVaultProvider({
                 error?: string;
                 code?: string;
                 detail?: string;
+                providerFailures?: Array<{
+                  batch?: string;
+                  provider: string;
+                  status: number | null;
+                  timeout: boolean;
+                  code?: string;
+                  reason?: string;
+                }>;
               };
               apiErr = errJson.error ?? "";
               apiCode = errJson.code ?? "";
               console.error(
                 `[LexiVault] /api/daily-pack failed (HTTP ${res.status}, code=${apiCode || "unknown"}):`,
-                errJson.detail || apiErr || res.statusText
+                {
+                  detail: errJson.detail || apiErr || res.statusText,
+                  status: res.status,
+                  providerFailures: errJson.providerFailures ?? [],
+                }
               );
             } catch {
-              // Non-JSON error body
+              console.error(
+                `[LexiVault] /api/daily-pack failed (HTTP ${res.status}):`,
+                { status: res.status, detail: res.statusText }
+              );
             }
             const reason = formatGeminiClientError(
               apiCode,
@@ -772,14 +797,34 @@ export function LexiVaultProvider({
           await runCloudMutation(() => saveDailyPack(newPack, activeUser.id));
           return newPack;
         } catch (err) {
-          console.error("[LexiVault] Failed to load Daily Pack:", err);
-          setDailyPackError(
-            lang === "en"
-              ? "Failed to load today's Daily Pack. Please try again."
-              : "Gagal memuat Target Harian hari ini. Silakan coba lagi."
-          );
+          if (didClientTimeout) {
+            console.error("[LexiVault] /api/daily-pack client fetch timeout:", {
+              provider: "client-fetch",
+              status: null,
+              timeout: true,
+              timeoutMs: DAILY_PACK_CLIENT_TIMEOUT_MS,
+            });
+            setDailyPackError(
+              lang === "en"
+                ? "Daily Pack generation timed out while waiting for AI providers. Please try again."
+                : "Pembuatan Target Harian timeout saat menunggu server AI. Silakan coba lagi."
+            );
+          } else {
+            console.error("[LexiVault] Failed to load Daily Pack:", {
+              provider: "client-fetch",
+              status: null,
+              timeout: false,
+              error: err,
+            });
+            setDailyPackError(
+              lang === "en"
+                ? "Failed to load today's Daily Pack. Please try again."
+                : "Gagal memuat Target Harian hari ini. Silakan coba lagi."
+            );
+          }
           return null;
         } finally {
+          clearTimeout(timeoutId);
           setIsDailyPackLoading(false);
           dailyPackInFlightRef.current = null;
         }
@@ -898,6 +943,7 @@ export function LexiVaultProvider({
           savedEntry!,
           ...prev.filter((w) => w.id !== savedEntry!.id),
         ]);
+        void silentlyEnrichWordIfNeeded(savedEntry, activeUser.id);
       }
 
       // Persist Daily Pack completion progress
@@ -941,7 +987,7 @@ export function LexiVaultProvider({
 
       return savedEntry;
     },
-    [runCloudMutation, todayStr]
+    [runCloudMutation, silentlyEnrichWordIfNeeded, todayStr]
   );
 
   const recordDailyPackWrongAttempt = useCallback(async () => {

@@ -182,10 +182,23 @@ export function DailyPackModal() {
 
   const [mounted, setMounted] = useState(false);
   const [stage, setStage] = useState<ModalStage>("memorize");
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!isDailyPackLoading) {
+      setLoadingSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      setLoadingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [isDailyPackLoading]);
   const [activeChunk, setActiveChunk] = useState<DailyPackItem[]>([]);
   const [roundNumber, setRoundNumber] = useState(1);
   const [memIndex, setMemIndex] = useState(0);
@@ -487,7 +500,15 @@ export function DailyPackModal() {
                   {t.dailyPack.loadingTitle}
                 </p>
                 <p className="text-xs text-[#8E8E93] max-w-sm mx-auto">
-                  {t.dailyPack.loadingSubtitle}
+                  {loadingSeconds >= 10
+                    ? isEn
+                      ? `Switching to backup AI provider if needed... (${loadingSeconds}s)`
+                      : `Beralih ke provider AI cadangan jika diperlukan... (${loadingSeconds}d)`
+                    : loadingSeconds >= 3
+                      ? isEn
+                        ? `Generating ${dailyQuota.wordsPerDay} words & ${dailyQuota.idiomsPerDay} idioms in parallel... (${loadingSeconds}s)`
+                        : `Membuat ${dailyQuota.wordsPerDay} kosakata & ${dailyQuota.idiomsPerDay} idiom secara paralel... (${loadingSeconds}d)`
+                      : t.dailyPack.loadingSubtitle}
                 </p>
               </div>
             )}
