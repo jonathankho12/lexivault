@@ -21,10 +21,71 @@ import type {
   WordFamilyItem,
 } from "@/types/lexivault";
 
-// Per-provider timeout budgets for each parallel batch (words & idioms run concurrently).
-// Worst-case server fallback budget: Gemini (13s) + Groq (12s) + CF Workers AI (12s) = 37s.
-const DAILY_PACK_GEMINI_TIMEOUT_MS = 13_000;
-const DAILY_PACK_FALLBACK_TIMEOUT_MS = 12_000;
+// Strict per-provider timeout budgets for each small parallel batch (<= 5 items each).
+// Worst-case server fallback budget: Gemini (10s) + Groq (10s) + CF Workers AI (10s) = 30s.
+const DAILY_PACK_GEMINI_TIMEOUT_MS = 10_000;
+const DAILY_PACK_FALLBACK_TIMEOUT_MS = 10_000;
+const MAX_DAILY_PACK_BATCH_SIZE = 5;
+
+const VOCAB_BATCH_THEMES = [
+  "academic, analytical, and formal discourse",
+  "expressive, nuanced, and everyday high-level speech",
+  "leadership, persuasion, and strategic thinking",
+  "science, innovation, and social dynamics",
+  "literature, emotion, and critical observation",
+  "economics, policy, and global affairs",
+] as const;
+
+const IDIOM_BATCH_THEMES = [
+  "workplace, decision-making, and problem-solving",
+  "everyday conversation, emotions, and relationships",
+  "persuasion, strategy, and resilience",
+  "time, change, and unexpected outcomes",
+] as const;
+
+interface DailyPackBatchSpec {
+  batchId: string;
+  batchType: "vocab" | "idiom";
+  count: number;
+  themeHint: string;
+}
+
+function buildDailyPackBatches(
+  wordsQuota: number,
+  idiomsQuota: number
+): DailyPackBatchSpec[] {
+  const batches: DailyPackBatchSpec[] = [];
+
+  let remainingWords = wordsQuota;
+  let vocabIdx = 0;
+  while (remainingWords > 0) {
+    const count = Math.min(MAX_DAILY_PACK_BATCH_SIZE, remainingWords);
+    batches.push({
+      batchId: `vocab-${vocabIdx + 1}`,
+      batchType: "vocab",
+      count,
+      themeHint: VOCAB_BATCH_THEMES[vocabIdx % VOCAB_BATCH_THEMES.length],
+    });
+    remainingWords -= count;
+    vocabIdx += 1;
+  }
+
+  let remainingIdioms = idiomsQuota;
+  let idiomIdx = 0;
+  while (remainingIdioms > 0) {
+    const count = Math.min(MAX_DAILY_PACK_BATCH_SIZE, remainingIdioms);
+    batches.push({
+      batchId: `idiom-${idiomIdx + 1}`,
+      batchType: "idiom",
+      count,
+      themeHint: IDIOM_BATCH_THEMES[idiomIdx % IDIOM_BATCH_THEMES.length],
+    });
+    remainingIdioms -= count;
+    idiomIdx += 1;
+  }
+
+  return batches;
+}
 
 const VALID_REGISTERS = new Set<RegisterType>([
   "Formal",
@@ -212,19 +273,21 @@ function interleavePack(
 }
 
 async function generateDailyPackBatch(params: {
+  batchId: string;
   batchType: "vocab" | "idiom";
   count: number;
+  themeHint: string;
   dateStr: string;
   existingCsv: string;
 }): Promise<HybridModelResult<{ items?: RawDailyPackItem[] }>> {
-  const { batchType, count, dateStr, existingCsv } = params;
+  const { batchId, batchType, count, themeHint, dateStr, existingCsv } = params;
   const isIdiom = batchType === "idiom";
   const label = isIdiom
     ? `EXACTLY ${count} C1-C2 English idioms/phrasal expressions`
     : `EXACTLY ${count} C1-C2 single English vocabulary words`;
 
-  const prompt = `Daily Pack (${dateStr}): generate ${label}.
-EXCLUDE (no exact or variant matches): ${existingCsv}
+  const prompt = `Daily Pack (${dateStr}, ${batchId}): generate ${label} focused on ${themeHint}.
+EXCLUDE: ${existingCsv}
 
 Return compact JSON {items:[...]} with brief, crisp fields:
 - term: English ${isIdiom ? "idiom" : "single word"}
@@ -240,12 +303,12 @@ Return compact JSON {items:[...]} with brief, crisp fields:
 
   return generateStructuredWithHybridModel<{ items?: RawDailyPackItem[] }>({
     tier: "flash",
-    routeName: `api/daily-pack:${batchType}`,
+    routeName: `api/daily-pack:${batchId}`,
     systemInstruction:
       "Ultra-fast C1-C2 English-Indonesian lexicographer. Return compact valid JSON only with zero duplicates and concise text.",
     contents: prompt,
-    maxOutputTokens: Math.min(2800, Math.max(1024, count * (isIdiom ? 230 : 210))),
-    fallbackMaxTokens: Math.min(2200, Math.max(900, count * (isIdiom ? 190 : 175))),
+    maxOutputTokens: Math.min(1800, Math.max(900, count * (isIdiom ? 220 : 200))),
+    fallbackMaxTokens: Math.min(1600, Math.max(850, count * (isIdiom ? 190 : 175))),
     temperature: 0.65,
     timeoutMs: DAILY_PACK_GEMINI_TIMEOUT_MS,
     fallbackTimeoutMs: DAILY_PACK_FALLBACK_TIMEOUT_MS,
@@ -255,7 +318,7 @@ Return compact JSON {items:[...]} with brief, crisp fields:
         (it, idx) => normalizeDailyPackItem(it, dateStr, idx, batchType) !== null
       )
         ? null
-        : `no valid complete daily-pack ${batchType} items`,
+        : `no valid complete daily-pack ${batchId} items`,
     responseSchema: LEAN_DAILY_PACK_SCHEMA,
   });
 }
@@ -301,45 +364,45 @@ export async function POST(request: Request) {
           .slice(0, 250)
       : [];
     const excludeKeys = new Set(rawExisting.map(normalizeTermKey));
-    const existingCsv = formatCompactExistingTerms(rawExisting, 100);
+    const existingCsv = formatCompactExistingTerms(rawExisting, 60);
 
-    // Split into 2 lean parallel requests (words + idioms) so total latency stays well within timeouts
-    const [wordsRes, idiomsRes] = await Promise.all([
-      wordsQuota > 0
-        ? generateDailyPackBatch({
-            batchType: "vocab",
-            count: wordsQuota,
-            dateStr,
-            existingCsv,
-          })
-        : Promise.resolve(null),
-      idiomsQuota > 0
-        ? generateDailyPackBatch({
-            batchType: "idiom",
-            count: idiomsQuota,
-            dateStr,
-            existingCsv,
-          })
-        : Promise.resolve(null),
-    ]);
+    // Split into small fast parallel batches of <= 5 items (e.g., 5+5 words + 5 idioms)
+    // so every LLM call finishes quickly within Cloudflare Workers limits.
+    const batchSpecs = buildDailyPackBatches(wordsQuota, idiomsQuota);
+    const batchResults = await Promise.all(
+      batchSpecs.map(async (spec) => ({
+        spec,
+        res: await generateDailyPackBatch({
+          batchId: spec.batchId,
+          batchType: spec.batchType,
+          count: spec.count,
+          themeHint: spec.themeHint,
+          dateStr,
+          existingCsv,
+        }),
+      }))
+    );
 
-    const wordsSucceeded = Boolean(wordsRes?.ok);
-    const idiomsSucceeded = Boolean(idiomsRes?.ok);
+    const anySucceeded = batchResults.some(({ res }) => res.ok);
 
-    if (!wordsSucceeded && !idiomsSucceeded) {
-      const failedResults = [
-        wordsRes && !wordsRes.ok ? { batch: "vocab", res: wordsRes } : null,
-        idiomsRes && !idiomsRes.ok ? { batch: "idiom", res: idiomsRes } : null,
-      ].filter(Boolean) as Array<{
-        batch: "vocab" | "idiom";
-        res: Extract<HybridModelResult<{ items?: RawDailyPackItem[] }>, { ok: false }>;
-      }>;
+    if (!anySucceeded) {
+      const failedResults = batchResults.filter(
+        (
+          entry
+        ): entry is {
+          spec: DailyPackBatchSpec;
+          res: Extract<
+            HybridModelResult<{ items?: RawDailyPackItem[] }>,
+            { ok: false }
+          >;
+        } => !entry.res.ok
+      );
 
       const primaryFailure = failedResults[0]?.res.error;
       const allProviderFailures: Array<
-        ProviderAttemptFailure & { batch: "vocab" | "idiom" }
-      > = failedResults.flatMap(({ batch, res }) =>
-        (res.providerFailures ?? []).map((f) => ({ ...f, batch }))
+        ProviderAttemptFailure & { batch: string }
+      > = failedResults.flatMap(({ spec, res }) =>
+        (res.providerFailures ?? []).map((f) => ({ ...f, batch: spec.batchId }))
       );
 
       console.error(
@@ -347,8 +410,9 @@ export async function POST(request: Request) {
         allProviderFailures.map((f) => ({
           batch: f.batch,
           provider: f.provider,
-          model: f.model,
           status: f.status,
+          message: f.message,
+          model: f.model,
           timeout: f.timeout,
           code: f.code,
           reason: f.reason,
@@ -369,6 +433,7 @@ export async function POST(request: Request) {
             batch: f.batch,
             provider: f.provider,
             status: f.status,
+            message: f.message,
             timeout: f.timeout,
             code: f.code,
             reason: f.reason,
@@ -381,42 +446,36 @@ export async function POST(request: Request) {
     const seenKeys = new Set<string>(excludeKeys);
     const pickedWords: DailyPackItem[] = [];
     const pickedIdioms: DailyPackItem[] = [];
+    let wordCounter = 0;
+    let idiomCounter = 0;
 
-    if (wordsRes?.ok && Array.isArray(wordsRes.data.items)) {
-      for (let i = 0; i < wordsRes.data.items.length; i += 1) {
-        if (pickedWords.length >= wordsQuota) break;
+    for (const { spec, res } of batchResults) {
+      if (!res.ok || !Array.isArray(res.data.items)) continue;
+      for (const rawItem of res.data.items) {
+        if (spec.batchType === "vocab" && pickedWords.length >= wordsQuota) {
+          break;
+        }
+        if (spec.batchType === "idiom" && pickedIdioms.length >= idiomsQuota) {
+          break;
+        }
+        const itemIndex =
+          spec.batchType === "vocab" ? wordCounter++ : idiomCounter++;
         const normalized = normalizeDailyPackItem(
-          wordsRes.data.items[i],
+          rawItem,
           dateStr,
-          i,
-          "vocab"
+          itemIndex,
+          spec.batchType
         );
         if (!normalized) continue;
         const key = normalizeTermKey(normalized.term);
         if (seenKeys.has(key)) continue;
         seenKeys.add(key);
-        pickedWords.push(normalized);
+        if (spec.batchType === "vocab") pickedWords.push(normalized);
+        else pickedIdioms.push(normalized);
       }
     }
 
-    if (idiomsRes?.ok && Array.isArray(idiomsRes.data.items)) {
-      for (let i = 0; i < idiomsRes.data.items.length; i += 1) {
-        if (pickedIdioms.length >= idiomsQuota) break;
-        const normalized = normalizeDailyPackItem(
-          idiomsRes.data.items[i],
-          dateStr,
-          i,
-          "idiom"
-        );
-        if (!normalized) continue;
-        const key = normalizeTermKey(normalized.term);
-        if (seenKeys.has(key)) continue;
-        seenKeys.add(key);
-        pickedIdioms.push(normalized);
-      }
-    }
-
-    // If one batch failed or produced fewer unique items after deduplication, top up the remaining slots
+    // If any batch failed or produced fewer unique items after deduplication, top up the remaining slots
     const missingWords = Math.max(0, wordsQuota - pickedWords.length);
     const missingIdioms = Math.max(0, idiomsQuota - pickedIdioms.length);
     if (missingWords > 0 || missingIdioms > 0) {
@@ -434,18 +493,16 @@ export async function POST(request: Request) {
 
     const modelsUsed = Array.from(
       new Set(
-        [
-          wordsRes?.ok ? wordsRes.modelUsed : null,
-          idiomsRes?.ok ? idiomsRes.modelUsed : null,
-        ].filter(Boolean) as string[]
+        batchResults
+          .map(({ res }) => (res.ok ? res.modelUsed : null))
+          .filter(Boolean) as string[]
       )
     );
     const providersUsed = Array.from(
       new Set(
-        [
-          wordsRes?.ok ? wordsRes.providerUsed : null,
-          idiomsRes?.ok ? idiomsRes.providerUsed : null,
-        ].filter(Boolean) as string[]
+        batchResults
+          .map(({ res }) => (res.ok ? res.providerUsed : null))
+          .filter(Boolean) as string[]
       )
     );
 

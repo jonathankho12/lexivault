@@ -317,6 +317,11 @@ export function formatGeminiClientError(
 ): string {
   const isEn = lang === "en";
   switch (code) {
+    case "NOT_ENGLISH":
+      return (
+        fallbackMessage ||
+        "Please enter a valid English word, idiom, or collocation."
+      );
     case "overload":
       return isEn
         ? "Gemini AI is experiencing high demand right now. Please try again in a moment."

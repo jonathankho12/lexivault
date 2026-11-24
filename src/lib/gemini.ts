@@ -34,19 +34,19 @@ export const DEFAULT_GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
 // Balanced circuit-breaker + Cloudflare Workers timeout budgets
 const MODEL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown for 503/429/404 models
 const MODEL_DISCOVERY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes per Worker isolate
-const MODEL_DISCOVERY_TIMEOUT_MS = 3500;
-const DEFAULT_ATTEMPT_TIMEOUT_MS = 12000;
+const MODEL_DISCOVERY_TIMEOUT_MS = 3000;
+const DEFAULT_ATTEMPT_TIMEOUT_MS = 10500;
 const MAX_FALLBACK_MODELS = 1;
 
 // Backup providers (Tier 2: Groq, Tier 3: Cloudflare Workers AI)
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_DEFAULT_MODEL = "llama-3.1-8b-instant";
-const GROQ_TIMEOUT_MS = 12000;
+const GROQ_TIMEOUT_MS = 10500;
 const CF_AI_MODELS = [
   "@cf/meta/llama-3.1-8b-instruct-fast",
   "@cf/meta/llama-3.1-8b-instruct",
 ] as const;
-const CF_AI_TIMEOUT_MS = 12000;
+const CF_AI_TIMEOUT_MS = 10500;
 
 interface DiscoveredModelsCache {
   fetchedAt: number;
@@ -752,6 +752,7 @@ export interface ProviderAttemptFailure {
   provider: AiProviderName;
   model: string;
   status: number | null;
+  message: string;
   timeout: boolean;
   code: GeminiErrorCode;
   reason: string;
@@ -779,6 +780,7 @@ function buildProviderFailure(
     provider,
     model,
     status: err.upstreamStatus ?? err.status ?? null,
+    message: err.rawMessage || err.detail,
     timeout: explicitTimeout || isTimeoutFailure(err),
     code: err.code,
     reason: err.shortReason,
@@ -946,7 +948,7 @@ function formatSchemaSkeleton(schema: Schema, depth = 0): string {
 }
 
 export const AUTOFILL_SYSTEM_INSTRUCTION =
-  "Precise English-Indonesian lexicographer. Return complete, valid JSON matching the exact schema. Classify CEFR (A1-C2) and register (Casual, Formal, Academic, Slang) honestly without inflating basic or conversational words. Never invent fake derivatives or placeholder text.";
+  "Strict English-only lexicographer for an English-Indonesian vocabulary vault. First verify whether the input is a real, established English word, phrasal verb, idiom, collocation, or genuine English slang/loanword used in English dictionaries. Strictly reject non-English words (including Indonesian/Malay words or slang such as 'goblok', 'anjay', 'baper', 'makan', 'gabut', or other foreign words not used in English) and gibberish by setting is_valid_english=false. Return complete, valid JSON matching the exact schema. Classify CEFR (A1-C2) and register (Casual, Formal, Academic, Slang) honestly without inflating basic or conversational words. Never invent fake derivatives, non-English examples, or placeholder text.";
 
 export const REGISTER_CLASSIFICATION_RULE =
   'Strict register rule: "Formal" is STRICTLY reserved for elevated formal, official, diplomatic, legal, or polished business/written vocabulary (e.g. "furthermore", "commence", "notwithstanding"); "Academic" is strictly for scholarly, scientific, research, or analytical discourse (e.g. "hypothesis", "empirical", "corroborate"); "Slang" is for very informal street/youth/internet colloquialisms (e.g. "spill the tea", "ghosting", "rizz"); tag all everyday greetings, basic/neutral concrete nouns/verbs/adjectives, and conversational expressions (e.g. "hi", "hello", "apple", "good", "break the ice") as "Casual" — NEVER classify basic or everyday words as "Formal".';
@@ -960,16 +962,26 @@ export function buildAutofillPrompt(params: {
   const { term, sourceTag, lang, existingCsv } = params;
   const hasExisting = existingCsv !== "none";
   const duplicateBlock = hasExisting
-    ? `Existing Vault terms: ${existingCsv}
-First check if "${term}" is an exact, inflectional, morphological, or phrase variant of ANY existing Vault term (e.g. "spilling the tea" matches "spill the tea", "gentrify" matches "gentrified").
+    ? `STEP 2 — DUPLICATE CHECK (only when is_valid_english=true):
+Existing Vault terms: ${existingCsv}
+Check if "${term}" is an exact, inflectional, morphological, or phrase variant of ANY existing Vault term (e.g. "spilling the tea" matches "spill the tea", "gentrify" matches "gentrified").
 - If YES: set duplicate=true and existing_term="<exact matched term from list>".
 - If NO: set duplicate=false, existing_term="", and populate ALL dictionary fields below completely and accurately.`
-    : `Populate ALL dictionary fields below completely and accurately.`;
+    : `STEP 2 — DICTIONARY ENTRY (only when is_valid_english=true):
+Populate ALL dictionary fields below completely and accurately.`;
 
-  return `Create a complete bilingual English-Indonesian dictionary card for "${term}" (source: ${sourceTag || "general"}, ui: ${lang}).
+  return `Evaluate and (if valid English) create a complete bilingual English-Indonesian dictionary card for "${term}" (source: ${sourceTag || "general"}, ui: ${lang}).
+
+STEP 1 — STRICT ENGLISH-ONLY VALIDATION (MANDATORY):
+Determine whether "${term}" is a valid, established English word, phrasal verb, idiom, collocation, or genuine English slang (accepted English loanwords like "café", "cliché", "déjà vu" are valid).
+- If "${term}" is NOT English (e.g. Indonesian/Malay words or slang like "goblok", "anjing", "mantap", "makan", "baper", "gabut", foreign words from other languages not established in English, gibberish, keyboard mash like "asdfgh", or nonsense):
+  Set is_valid_english=false${hasExisting ? ', duplicate=false, existing_term=""' : ""}, set all string fields to "" (and cefr="A1", type="vocab", register="Casual"), and set all array fields to []. Do NOT translate non-English words or write non-English example sentences.
+- If "${term}" IS valid English: set is_valid_english=true and continue to Step 2.
+
 ${duplicateBlock}
 
-Required fields (never leave blank when not a duplicate):
+Required fields (when is_valid_english=true and not a duplicate):
+- is_valid_english: true
 - term: canonical English spelling/casing
 - pronunciation: Google "Sounds like" phonetic spelling with "·" syllable dots & ALL CAPS primary stress (e.g. "am·BIV·uh·luhnt")
 - ipa: standard IPA inside slashes (e.g. "/æmˈbɪv.ə.lənt/")
@@ -978,10 +990,10 @@ Required fields (never leave blank when not a duplicate):
 - register: "Casual", "Formal", "Academic", or "Slang" — ${REGISTER_CLASSIFICATION_RULE}
 - meaning_en: 1 clear, natural English definition (figurative meaning for idioms)
 - meaning_id: 1 clear, natural Indonesian definition (figurative meaning for idioms, never literal word-by-word)
-- examples: 2 natural example sentences (1 Daily, 1 Academic) wrapping the target term in **bold**, each with natural Indonesian translation_id and context
+- examples: 2 natural ENGLISH example sentences (1 Daily, 1 Academic) wrapping the target term in **bold**, each with natural Indonesian translation_id and context
 - synonyms: 2–4 register-matched English synonyms
 - antonyms: 1–3 contrasting English antonyms (or contextual opposites)
-- word_families: 1–4 real {word, pos} morphological forms (for idioms, use base form or key lemma; never invent fake words)`;
+- word_families: 1–4 real English {word, pos} morphological forms (for idioms, use base form or key lemma; never invent fake or non-English words)`;
 }
 
 function buildBackupSystemPrompt(
@@ -1023,10 +1035,15 @@ async function invokeModelStructuredOnce<T>(
   const runCall = async (thinkingConfig?: ThinkingConfig) => {
     const controller = new AbortController();
     let didTimeout = false;
-    const timer = setTimeout(() => {
-      didTimeout = true;
-      controller.abort();
-    }, options.timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        didTimeout = true;
+        controller.abort();
+        reject(new Error(`Gemini timeout after ${options.timeoutMs}ms`));
+      }, options.timeoutMs);
+    });
 
     try {
       const config: GenerateContentConfig = {
@@ -1047,11 +1064,14 @@ async function invokeModelStructuredOnce<T>(
         config.thinkingConfig = thinkingConfig;
       }
 
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-        config,
-      });
+      const response = await Promise.race([
+        ai.models.generateContent({
+          model,
+          contents,
+          config,
+        }),
+        timeoutPromise,
+      ]);
 
       const finishReason = response.candidates?.[0]?.finishReason;
       const rawText = response.text?.trim() ?? "";
@@ -1091,7 +1111,7 @@ async function invokeModelStructuredOnce<T>(
 
       return { ok: false as const, error: classifyGeminiError(err) };
     } finally {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
     }
   };
 
@@ -1149,6 +1169,7 @@ async function runGeminiTier<T>({
 
   let attempts = 0;
   let primaryError: ClassifiedGeminiError | null = null;
+  const providerDeadline = Date.now() + timeoutMs;
   const primaryInCooldown = isModelInCooldown(primaryModel);
 
   // Fast path: if primary model is healthy (not in 5m cooldown), try it first
@@ -1201,9 +1222,12 @@ async function runGeminiTier<T>({
   }
 
   // Only try at most 1 healthy Gemini fallback if primary was already in cooldown or rejected schema/model
+  // AND there is still meaningful time left inside the strict Gemini provider deadline.
+  const remainingBeforeFallback = providerDeadline - Date.now();
   const shouldUseFallbacks =
-    primaryInCooldown ||
-    (primaryError !== null && isFallbackEligibleError(primaryError));
+    remainingBeforeFallback >= 2500 &&
+    (primaryInCooldown ||
+      (primaryError !== null && isFallbackEligibleError(primaryError)));
 
   if (shouldUseFallbacks) {
     const excludeSoFar = [primaryModel];
@@ -1235,6 +1259,9 @@ async function runGeminiTier<T>({
     const candidatesToTry = healthyFallbacks.slice(0, MAX_FALLBACK_MODELS);
 
     for (const fallbackModel of candidatesToTry) {
+      const remainingMs = providerDeadline - Date.now();
+      if (remainingMs < 1500) break;
+
       attempts += 1;
       const attemptStartedAt = Date.now();
       const res = await invokeModelStructuredOnce<T>(
@@ -1242,7 +1269,7 @@ async function runGeminiTier<T>({
         fallbackModel,
         contents,
         responseSchema,
-        invokeOptions
+        { ...invokeOptions, timeoutMs: remainingMs }
       );
 
       if (res.ok) {
@@ -1315,42 +1342,67 @@ async function runGroqTier<T>(
   let attempts = 0;
   let lastError: ClassifiedGeminiError | null = null;
   const providerFailures: ProviderAttemptFailure[] = [];
-  const attemptTimeoutMs = options.fallbackTimeoutMs ?? GROQ_TIMEOUT_MS;
+  const providerTimeoutMs = options.fallbackTimeoutMs ?? GROQ_TIMEOUT_MS;
+  const providerDeadline = Date.now() + providerTimeoutMs;
 
   for (const model of modelsToTry) {
+    const remainingMs = providerDeadline - Date.now();
+    if (remainingMs < 1500) break;
+
     attempts += 1;
     const attemptStartedAt = Date.now();
     const controller = new AbortController();
     let didTimeout = false;
-    const timer = setTimeout(() => {
-      didTimeout = true;
-      controller.abort();
-    }, attemptTimeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        didTimeout = true;
+        controller.abort();
+        reject(new Error(`Groq timeout after ${remainingMs}ms`));
+      }, remainingMs);
+    });
 
     try {
-      const res = await fetch(GROQ_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${groqKey}`,
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: sysPrompt },
-            { role: "user", content: options.contents },
-          ],
-          response_format: { type: "json_object" },
-          max_tokens: maxTokens,
-          temperature: 0.2,
-        }),
-      });
+      const fetchAndRead = async () => {
+        const res = await fetch(GROQ_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${groqKey}`,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: sysPrompt },
+              { role: "user", content: options.contents },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: maxTokens,
+            temperature: 0.2,
+          }),
+        });
 
-      if (!res.ok) {
-        const bodySnippet = (await res.text().catch(() => "")).slice(0, 200);
+        if (!res.ok) {
+          const bodySnippet = (await res.text().catch(() => "")).slice(0, 200);
+          return { ok: false as const, status: res.status, bodySnippet };
+        }
+
+        const json = (await res.json()) as {
+          choices?: Array<{
+            finish_reason?: string;
+            message?: { content?: string };
+          }>;
+        };
+        return { ok: true as const, json };
+      };
+
+      const outcome = await Promise.race([fetchAndRead(), timeoutPromise]);
+
+      if (!outcome.ok) {
         lastError = classifyGeminiError(
-          new Error(`Groq HTTP ${res.status}: ${bodySnippet}`)
+          new Error(`Groq HTTP ${outcome.status}: ${outcome.bodySnippet}`)
         );
         providerFailures.push(
           buildProviderFailure(
@@ -1364,24 +1416,19 @@ async function runGroqTier<T>(
           `[LexiVault][${routeName}] Tier 2 groq (${model}) failed (${lastError.shortReason})`
         );
         if (
-          res.status === 401 ||
-          res.status === 403 ||
-          res.status === 429 ||
-          res.status === 503
+          outcome.status === 401 ||
+          outcome.status === 403 ||
+          outcome.status === 429 ||
+          outcome.status === 503
         ) {
           break;
         }
         continue;
       }
 
-      const json = (await res.json()) as {
-        choices?: Array<{
-          finish_reason?: string;
-          message?: { content?: string };
-        }>;
-      };
-      const content = json.choices?.[0]?.message?.content?.trim() ?? "";
-      const finishReason = json.choices?.[0]?.finish_reason?.toUpperCase();
+      const content = outcome.json.choices?.[0]?.message?.content?.trim() ?? "";
+      const finishReason =
+        outcome.json.choices?.[0]?.finish_reason?.toUpperCase();
       if (!content) {
         lastError = emptyGeminiResponseError(model, finishReason);
         providerFailures.push(
@@ -1425,7 +1472,7 @@ async function runGroqTier<T>(
       );
     } catch (err) {
       lastError = didTimeout
-        ? timeoutGeminiError(model, attemptTimeoutMs)
+        ? timeoutGeminiError(model, remainingMs)
         : classifyGeminiError(err);
       providerFailures.push(
         buildProviderFailure(
@@ -1443,7 +1490,7 @@ async function runGroqTier<T>(
         break;
       }
     } finally {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -1511,9 +1558,13 @@ async function runWorkersAiTier<T>(
   let attempts = 0;
   let lastError: ClassifiedGeminiError | null = null;
   const providerFailures: ProviderAttemptFailure[] = [];
-  const attemptTimeoutMs = options.fallbackTimeoutMs ?? CF_AI_TIMEOUT_MS;
+  const providerTimeoutMs = options.fallbackTimeoutMs ?? CF_AI_TIMEOUT_MS;
+  const providerDeadline = Date.now() + providerTimeoutMs;
 
   for (const cfModel of CF_AI_MODELS) {
+    const remainingMs = providerDeadline - Date.now();
+    if (remainingMs < 1500) break;
+
     attempts += 1;
     const attemptStartedAt = Date.now();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1532,8 +1583,8 @@ async function runWorkersAiTier<T>(
       const timeoutPromise = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           didTimeout = true;
-          reject(new Error(`Workers AI timeout after ${attemptTimeoutMs}ms`));
-        }, attemptTimeoutMs);
+          reject(new Error(`Workers AI timeout after ${remainingMs}ms`));
+        }, remainingMs);
       });
 
       const rawResult = await Promise.race([runPromise, timeoutPromise]);
@@ -1586,7 +1637,7 @@ async function runWorkersAiTier<T>(
       );
     } catch (err) {
       lastError = didTimeout
-        ? timeoutGeminiError(cfModel, attemptTimeoutMs)
+        ? timeoutGeminiError(cfModel, remainingMs)
         : classifyGeminiError(err);
       providerFailures.push(
         buildProviderFailure(
@@ -1690,8 +1741,9 @@ export async function generateStructuredWithHybridModel<T>(
     `[LexiVault][${routeName}] All AI providers failed (${totalAttempts} attempts, ${elapsedMs}ms):`,
     providerFailures.map((f) => ({
       provider: f.provider,
-      model: f.model,
       status: f.status,
+      message: f.message,
+      model: f.model,
       timeout: f.timeout,
       code: f.code,
       reason: f.reason,

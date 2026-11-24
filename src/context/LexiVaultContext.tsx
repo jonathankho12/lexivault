@@ -135,8 +135,8 @@ const INITIAL_BATCH_REFRESH_STATE: BatchRefreshState = {
 };
 
 const BATCH_REFRESH_DELAY_MS = 400;
-// Slightly higher than server-side total fallback budget (Gemini 13s + Groq 12s + CF Workers AI 12s = 37s)
-const DAILY_PACK_CLIENT_TIMEOUT_MS = 45_000;
+// Comfortably above worst-case server-side fallback budget (Gemini 10s + Groq 10s + CF Workers AI 10s = 30s)
+const DAILY_PACK_CLIENT_TIMEOUT_MS = 40_000;
 
 function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.resolve();
@@ -741,6 +741,7 @@ export function LexiVaultProvider({
                   batch?: string;
                   provider: string;
                   status: number | null;
+                  message?: string;
                   timeout: boolean;
                   code?: string;
                   reason?: string;
@@ -1087,29 +1088,40 @@ export function LexiVaultProvider({
         if (!res.ok) {
           let apiCode = "";
           let apiError = "";
+          let apiMessage = "";
           let apiDetail = "";
           try {
             const errJson = (await res.json()) as {
               error?: string;
               code?: string;
+              message?: string;
               detail?: string;
             };
             apiCode = errJson.code ?? "";
             apiError = errJson.error ?? "";
+            apiMessage = errJson.message ?? "";
             apiDetail = errJson.detail ?? "";
           } catch {
             // Non-JSON error body
           }
+          if (apiError === "NOT_ENGLISH" || apiCode === "NOT_ENGLISH") {
+            const rejectionMsg =
+              apiMessage ||
+              "Please enter a valid English word, idiom, or collocation.";
+            setCaptureToast({ type: "error", message: rejectionMsg });
+            return { ok: false, error: rejectionMsg };
+          }
           console.error(
             `[LexiVault] /api/autofill failed (HTTP ${res.status}, code=${apiCode || "unknown"}):`,
-            apiDetail || apiError || res.statusText
+            apiDetail || apiMessage || apiError || res.statusText
           );
           const errMsg = formatGeminiClientError(
             apiCode,
             res.status,
-            isEn
-              ? `Failed to save word. Please try again. (HTTP ${res.status})`
-              : `Gagal menyimpan kata. Coba lagi. (HTTP ${res.status})`,
+            apiMessage ||
+              (isEn
+                ? `Failed to save word. Please try again. (HTTP ${res.status})`
+                : `Gagal menyimpan kata. Coba lagi. (HTTP ${res.status})`),
             lang
           );
           setCaptureToast({ type: "error", message: errMsg });
@@ -1471,27 +1483,41 @@ export function LexiVaultProvider({
         if (!res.ok) {
           let apiCode = "";
           let apiError = "";
+          let apiMessage = "";
           try {
             const errJson = (await res.json()) as {
               error?: string;
               code?: string;
+              message?: string;
               detail?: string;
             };
             apiCode = errJson.code ?? "";
             apiError = errJson.error ?? "";
-            console.error(
-              `[LexiVault] refreshWordWithAI failed (HTTP ${res.status}, code=${apiCode || "unknown"}):`,
-              errJson.detail || apiError || res.statusText
-            );
+            apiMessage = errJson.message ?? "";
+            if (apiError !== "NOT_ENGLISH" && apiCode !== "NOT_ENGLISH") {
+              console.error(
+                `[LexiVault] refreshWordWithAI failed (HTTP ${res.status}, code=${apiCode || "unknown"}):`,
+                errJson.detail || apiMessage || apiError || res.statusText
+              );
+            }
           } catch {
             // Non-JSON error
+          }
+          if (apiError === "NOT_ENGLISH" || apiCode === "NOT_ENGLISH") {
+            return {
+              ok: false,
+              error:
+                apiMessage ||
+                "Please enter a valid English word, idiom, or collocation.",
+            };
           }
           return {
             ok: false,
             error: formatGeminiClientError(
               apiCode,
               res.status,
-              apiError ||
+              apiMessage ||
+                apiError ||
                 (isEn
                   ? `Failed to refresh details with AI (HTTP ${res.status}).`
                   : `Gagal memperbarui dengan AI (HTTP ${res.status}).`),

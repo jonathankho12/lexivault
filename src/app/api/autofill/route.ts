@@ -28,12 +28,39 @@ import type {
 } from "@/types/lexivault";
 
 const VALID_TYPES = new Set<WordType>(["vocab", "idiom", "collocation"]);
+const NOT_ENGLISH_MESSAGE =
+  "Please enter a valid English word, idiom, or collocation.";
 
 interface AutofillModelOutput extends Partial<AutofillPayload> {
+  is_valid_english?: boolean;
   duplicate?: boolean;
   existing_term?: string;
   phonetic?: string;
   definition?: string;
+}
+
+function notEnglishResponse() {
+  return NextResponse.json(
+    {
+      error: "NOT_ENGLISH",
+      code: "NOT_ENGLISH",
+      message: NOT_ENGLISH_MESSAGE,
+    },
+    { status: 400 }
+  );
+}
+
+/**
+ * Fast deterministic pre-filter for inputs that cannot possibly be valid English
+ * (e.g. non-Latin scripts, pure numbers/symbols, or obvious repeated-char keysmashes).
+ */
+function isObviouslyNonEnglishOrGibberish(term: string): boolean {
+  const trimmed = term.trim();
+  if (!trimmed || trimmed.length > 120) return true;
+  if (!/\p{Script=Latin}/u.test(trimmed)) return true;
+  if (!/^[\p{Script=Latin}0-9\s'’\-.,/&!?]+$/u.test(trimmed)) return true;
+  if (/(.)\1{4,}/i.test(trimmed)) return true;
+  return false;
 }
 
 const CORE_ENTRY_PROPERTIES: Record<string, Schema> = {
@@ -205,6 +232,10 @@ export async function POST(request: Request) {
       );
     }
 
+    if (isObviouslyNonEnglishOrGibberish(term)) {
+      return notEnglishResponse();
+    }
+
     const existingList =
       !body.skipDuplicateCheck && Array.isArray(body.existingTerms)
         ? body.existingTerms
@@ -251,16 +282,25 @@ export async function POST(request: Request) {
       ? {
           type: Type.OBJECT,
           properties: {
+            is_valid_english: { type: Type.BOOLEAN },
             duplicate: { type: Type.BOOLEAN },
             existing_term: { type: Type.STRING },
             ...CORE_ENTRY_PROPERTIES,
           },
-          required: ["duplicate", "existing_term", ...CORE_REQUIRED_FIELDS],
+          required: [
+            "is_valid_english",
+            "duplicate",
+            "existing_term",
+            ...CORE_REQUIRED_FIELDS,
+          ],
         }
       : {
           type: Type.OBJECT,
-          properties: CORE_ENTRY_PROPERTIES,
-          required: CORE_REQUIRED_FIELDS,
+          properties: {
+            is_valid_english: { type: Type.BOOLEAN },
+            ...CORE_ENTRY_PROPERTIES,
+          },
+          required: ["is_valid_english", ...CORE_REQUIRED_FIELDS],
         };
 
     const aiRes = await generateStructuredWithHybridModel<AutofillModelOutput>({
@@ -270,10 +310,16 @@ export async function POST(request: Request) {
       contents: prompt,
       maxOutputTokens: 2048,
       fallbackMaxTokens: 900,
-      temperature: 0.2,
-      timeoutMs: 6500,
+      temperature: 0.15,
+      timeoutMs: 8500,
       responseSchema,
       validate: (raw) => {
+        if (typeof raw.is_valid_english !== "boolean") {
+          return "missing is_valid_english";
+        }
+        if (raw.is_valid_english === false) {
+          return null;
+        }
         if (hasExisting && raw.duplicate === true) {
           return null;
         }
@@ -292,6 +338,11 @@ export async function POST(request: Request) {
         },
         { status: aiRes.error.status }
       );
+    }
+
+    // Strict English-only gate: reject non-English words, foreign slang, and gibberish
+    if (aiRes.data.is_valid_english === false) {
+      return notEnglishResponse();
     }
 
     // Layer 2 AI semantic/variant duplicate detection
