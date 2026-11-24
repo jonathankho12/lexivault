@@ -24,7 +24,7 @@ import { SettingsModal } from "@/components/settings/SettingsModal";
 import { LexiLogo } from "@/components/ui/LexiLogo";
 import { WordDetailSheet } from "@/components/ui/WordDetailSheet";
 import { useLanguage } from "@/context/LanguageContext";
-import { useLexiVault } from "@/context/LexiVaultContext";
+import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { IOS_SPRING, TAB_TRANSITION, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
 import { cn } from "@/lib/utils";
@@ -65,6 +65,8 @@ export function AppShell({
   } = useLexiVault();
   const { t } = useLanguage();
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useOverlayBackGuard("settings", settingsOpen, () => setSettingsOpen(false));
 
   const navItems: Array<{
     id: TabId;

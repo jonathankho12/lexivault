@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -34,6 +34,9 @@ export function FlashcardRecallCard({
   const { lang } = useLanguage();
   const [flipped, setFlipped] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  const answerLockRef = useRef(false);
+  const nextLockRef = useRef(false);
 
   const { word, choices = [], correctChoice } = question;
   const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
@@ -42,9 +45,17 @@ export function FlashcardRecallCard({
   const firstExample = word.examples_json?.[0];
 
   const handleSelectChoice = (choice: string) => {
-    if (answered) return;
+    if (answered || answerLockRef.current) return;
+    answerLockRef.current = true;
     setPicked(choice);
     setFlipped(true);
+  };
+
+  const handleNext = () => {
+    if (!answered || nextLockRef.current) return;
+    nextLockRef.current = true;
+    setIsAdvancing(true);
+    onComplete(isCorrect);
   };
 
   return (
@@ -298,9 +309,10 @@ export function FlashcardRecallCard({
 
           <motion.button
             type="button"
-            whileTap={TAP_SCALE}
-            onClick={() => onComplete(isCorrect)}
-            className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(10,132,255,0.35)] cursor-pointer"
+            whileTap={isAdvancing ? undefined : TAP_SCALE}
+            disabled={isAdvancing}
+            onClick={handleNext}
+            className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(10,132,255,0.35)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>{lang === "en" ? "Next" : "Lanjut"}</span>
             <ArrowRight className="h-4 w-4" />

@@ -193,6 +193,61 @@ export function getDueWords(
   });
 }
 
+export type MasteryStage = "new" | "learning" | "solid" | "mastered";
+
+export function getCardMasteryStage(word: WordEntry): MasteryStage {
+  const reviews = getEffectiveReviewCount(word);
+  const reps =
+    typeof word.repetitions === "number" && Number.isFinite(word.repetitions)
+      ? word.repetitions
+      : 0;
+  const interval =
+    typeof word.interval_days === "number" && Number.isFinite(word.interval_days)
+      ? word.interval_days
+      : 0;
+  const ease =
+    typeof word.ease_factor === "number" && Number.isFinite(word.ease_factor)
+      ? word.ease_factor
+      : 2.5;
+
+  if (reviews === 0 && reps === 0) return "new";
+  if (reps >= 4 && interval >= 14 && ease >= 2.1) return "mastered";
+  if (reps >= 2 && interval >= 4 && ease >= 1.8) return "solid";
+  return "learning";
+}
+
+export function getMasteryStageMeta(
+  stage: MasteryStage,
+  lang: AppLanguage = "id"
+): { label: string; badgeClass: string } {
+  if (stage === "mastered") {
+    return {
+      label: lang === "en" ? "Mastered" : "Dikuasai",
+      badgeClass:
+        "bg-[#BF5AF2]/18 border-[#BF5AF2]/40 text-[#E5B8FF]",
+    };
+  }
+  if (stage === "solid") {
+    return {
+      label: lang === "en" ? "Solid" : "Kuat",
+      badgeClass:
+        "bg-[#30D158]/16 border-[#30D158]/40 text-[#7CF099]",
+    };
+  }
+  if (stage === "learning") {
+    return {
+      label: lang === "en" ? "Learning" : "Belajar",
+      badgeClass:
+        "bg-[#FF9F0A]/16 border-[#FF9F0A]/40 text-[#FFD18C]",
+    };
+  }
+  return {
+    label: lang === "en" ? "New" : "Baru",
+    badgeClass:
+      "bg-[#0A84FF]/16 border-[#0A84FF]/35 text-[#70BCFF]",
+  };
+}
+
 export function previewSm2IntervalLabels(
   word: WordEntry,
   lang: AppLanguage = "id"

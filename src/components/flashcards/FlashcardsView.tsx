@@ -9,6 +9,7 @@ import {
   type PanInfo,
 } from "framer-motion";
 import {
+  ArrowRight,
   BookMarked,
   CheckCircle2,
   Flame,
@@ -22,6 +23,10 @@ import {
   Trophy,
   XCircle,
 } from "lucide-react";
+import {
+  QuickLockInTest,
+  type RoundConfidence,
+} from "@/components/flashcards/QuickLockInTest";
 import { ComboBadge } from "@/components/gamification/ComboBadge";
 import { AudioButton } from "@/components/ui/AudioButton";
 import { HighlightedText } from "@/components/ui/HighlightedText";
@@ -51,7 +56,70 @@ import {
 } from "@/lib/utils";
 import type { Sm2Rating, WordEntry } from "@/types/lexivault";
 
+const ROUND_SIZE = 6;
+
 type DeckFilter = "due" | "unreviewed" | "weakest";
+type MasteryStage = "new" | "learning" | "solid" | "mastered";
+
+function getMasteryStage(word: WordEntry): MasteryStage {
+  const totalReviews = getEffectiveReviewCount(word);
+  if (totalReviews === 0) return "new";
+
+  const raw = word as unknown as Record<string, unknown>;
+  const sm2Reps =
+    typeof raw.sm2_repetitions === "number"
+      ? raw.sm2_repetitions
+      : typeof raw.repetitions === "number"
+        ? raw.repetitions
+        : null;
+  const sm2Interval =
+    typeof raw.sm2_interval === "number"
+      ? raw.sm2_interval
+      : typeof raw.interval_days === "number"
+        ? raw.interval_days
+        : typeof raw.interval === "number"
+          ? raw.interval
+          : 0;
+
+  const effectiveReps =
+    sm2Reps !== null && sm2Reps > 0
+      ? sm2Reps
+      : word.wrong_count === 0
+        ? word.correct_count
+        : 0;
+
+  if (effectiveReps >= 4 || sm2Interval >= 14) return "mastered";
+  if (effectiveReps >= 2 || sm2Interval >= 3) return "solid";
+  return "learning";
+}
+
+function getMasteryBadgeMeta(
+  stage: MasteryStage,
+  lang: "en" | "id"
+): { label: string; className: string } {
+  switch (stage) {
+    case "new":
+      return {
+        label: lang === "en" ? "New" : "Baru",
+        className: "bg-[#0A84FF]/20 border-[#0A84FF]/40 text-[#70BCFF]",
+      };
+    case "learning":
+      return {
+        label: lang === "en" ? "Learning" : "Belajar",
+        className: "bg-[#FF9F0A]/20 border-[#FF9F0A]/40 text-[#FFD18C]",
+      };
+    case "solid":
+      return {
+        label: lang === "en" ? "Solid" : "Mantap",
+        className: "bg-[#30D158]/20 border-[#30D158]/40 text-[#7CF099]",
+      };
+    case "mastered":
+      return {
+        label: lang === "en" ? "Mastered" : "Mahir",
+        className: "bg-[#5E5CE6]/22 border-[#5E5CE6]/45 text-[#D7D6FF]",
+      };
+  }
+}
 
 function buildDeckByFilter(
   words: WordEntry[],
@@ -116,7 +184,7 @@ function SwipeableFlashcard({
   const isDraggingRef = useRef(false);
 
   const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
-  const isBrandNew = getEffectiveReviewCount(word) === 0;
+  const masteryBadge = getMasteryBadgeMeta(getMasteryStage(word), lang);
 
   const handleDragStart = () => {
     isDraggingRef.current = true;
@@ -129,6 +197,8 @@ function SwipeableFlashcard({
     setTimeout(() => {
       isDraggingRef.current = false;
     }, 60);
+
+    if (!flipped) return;
 
     if (info.offset.x > 95 || info.velocity.x > 460) {
       onSwipeAction("right");
@@ -146,7 +216,7 @@ function SwipeableFlashcard({
   return (
     <motion.div
       style={{ x, rotate }}
-      drag="x"
+      drag={flipped ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.75}
       onDragStart={handleDragStart}
@@ -155,25 +225,32 @@ function SwipeableFlashcard({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.92, y: -12, transition: { duration: 0.16 } }}
       transition={IOS_SPRING}
-      className="transform-gpu will-change-transform relative w-full touch-pan-y select-none cursor-grab active:cursor-grabbing"
+      className={cn(
+        "transform-gpu will-change-transform relative w-full touch-pan-y select-none",
+        flipped ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+      )}
     >
-      {/* Swipe Right Indicator ("Good") */}
-      <motion.div
-        style={{ opacity: rightBadgeOpacity }}
-        className="pointer-events-none absolute top-5 left-5 z-30 inline-flex items-center gap-1.5 rounded-full bg-[#30D158]/30 border border-[#30D158]/70 px-3.5 py-1.5 text-xs font-bold text-[#7CF099]"
-      >
-        <CheckCircle2 className="h-4 w-4" />
-        <span>{t.flashcards.swipeGood}</span>
-      </motion.div>
+      {/* Swipe Right Indicator ("Solid") — only when flipped */}
+      {flipped && (
+        <motion.div
+          style={{ opacity: rightBadgeOpacity }}
+          className="pointer-events-none absolute top-5 left-5 z-30 inline-flex items-center gap-1.5 rounded-full bg-[#30D158]/30 border border-[#30D158]/70 px-3.5 py-1.5 text-xs font-bold text-[#7CF099]"
+        >
+          <CheckCircle2 className="h-4 w-4" />
+          <span>{lang === "en" ? "Solid" : "Mantap"}</span>
+        </motion.div>
+      )}
 
-      {/* Swipe Left Indicator ("Again") */}
-      <motion.div
-        style={{ opacity: leftBadgeOpacity }}
-        className="pointer-events-none absolute top-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full bg-[#FF453A]/30 border border-[#FF453A]/70 px-3.5 py-1.5 text-xs font-bold text-[#FFB4AE]"
-      >
-        <XCircle className="h-4 w-4" />
-        <span>{t.flashcards.swipeAgain}</span>
-      </motion.div>
+      {/* Swipe Left Indicator ("Forgot") — only when flipped */}
+      {flipped && (
+        <motion.div
+          style={{ opacity: leftBadgeOpacity }}
+          className="pointer-events-none absolute top-5 right-5 z-30 inline-flex items-center gap-1.5 rounded-full bg-[#FF453A]/30 border border-[#FF453A]/70 px-3.5 py-1.5 text-xs font-bold text-[#FFB4AE]"
+        >
+          <XCircle className="h-4 w-4" />
+          <span>{lang === "en" ? "Forgot" : "Lupa"}</span>
+        </motion.div>
+      )}
 
       {/* 3D Flip Container */}
       <div className="perspective-1200">
@@ -187,11 +264,14 @@ function SwipeableFlashcard({
           <div className="liquid-glass backface-hidden absolute inset-0 flex flex-col justify-between rounded-[32px] p-5 sm:p-7">
             <div className="flex items-start justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
-                {isBrandNew && (
-                  <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-[#30D158]/20 border border-[#30D158]/40 text-[#7CF099]">
-                    {t.flashcards.brandNewBadge}
-                  </span>
-                )}
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border",
+                    masteryBadge.className
+                  )}
+                >
+                  {masteryBadge.label}
+                </span>
                 <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-white/[0.08] border border-white/[0.12] text-[#F5F5F7]">
                   {formatTypeLabel(word.type)}
                 </span>
@@ -278,13 +358,11 @@ function SwipeableFlashcard({
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-[#8E8E93] pt-2 border-t border-white/[0.08]">
-              <span>← {t.flashcards.swipeAgain}</span>
-              <span className="inline-flex items-center gap-1 text-[#70BCFF] font-medium">
+            <div className="flex items-center justify-center text-[11px] text-[#8E8E93] pt-2 border-t border-white/[0.08]">
+              <span className="inline-flex items-center gap-1.5 text-[#70BCFF] font-medium">
                 <RotateCw className="h-3 w-3" />
                 {t.flashcards.tapFlipHint}
               </span>
-              <span>{t.flashcards.swipeGood} →</span>
             </div>
           </div>
 
@@ -293,6 +371,14 @@ function SwipeableFlashcard({
             <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/[0.09] shrink-0">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border",
+                      masteryBadge.className
+                    )}
+                  >
+                    {masteryBadge.label}
+                  </span>
                   <span className="text-xs font-semibold uppercase tracking-wider text-[#0A84FF]">
                     {formatTypeLabel(word.type)} · {word.register}
                   </span>

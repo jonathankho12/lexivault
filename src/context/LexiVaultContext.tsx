@@ -10,6 +10,7 @@ import React, {
   useState,
 } from "react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useBrowserHistoryNav } from "@/hooks/useBrowserHistoryNav";
 import {
   changeUserPassword,
   continueAsGuestSession,
@@ -166,6 +167,12 @@ interface LexiVaultContextValue {
   todayStr: string;
   activeTab: TabId;
   setActiveTab: (tab: TabId) => void;
+  registerOverlayHistory: (
+    overlayId: string,
+    onBackClose: () => void
+  ) => () => void;
+  openOverlayHistory: (overlayId: string) => void;
+  closeOverlayHistory: (overlayId: string) => void;
   accent: AccentType;
   setAccent: (accent: AccentType) => void;
   words: WordEntry[];
@@ -279,7 +286,13 @@ export function LexiVaultProvider({
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [todayStr, setTodayStr] = useState("2026-01-01");
-  const [activeTab, setActiveTab] = useState<TabId>("vault");
+  const [activeTab, setActiveTabState] = useState<TabId>("vault");
+  const {
+    navigateTab: setActiveTab,
+    registerOverlay: registerOverlayHistory,
+    openOverlay: openOverlayHistory,
+    closeOverlay: closeOverlayHistory,
+  } = useBrowserHistoryNav(activeTab, setActiveTabState);
   const [accent, setAccentState] = useState<AccentType>("US");
   const [words, setWords] = useState<WordEntry[]>([]);
   const [studyLogs, setStudyLogs] = useState<StudyLog[]>([]);
@@ -1867,7 +1880,7 @@ export function LexiVaultProvider({
       });
       setActiveTab("practice");
     },
-    []
+    [setActiveTab]
   );
 
   const clearPracticeLaunch = useCallback(() => {
@@ -1921,12 +1934,12 @@ export function LexiVaultProvider({
   const openStreakCalendar = useCallback(() => {
     setStreakFocusNonce((n) => n + 1);
     setActiveTab("stats");
-  }, []);
+  }, [setActiveTab]);
 
   const launchCommuteMode = useCallback(() => {
     setCommuteLaunchNonce((n) => n + 1);
     setActiveTab("practice");
-  }, []);
+  }, [setActiveTab]);
 
   const clearCommuteLaunch = useCallback(() => {
     setCommuteLaunchNonce(0);
@@ -1988,7 +2001,7 @@ export function LexiVaultProvider({
     setAuthInitialMode("login");
     setUser(guest);
     setActiveTab("vault");
-  }, []);
+  }, [setActiveTab]);
 
   const forceSyncNow = useCallback(async (): Promise<{
     ok: boolean;
@@ -2073,7 +2086,7 @@ export function LexiVaultProvider({
     setDailyPackModalOpen(false);
     setSelectedWord(null);
     setActiveTab("vault");
-  }, []);
+  }, [setActiveTab]);
 
   const login = useCallback(
     async (
@@ -2095,7 +2108,7 @@ export function LexiVaultProvider({
       }
       return { ok: false, error: res.error };
     },
-    [lang]
+    [lang, setActiveTab]
   );
 
   const register = useCallback(
@@ -2124,7 +2137,7 @@ export function LexiVaultProvider({
       }
       return { ok: false, error: res.error };
     },
-    [lang]
+    [lang, setActiveTab]
   );
 
   const logout = useCallback(async () => {
@@ -2144,7 +2157,37 @@ export function LexiVaultProvider({
     setSyncError(null);
     clearLastSupabaseSyncError();
     setActiveTab("vault");
-  }, []);
+  }, [setActiveTab]);
+
+  // Sync global modals (Word Detail & Daily Pack) with Browser / Mobile Back button
+  const wordDetailOpen = Boolean(selectedWord);
+  const prevWordDetailOpenRef = useRef(false);
+  useEffect(() => {
+    return registerOverlayHistory("word_detail", () => setSelectedWord(null));
+  }, [registerOverlayHistory]);
+  useEffect(() => {
+    if (wordDetailOpen && !prevWordDetailOpenRef.current) {
+      openOverlayHistory("word_detail");
+    } else if (!wordDetailOpen && prevWordDetailOpenRef.current) {
+      closeOverlayHistory("word_detail");
+    }
+    prevWordDetailOpenRef.current = wordDetailOpen;
+  }, [wordDetailOpen, openOverlayHistory, closeOverlayHistory]);
+
+  const prevDailyPackOpenRef = useRef(false);
+  useEffect(() => {
+    return registerOverlayHistory("daily_pack", () => {
+      setDailyPackModalOpen(false);
+    });
+  }, [registerOverlayHistory]);
+  useEffect(() => {
+    if (dailyPackModalOpen && !prevDailyPackOpenRef.current) {
+      openOverlayHistory("daily_pack");
+    } else if (!dailyPackModalOpen && prevDailyPackOpenRef.current) {
+      closeOverlayHistory("daily_pack");
+    }
+    prevDailyPackOpenRef.current = dailyPackModalOpen;
+  }, [dailyPackModalOpen, openOverlayHistory, closeOverlayHistory]);
 
   const value: LexiVaultContextValue = {
     user,
@@ -2153,6 +2196,9 @@ export function LexiVaultProvider({
     todayStr,
     activeTab,
     setActiveTab,
+    registerOverlayHistory,
+    openOverlayHistory,
+    closeOverlayHistory,
     accent,
     setAccent,
     words,
@@ -2237,4 +2283,33 @@ export function useLexiVault(): LexiVaultContextValue {
     throw new Error("useLexiVault must be used within LexiVaultProvider");
   }
   return ctx;
+}
+
+/**
+ * Integrates any modal, drawer, or active session with Browser / Mobile Back.
+ * Pushing a history state on open and closing cleanly on `popstate` (or popping on UI close).
+ */
+export function useOverlayBackGuard(
+  overlayId: string,
+  isOpen: boolean,
+  onClose: () => void
+) {
+  const { registerOverlayHistory, openOverlayHistory, closeOverlayHistory } =
+    useLexiVault();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    return registerOverlayHistory(overlayId, () => onCloseRef.current());
+  }, [overlayId, registerOverlayHistory]);
+
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      openOverlayHistory(overlayId);
+    } else if (!isOpen && wasOpenRef.current) {
+      closeOverlayHistory(overlayId);
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, overlayId, openOverlayHistory, closeOverlayHistory]);
 }

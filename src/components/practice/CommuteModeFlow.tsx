@@ -24,7 +24,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { COMMUTE_MINI_CLIPS } from "@/lib/ieltsMockData";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
-import { getDueWords, previewSm2IntervalLabels } from "@/lib/sm2";
+import {
+  getCardMasteryStage,
+  getDueWords,
+  getMasteryStageMeta,
+} from "@/lib/sm2";
 import {
   playCorrectChime,
   playGlassClick,
@@ -82,11 +86,23 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
   const [audioStatusNote, setAudioStatusNote] = useState<string | null>(null);
   const [submittingFinish, setSubmittingFinish] = useState(false);
   const [listeningScore, setListeningScore] = useState(0);
+  const [earnedXp, setEarnedXp] = useState(0);
+  const [flashcardEarnedXp, setFlashcardEarnedXp] = useState(0);
+  const [isGradingCard, setIsGradingCard] = useState(false);
 
   const initializedRef = useRef(false);
+  const cardLockRef = useRef(false);
+  const scoredCardIdsRef = useRef<Set<string>>(new Set());
+  const finishLockRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
   const speechActiveRef = useRef(false);
+
+  // Release synchronous card lock only after active card index or stage actually advances
+  useEffect(() => {
+    cardLockRef.current = false;
+    setIsGradingCard(false);
+  }, [cardIndex, stage, sessionSeed]);
 
   const activeClip = COMMUTE_MINI_CLIPS[clipIndex % COMMUTE_MINI_CLIPS.length];
 
@@ -130,28 +146,46 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
 
   const currentCard = cards[cardIndex] ?? null;
 
-  const intervalLabels = useMemo(
-    () => (currentCard ? previewSm2IntervalLabels(currentCard, lang) : null),
+  const currentMastery = useMemo(
+    () =>
+      currentCard
+        ? getMasteryStageMeta(getCardMasteryStage(currentCard), lang)
+        : null,
     [currentCard, lang]
   );
 
   const handleGradeCard = useCallback(
     (rating: Sm2Rating) => {
-      if (!currentCard) return;
+      if (!currentCard || !flipped || cardLockRef.current) return;
 
-      if (rating === "again") {
-        playWrongThud();
-        setCombo(0);
-      } else {
-        setCardRecalled((c) => c + 1);
-        setCombo((prev) => {
-          const next = prev + 1;
-          playCorrectChime(next);
-          return next;
+      // Synchronous lock prevents spam-click double scoring before index advances
+      cardLockRef.current = true;
+      setIsGradingCard(true);
+
+      const cardKey = `${sessionSeed}-${currentCard.id}`;
+      if (!scoredCardIdsRef.current.has(cardKey)) {
+        scoredCardIdsRef.current.add(cardKey);
+
+        if (rating === "again") {
+          playWrongThud();
+          setCombo(0);
+        } else {
+          const cardXp = rating === "good" ? 15 : 10;
+          setFlashcardEarnedXp((x) => x + cardXp);
+          setCardRecalled((c) => c + 1);
+          setCombo((prev) => {
+            const next = prev + 1;
+            playCorrectChime(next);
+            return next;
+          });
+        }
+
+        // Optimistic navigation: fire-and-forget SM-2 cloud sync
+        void recordSm2Review(currentCard.id, rating).catch((err) => {
+          console.error("[LexiVault] Commute recordSm2Review failed:", err);
         });
       }
 
-      void recordSm2Review(currentCard.id, rating);
       setFlipped(false);
 
       if (cardIndex + 1 >= cards.length) {
@@ -160,7 +194,7 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
         setCardIndex((prev) => prev + 1);
       }
     },
-    [currentCard, cardIndex, cards.length, recordSm2Review]
+    [currentCard, flipped, sessionSeed, cardIndex, cards.length, recordSm2Review]
   );
 
   const playSpeechFallback = useCallback(() => {
@@ -270,8 +304,9 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
     (q) => Boolean(selectedAnswers[q.id])
   );
 
-  const handleCompleteCommute = async () => {
-    if (!allMcqAnswered || submittingFinish) return;
+  const handleCompleteCommute = () => {
+    if (!allMcqAnswered || submittingFinish || finishLockRef.current) return;
+    finishLockRef.current = true;
     setSubmittingFinish(true);
     stopAllAudio();
 
@@ -279,39 +314,48 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
       (q) => selectedAnswers[q.id] === q.answer
     ).length;
 
+    // Proportional XP from verified correct listening answers (15 XP each; 0 XP if wrong)
+    const listeningXp = correctTotal * 15;
     setListeningScore(correctTotal);
-    if (correctTotal === activeClip.questions.length) {
+    setEarnedXp(flashcardEarnedXp + listeningXp);
+
+    if (correctTotal === activeClip.questions.length && correctTotal > 0) {
       playCorrectChime(Math.max(2, combo + 1));
     } else if (correctTotal > 0) {
       playCorrectChime(1);
     } else {
       playWrongThud();
+      setCombo(0);
     }
 
-    if (user) {
-      try {
-        const updatedLog = await recordIeltsStudyLog(
-          todayStr,
-          user.id,
-          activeClip.questions.length,
-          correctTotal,
-          1,
-          45
-        );
-        await grantXpAndSyncLog(45, updatedLog);
-      } catch {
-        // Allow screen completion smoothly even on transient network errors
-      }
-    }
-
+    // Optimistic transition to Done screen immediately (no async freeze)
     setSubmittingFinish(false);
     setStage("done");
+
+    if (user) {
+      void recordIeltsStudyLog(
+        todayStr,
+        user.id,
+        activeClip.questions.length,
+        correctTotal,
+        1,
+        listeningXp
+      )
+        .then((updatedLog) => grantXpAndSyncLog(listeningXp, updatedLog))
+        .catch(() => {
+          // Background sync failure never blocks completion screen
+        });
+    }
   };
 
   const handleRestartCommute = () => {
     playGlassClick();
     stopAllAudio();
     const freshCards = buildCommuteCards(words, todayStr);
+    cardLockRef.current = false;
+    finishLockRef.current = false;
+    scoredCardIdsRef.current = new Set();
+    setIsGradingCard(false);
     setCards(freshCards);
     setCardIndex(0);
     setFlipped(false);
@@ -319,41 +363,33 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
     setCombo(0);
     setSelectedAnswers({});
     setListeningScore(0);
+    setEarnedXp(0);
+    setFlashcardEarnedXp(0);
     setAudioStatusNote(null);
     setClipIndex((prev) => (prev + 1) % COMMUTE_MINI_CLIPS.length);
     setSessionSeed((s) => s + 1);
     setStage(freshCards.length > 0 ? "flashcards" : "listening");
   };
 
-  const sm2Buttons: Array<{
+  const confidenceButtons: Array<{
     rating: Sm2Rating;
     label: string;
     toneClass: string;
-    intervalClass: string;
   }> = [
     {
       rating: "again",
-      label: "Again",
+      label: lang === "en" ? "Forgot" : "Lupa",
       toneClass: "border-[#FF453A]/35 text-[#FFB4AE] hover:bg-[#FF453A]/15",
-      intervalClass: "text-[#FF8982]",
     },
     {
       rating: "hard",
-      label: "Hard",
+      label: lang === "en" ? "Shaky" : "Ragu",
       toneClass: "border-[#FF9F0A]/35 text-[#FFE0A6] hover:bg-[#FF9F0A]/15",
-      intervalClass: "text-[#FFBE5C]",
     },
     {
       rating: "good",
-      label: "Good",
+      label: lang === "en" ? "Solid" : "Hafal",
       toneClass: "border-[#30D158]/35 text-[#8FF5A7] hover:bg-[#30D158]/15",
-      intervalClass: "text-[#7CF099]",
-    },
-    {
-      rating: "easy",
-      label: "Easy",
-      toneClass: "border-[#0A84FF]/40 text-[#9FD0FF] hover:bg-[#0A84FF]/15",
-      intervalClass: "text-[#70BCFF]",
     },
   ];
 
@@ -442,6 +478,16 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
                 <div className="liquid-glass backface-hidden absolute inset-0 flex flex-col justify-between rounded-[28px] p-5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
+                      {currentMastery && (
+                        <span
+                          className={cn(
+                            "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border",
+                            currentMastery.badgeClass
+                          )}
+                        >
+                          {currentMastery.label}
+                        </span>
+                      )}
                       <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase bg-white/[0.08] border border-white/[0.12] text-[#F5F5F7]">
                         {formatTypeLabel(currentCard.type)}
                       </span>
@@ -551,45 +597,59 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
             </motion.div>
           </AnimatePresence>
 
-          {/* Thumb-zone Action Controls */}
+          {/* Thumb-zone Action Controls — Mandatory Flip Before Rating */}
           <div className="space-y-2.5 pt-1">
-            <motion.button
-              type="button"
-              whileTap={TAP_SCALE}
-              onClick={() => {
-                playGlassClick();
-                setFlipped((prev) => !prev);
-              }}
-              className="liquid-glass-pill w-full inline-flex items-center justify-center gap-2 rounded-2xl py-3 text-xs font-semibold text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer"
-            >
-              <RotateCw className="h-3.5 w-3.5 text-[#0A84FF]" />
-              <span>{flipped ? t.commute.flipBack : t.commute.flipCard}</span>
-            </motion.button>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {sm2Buttons.map((btn) => (
+            {!flipped ? (
+              <motion.button
+                type="button"
+                whileTap={TAP_SCALE}
+                onClick={() => {
+                  playGlassClick();
+                  setFlipped(true);
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0A84FF] py-3.5 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(10,132,255,0.3)] hover:bg-[#1A8EFF] cursor-pointer"
+              >
+                <RotateCw className="h-4 w-4" />
+                <span>
+                  {lang === "en"
+                    ? "Reveal Meaning & Example"
+                    : "Buka Arti & Contoh"}
+                </span>
+              </motion.button>
+            ) : (
+              <>
                 <motion.button
-                  key={btn.rating}
                   type="button"
                   whileTap={TAP_SCALE}
-                  onClick={() => handleGradeCard(btn.rating)}
-                  className={cn(
-                    "liquid-glass transform-gpu flex flex-col items-center justify-center min-h-[54px] rounded-2xl px-3 py-2.5 cursor-pointer transition-colors",
-                    btn.toneClass
-                  )}
+                  onClick={() => {
+                    playGlassClick();
+                    setFlipped(false);
+                  }}
+                  className="liquid-glass-pill w-full inline-flex items-center justify-center gap-2 rounded-2xl py-2.5 text-xs font-semibold text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer"
                 >
-                  <span className="text-sm font-bold">{btn.label}</span>
-                  <span
-                    className={cn(
-                      "text-[11px] font-medium tabular-nums",
-                      btn.intervalClass
-                    )}
-                  >
-                    {intervalLabels ? intervalLabels[btn.rating] : "—"}
-                  </span>
+                  <RotateCw className="h-3.5 w-3.5 text-[#0A84FF]" />
+                  <span>{t.commute.flipBack}</span>
                 </motion.button>
-              ))}
-            </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {confidenceButtons.map((btn) => (
+                    <motion.button
+                      key={btn.rating}
+                      type="button"
+                      whileTap={isGradingCard ? undefined : TAP_SCALE}
+                      disabled={!flipped || isGradingCard}
+                      onClick={() => handleGradeCard(btn.rating)}
+                      className={cn(
+                        "liquid-glass transform-gpu flex items-center justify-center min-h-[52px] rounded-2xl px-3 py-2.5 cursor-pointer transition-colors disabled:opacity-45 disabled:cursor-not-allowed",
+                        btn.toneClass
+                      )}
+                    >
+                      <span className="text-sm font-bold">{btn.label}</span>
+                    </motion.button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -712,7 +772,7 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
             type="button"
             whileTap={TAP_SCALE}
             disabled={!allMcqAnswered || submittingFinish}
-            onClick={() => void handleCompleteCommute()}
+            onClick={handleCompleteCommute}
             className="w-full min-h-[52px] inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#30D158] to-[#0A84FF] px-6 py-3.5 text-sm font-bold text-white shadow-[0_10px_28px_rgba(10,132,255,0.3)] cursor-pointer disabled:opacity-45"
           >
             {submittingFinish ? (
@@ -720,7 +780,9 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            <span>{t.commute.finishClaimBtn}</span>
+            <span>
+              {lang === "en" ? "Finish Commute" : "Selesai Commute"}
+            </span>
           </motion.button>
         </motion.div>
       )}
@@ -742,7 +804,11 @@ export function CommuteModeFlow({ onExit }: CommuteModeFlowProps) {
               {t.commute.completedEyebrow}
             </p>
             <h3 className="mt-1 text-2xl font-bold text-white">
-              {t.commute.completedTitle}
+              {earnedXp > 0
+                ? `+${earnedXp} XP ${lang === "en" ? "Earned!" : "Diperoleh!"}`
+                : lang === "en"
+                  ? "Session Complete"
+                  : "Sesi Selesai"}
             </h3>
             <p className="mt-1 text-sm text-[#8E8E93]">
               {cards.length > 0

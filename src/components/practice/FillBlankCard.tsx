@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, HelpCircle, XCircle } from "lucide-react";
 import { AudioButton } from "@/components/ui/AudioButton";
@@ -26,6 +26,9 @@ export function FillBlankCard({
   const [inputValue, setInputValue] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  const answerLockRef = useRef(false);
+  const nextLockRef = useRef(false);
 
   const {
     word,
@@ -43,7 +46,8 @@ export function FillBlankCard({
   const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
 
   const evaluateAnswer = (candidate: string) => {
-    if (submitted) return;
+    if (submitted || answerLockRef.current) return;
+    answerLockRef.current = true;
     const normCandidate = normalizeTermKey(candidate);
     const normTarget = normalizeTermKey(blankTarget);
     const normTerm = normalizeTermKey(word.term);
@@ -54,6 +58,13 @@ export function FillBlankCard({
     setInputValue(candidate);
     setIsCorrect(ok);
     setSubmitted(true);
+  };
+
+  const handleNext = () => {
+    if (!submitted || nextLockRef.current) return;
+    nextLockRef.current = true;
+    setIsAdvancing(true);
+    onComplete(isCorrect);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -238,9 +249,10 @@ export function FillBlankCard({
           <div className="flex justify-end">
             <motion.button
               type="button"
-              whileTap={TAP_SCALE}
-              onClick={() => onComplete(isCorrect)}
-              className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+              whileTap={isAdvancing ? undefined : TAP_SCALE}
+              disabled={isAdvancing}
+              onClick={handleNext}
+              className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>{isEn ? "Next" : "Lanjut"}</span>
               <ArrowRight className="h-4 w-4" />

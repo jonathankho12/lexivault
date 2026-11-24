@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
@@ -37,6 +37,15 @@ export function SentenceMakerCard({
   const [isGrading, setIsGrading] = useState(false);
   const [grade, setGrade] = useState<SentenceGradeResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  const nextLockRef = useRef(false);
+
+  const handleNext = () => {
+    if (!grade || nextLockRef.current) return;
+    nextLockRef.current = true;
+    setIsAdvancing(true);
+    onComplete(grade.is_correct);
+  };
 
   const { word } = question;
   const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
@@ -274,9 +283,10 @@ export function SentenceMakerCard({
           <div className="flex justify-end pt-1">
             <motion.button
               type="button"
-              whileTap={TAP_SCALE}
-              onClick={() => onComplete(grade.is_correct)}
-              className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+              whileTap={isAdvancing ? undefined : TAP_SCALE}
+              disabled={isAdvancing}
+              onClick={handleNext}
+              className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>{isEn ? "Next" : "Lanjut"}</span>
               <ArrowRight className="h-4 w-4" />

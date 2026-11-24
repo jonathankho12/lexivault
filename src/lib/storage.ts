@@ -2453,7 +2453,7 @@ export async function recordPracticeAttempt(
   newXp: number;
 }> {
   const nowIso = new Date().toISOString();
-  const xpDelta = isCorrect ? 15 : 5;
+  const xpDelta = isCorrect ? 15 : 0;
   const nextReviewCount = getEffectiveReviewCount(word) + 1;
   const updatedWord: WordEntry = {
     ...word,
@@ -2595,7 +2595,7 @@ export async function recordSm2ReviewAttempt(
   const isCorrect = rating !== "again";
   const sm2 = calculateSm2Next(word, rating, now);
   const xpDelta =
-    rating === "easy" ? 20 : rating === "good" ? 15 : rating === "hard" ? 10 : 5;
+    rating === "easy" ? 20 : rating === "good" ? 15 : rating === "hard" ? 10 : 0;
   const nextReviewCount = getEffectiveReviewCount(word) + 1;
 
   // Strict same-day non-repetition rule:

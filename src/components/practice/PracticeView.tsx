@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -21,7 +21,7 @@ import { FillBlankCard } from "@/components/practice/FillBlankCard";
 import { FlashcardRecallCard } from "@/components/practice/FlashcardRecallCard";
 import { SentenceMakerCard } from "@/components/practice/SentenceMakerCard";
 import { useLanguage } from "@/context/LanguageContext";
-import { useLexiVault } from "@/context/LexiVaultContext";
+import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   buildDailyMiniQuizSession,
@@ -68,7 +68,27 @@ export function PracticeView() {
   const [results, setResults] = useState<SessionResultItem[]>([]);
   const [combo, setCombo] = useState(0);
 
+  const transitionLockRef = useRef(false);
+  const scoredQuestionIdsRef = useRef<Set<string>>(new Set());
+
   const weakestWords = useMemo(() => getWeakestWords(words), [words]);
+
+  // Browser / Mobile Back exits active quiz, summary, or commute back to Practice launcher
+  useOverlayBackGuard(
+    "practice_session",
+    phase === "active" || phase === "summary",
+    useCallback(() => setPhase("launcher"), [])
+  );
+  useOverlayBackGuard(
+    "commute_session",
+    phase === "commute",
+    useCallback(() => setPhase("launcher"), [])
+  );
+
+  // Release synchronous transition lock only after active question index or phase actually changes
+  useEffect(() => {
+    transitionLockRef.current = false;
+  }, [currentIndex, phase]);
 
   const startSession = useCallback(
     (mode: PracticeMode, customItems?: DiscoveryItem[]) => {
@@ -86,6 +106,8 @@ export function PracticeView() {
       if (generated.length === 0) return;
 
       playGlassClick();
+      transitionLockRef.current = false;
+      scoredQuestionIdsRef.current = new Set();
       setActiveMode(mode);
       setQuestions(generated);
       setCurrentIndex(0);
@@ -110,33 +132,49 @@ export function PracticeView() {
     clearCommuteLaunch();
   }, [commuteLaunchNonce, clearCommuteLaunch]);
 
-  const handleQuestionComplete = async (isCorrect: boolean) => {
-    const currentQuestion = questions[currentIndex];
-    if (!currentQuestion) return;
+  const handleQuestionComplete = useCallback(
+    (isCorrect: boolean) => {
+      if (transitionLockRef.current) return;
+      const currentQuestion = questions[currentIndex];
+      if (!currentQuestion) return;
 
-    if (isCorrect) {
-      setCombo((prev) => {
-        const next = prev + 1;
-        playCorrectChime(next);
-        return next;
-      });
-    } else {
-      playWrongThud();
-      setCombo(0);
-    }
+      // Synchronous lock prevents spam-click double scoring before index advances
+      transitionLockRef.current = true;
 
-    setResults((prev) => [
-      ...prev,
-      { term: currentQuestion.word.term, isCorrect },
-    ]);
-    await recordAnswer(currentQuestion.word.id, isCorrect);
+      // Per-question deduplication: each question can score / increment combo / grant XP at most once
+      if (!scoredQuestionIdsRef.current.has(currentQuestion.id)) {
+        scoredQuestionIdsRef.current.add(currentQuestion.id);
 
-    if (currentIndex + 1 >= questions.length) {
-      setPhase("summary");
-    } else {
-      setCurrentIndex((prev) => prev + 1);
-    }
-  };
+        if (isCorrect) {
+          setCombo((prev) => {
+            const next = prev + 1;
+            playCorrectChime(next);
+            return next;
+          });
+        } else {
+          playWrongThud();
+          setCombo(0);
+        }
+
+        setResults((prev) => [
+          ...prev,
+          { term: currentQuestion.word.term, isCorrect },
+        ]);
+
+        // Optimistic navigation: fire-and-forget cloud sync, never block UI transition
+        void recordAnswer(currentQuestion.word.id, isCorrect).catch((err) => {
+          console.error("[LexiVault] Background recordAnswer failed:", err);
+        });
+      }
+
+      if (currentIndex + 1 >= questions.length) {
+        setPhase("summary");
+      } else {
+        setCurrentIndex((prev) => prev + 1);
+      }
+    },
+    [currentIndex, questions, recordAnswer]
+  );
 
   const correctTotal = results.filter((r) => r.isCorrect).length;
   const sessionAccuracy =
@@ -156,9 +194,9 @@ export function PracticeView() {
       <div className="space-y-5 max-w-2xl mx-auto">
         {/* Session Header & Progress */}
         <div className="liquid-glass rounded-3xl p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-[#0A84FF]/20 border border-[#0A84FF]/35 px-3 py-1 text-xs font-semibold text-[#70BCFF]">
+          <div className="flex items-center justify-between gap-2 min-h-[32px]">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="whitespace-nowrap shrink-0 rounded-full bg-[#0A84FF]/20 border border-[#0A84FF]/35 px-3 py-1 text-xs font-semibold text-[#70BCFF]">
                 {activeMode === "smart_mix"
                   ? t.practice.modeSmartMix
                   : activeMode === "full_marathon"
@@ -167,19 +205,19 @@ export function PracticeView() {
                       ? t.practice.modeWeakestDrill
                       : t.practice.modeDailyMini}
               </span>
-              <span className="text-xs font-semibold text-[#8E8E93]">
+              <span className="whitespace-nowrap text-xs font-semibold text-[#8E8E93] tabular-nums">
                 {currentIndex + 1} / {questions.length}
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <ComboBadge combo={combo} />
               <motion.button
                 type="button"
                 whileTap={TAP_SCALE}
                 onClick={() => setPhase("launcher")}
                 aria-label={t.practice.exitSession}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.08] text-[#8E8E93] hover:text-white cursor-pointer"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[#8E8E93] hover:text-white cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </motion.button>

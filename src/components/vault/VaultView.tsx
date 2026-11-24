@@ -21,7 +21,7 @@ import { QuickCaptureBar } from "@/components/vault/QuickCaptureBar";
 import { TextExtractorSheet } from "@/components/vault/TextExtractorSheet";
 import { VaultWordCard } from "@/components/vault/VaultWordCard";
 import { useLanguage } from "@/context/LanguageContext";
-import { useLexiVault } from "@/context/LexiVaultContext";
+import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { IOS_SPRING, STAGGER_CONTAINER, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
 import {
@@ -78,6 +78,11 @@ export function VaultView() {
   const [pendingTerm, setPendingTerm] = useState("");
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [extractorOpen, setExtractorOpen] = useState(false);
+
+  useOverlayBackGuard("ai_suggest", suggestOpen, () => setSuggestOpen(false));
+  useOverlayBackGuard("text_extractor", extractorOpen, () =>
+    setExtractorOpen(false)
+  );
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [registerFilter, setRegisterFilter] = useState<RegisterFilter>("all");
