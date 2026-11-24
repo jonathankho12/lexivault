@@ -15,10 +15,14 @@ export async function GET() {
   try {
     const supabaseUrl =
       (await resolveRuntimeEnvVar("NEXT_PUBLIC_SUPABASE_URL")) ||
-      (await resolveRuntimeEnvVar("SUPABASE_URL"));
+      (await resolveRuntimeEnvVar("SUPABASE_URL")) ||
+      process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
+      "";
     const supabaseAnonKey =
       (await resolveRuntimeEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY")) ||
-      (await resolveRuntimeEnvVar("SUPABASE_ANON_KEY"));
+      (await resolveRuntimeEnvVar("SUPABASE_ANON_KEY")) ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+      "";
 
     if (!supabaseUrl || !supabaseAnonKey) {
       console.error("[LexiVault][api/health] Supabase environment variables are not configured.");

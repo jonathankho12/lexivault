@@ -174,13 +174,14 @@ export type RateLimitCheckResult =
  */
 export function checkAiRateLimit(
   request: Request,
-  _lang: "en" | "id" = "en",
+  _lang?: "en" | "id",
   options?: {
     limit?: number;
     windowMs?: number;
     bucket?: string;
   }
 ): RateLimitCheckResult {
+  void _lang;
   const result = checkRateLimit(request, {
     bucket: options?.bucket ?? "ai",
     limit: options?.limit ?? DEFAULT_LIMIT,
