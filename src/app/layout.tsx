@@ -19,30 +19,48 @@ export const viewport: Viewport = {
 };
 
 const SITE_URL = "https://lexivault.my.id";
-const SITE_TITLE = "LexiVault — AI-Powered C1–C2 English Vocabulary & Idiom Vault";
+const SITE_TITLE =
+  "LexiVault — AI-Powered English Vocabulary, Idioms & Collocations (A1–C2)";
 const SITE_DESCRIPTION =
-  "Master C1–C2 English vocabulary, idioms, and collocations with Gemini AI autofill, SM-2 spaced repetition flashcards, daily learning packs, US/UK pronunciation audio, and real-time Supabase cloud sync.";
+  "Master English vocabulary, idioms, and collocations from A1 to C2 with AI-powered definitions, SM-2 spaced repetition flashcards, daily learning packs, IELTS prep, US/UK pronunciation audio, and real-time cloud sync.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: SITE_TITLE,
+  title: {
+    default: SITE_TITLE,
+    template: "%s | LexiVault",
+  },
   description: SITE_DESCRIPTION,
   applicationName: "LexiVault",
+  keywords: [
+    "LexiVault",
+    "English vocabulary",
+    "English idioms",
+    "English collocations",
+    "CEFR A1-C2",
+    "SM-2 spaced repetition",
+    "AI flashcards",
+    "IELTS preparation",
+    "pronunciation audio",
+    "vocabulary builder",
+  ],
+  authors: [{ name: "LexiVault", url: SITE_URL }],
+  creator: "LexiVault",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
+    type: "website",
     url: SITE_URL,
     siteName: "LexiVault",
-    type: "website",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     images: [
       {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: SITE_TITLE,
+        alt: "LexiVault — AI-Powered English Vocabulary, Idioms & Collocations (A1–C2)",
       },
     ],
   },
@@ -51,6 +69,10 @@ export const metadata: Metadata = {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     images: ["/og-image.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
   manifest: "/manifest.json",
   appleWebApp: {

@@ -5,6 +5,7 @@ import {
   generateStructuredWithHybridModel,
   logGeminiRouteError,
 } from "@/lib/gemini";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import type {
   SentenceGradeResult,
   SentenceGradeVerdict,
@@ -376,6 +377,13 @@ function buildFallbackGrade(
 }
 
 export async function POST(request: Request) {
+  const limited = enforceRateLimit(request, {
+    bucket: "grade-sentence",
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await request.json()) as {
       term?: string;

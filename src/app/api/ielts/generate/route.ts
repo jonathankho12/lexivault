@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { generateStructuredWithHybridModel } from "@/lib/gemini";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   FALLBACK_LISTENING_PACKS,
   FALLBACK_READING_PACKS,
@@ -26,6 +27,13 @@ function pickFallback<T extends { id: string }>(
 }
 
 export async function POST(request: Request) {
+  const limited = enforceRateLimit(request, {
+    bucket: "ielts-generate",
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await request.json()) as {
       skill?: IeltsSubTab;

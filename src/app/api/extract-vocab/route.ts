@@ -44,7 +44,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const rateLimit = checkAiRateLimit(request, lang);
+    const rateLimit = checkAiRateLimit(request, lang, {
+      bucket: "extract-vocab",
+      limit: 10,
+      windowMs: 60_000,
+    });
     if (!rateLimit.allowed) {
       return rateLimit.response;
     }

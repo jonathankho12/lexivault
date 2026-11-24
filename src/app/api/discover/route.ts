@@ -135,7 +135,11 @@ export async function POST(request: Request) {
         ? body.date
         : new Date().toISOString().slice(0, 10);
     const lang = body.lang === "en" ? "en" : "id";
-    const rateLimit = checkAiRateLimit(request, lang);
+    const rateLimit = checkAiRateLimit(request, lang, {
+      bucket: "discover",
+      limit: 30,
+      windowMs: 60_000,
+    });
     if (!rateLimit.allowed) {
       return rateLimit.response;
     }

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 import { getGeminiTtsModel, pcmToWav, resolveGeminiApiKey } from "@/lib/gemini";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { getSupabaseClient } from "@/lib/supabase";
 import { normalizeTermKey } from "@/lib/utils";
 import type { AccentType } from "@/types/lexivault";
@@ -289,6 +290,13 @@ async function handleTtsRequest(
 }
 
 export async function GET(request: Request) {
+  const limited = enforceRateLimit(request, {
+    bucket: "tts",
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   const { searchParams } = new URL(request.url);
   const text = searchParams.get("text") ?? "";
   const accent = searchParams.get("accent") ?? "US";
@@ -296,6 +304,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const limited = enforceRateLimit(request, {
+    bucket: "tts",
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await request.json()) as {
       text?: string;

@@ -260,8 +260,8 @@ export async function POST(request: Request) {
       request,
       lang,
       body.skipDuplicateCheck
-        ? { bucket: "ai-refresh", limit: 300 }
-        : undefined
+        ? { bucket: "autofill-refresh", limit: 300, windowMs: 60_000 }
+        : { bucket: "autofill", limit: 30, windowMs: 60_000 }
     );
     if (!rateLimit.allowed) {
       return rateLimit.response;

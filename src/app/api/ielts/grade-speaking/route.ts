@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import { generateStructuredWithHybridModel } from "@/lib/gemini";
 import { countWords, roundToHalfBand } from "@/lib/ieltsUtils";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import type { SpeakingGradeResult, SpeakingPromptPack } from "@/types/ielts";
 
 function buildFallbackSpeakingGrade(
@@ -62,6 +63,13 @@ function buildFallbackSpeakingGrade(
 }
 
 export async function POST(request: Request) {
+  const limited = enforceRateLimit(request, {
+    bucket: "ielts-grade-speaking",
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await request.json()) as {
       prompt?: SpeakingPromptPack;

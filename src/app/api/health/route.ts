@@ -10,7 +10,6 @@ const NO_STORE_HEADERS = {
 };
 
 export async function GET() {
-  const startedAt = Date.now();
   const timestamp = new Date().toISOString();
 
   try {
@@ -22,10 +21,11 @@ export async function GET() {
       (await resolveRuntimeEnvVar("SUPABASE_ANON_KEY"));
 
     if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("[LexiVault][api/health] Supabase environment variables are not configured.");
       return NextResponse.json(
         {
-          ok: false,
-          db: "unconfigured",
+          status: "degraded",
+          supabase: "error",
           timestamp,
         },
         { status: 503, headers: NO_STORE_HEADERS }
@@ -48,17 +48,18 @@ export async function GET() {
         },
       });
 
-      // Minimal read-only query against public.words (RLS returns 0 rows safely while keeping Postgres active)
-      const { error } = await supabase.from("words").select("id").limit(1);
+      // Lightweight read-only query against public.words to keep Postgres active
+      const { error } = await supabase
+        .from("words")
+        .select("id", { count: "exact", head: true })
+        .limit(1);
 
       if (error) {
-        console.error("[LexiVault][api/health] Supabase ping error:", error.message);
+        console.error("[LexiVault][api/health] Supabase ping failed:", error.message);
         return NextResponse.json(
           {
-            ok: false,
-            db: "error",
-            error: error.message,
-            latencyMs: Date.now() - startedAt,
+            status: "degraded",
+            supabase: "error",
             timestamp,
           },
           { status: 503, headers: NO_STORE_HEADERS }
@@ -67,9 +68,8 @@ export async function GET() {
 
       return NextResponse.json(
         {
-          ok: true,
-          db: "connected",
-          latencyMs: Date.now() - startedAt,
+          status: "ok",
+          supabase: "ok",
           timestamp,
         },
         { status: 200, headers: NO_STORE_HEADERS }
@@ -78,14 +78,14 @@ export async function GET() {
       clearTimeout(timer);
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err ?? "Health check failed");
-    console.error("[LexiVault][api/health] Unexpected error:", message);
+    console.error(
+      "[LexiVault][api/health] Unexpected error:",
+      err instanceof Error ? err.message : "Health check failed"
+    );
     return NextResponse.json(
       {
-        ok: false,
-        db: "error",
-        error: message,
-        latencyMs: Date.now() - startedAt,
+        status: "degraded",
+        supabase: "error",
         timestamp,
       },
       { status: 503, headers: NO_STORE_HEADERS }

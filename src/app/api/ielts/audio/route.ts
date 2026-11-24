@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { getSupabaseClient } from "@/lib/supabase";
 import type { IeltsVoiceAccent, ListeningDialogueSegment } from "@/types/ielts";
 
@@ -74,6 +75,13 @@ async function synthesizeEdgeSegment(
 }
 
 export async function POST(request: Request) {
+  const limited = enforceRateLimit(request, {
+    bucket: "ielts-audio",
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await request.json()) as {
       segments?: ListeningDialogueSegment[];

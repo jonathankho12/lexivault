@@ -352,7 +352,11 @@ export async function POST(request: Request) {
     }
 
     const lang = body.lang === "en" ? "en" : "id";
-    const rateLimit = checkAiRateLimit(request, lang);
+    const rateLimit = checkAiRateLimit(request, lang, {
+      bucket: "daily-pack",
+      limit: 10,
+      windowMs: 60_000,
+    });
     if (!rateLimit.allowed) {
       return rateLimit.response;
     }
