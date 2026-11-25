@@ -130,8 +130,8 @@ function resolveThinkingConfigForModel(
     return { thinkingLevel: ThinkingLevel.LOW };
   }
 
-  // Gemini 2.5 Flash / Flash-Lite support thinkingBudget: 0
-  if (lower.includes("gemini-2.5-flash")) {
+  // Gemini 2.5 Flash / Flash-Lite / gemini-flash aliases support thinkingBudget: 0
+  if (lower.includes("gemini-2.5-flash") || lower.includes("gemini-flash")) {
     return { thinkingBudget: 0 };
   }
 
@@ -247,6 +247,38 @@ export async function getGeminiFlashModel(): Promise<string> {
   return getGeminiModel();
 }
 
+export async function getGeminiFastModel(): Promise<string> {
+  const explicitFast =
+    (await resolveRuntimeEnvVar("GEMINI_FAST_MODEL")) ||
+    (await resolveRuntimeEnvVar("GEMINI_FLASH_LITE_MODEL")) ||
+    (await resolveRuntimeEnvVar("GEMINI_FLASH_MODEL"));
+  if (explicitFast) return explicitFast;
+
+  const configuredDefault = await resolveRuntimeEnvVar("GEMINI_MODEL");
+  if (
+    configuredDefault &&
+    !configuredDefault.toLowerCase().includes("pro") &&
+    !configuredDefault.toLowerCase().includes("thinking")
+  ) {
+    return configuredDefault;
+  }
+
+  if (discoveredModelsCache && discoveredModelsCache.models.length > 0) {
+    const fastDiscovered = [...discoveredModelsCache.models].sort(
+      (a, b) => scoreDiscoveredModel(b, true) - scoreDiscoveredModel(a, true)
+    )[0];
+    if (
+      fastDiscovered &&
+      fastDiscovered.toLowerCase().includes("flash") &&
+      !isModelInCooldown(fastDiscovered)
+    ) {
+      return fastDiscovered;
+    }
+  }
+
+  return DEFAULT_GEMINI_MODEL;
+}
+
 export async function getGeminiProModel(): Promise<string> {
   return (
     (await resolveRuntimeEnvVar("GEMINI_PRO_MODEL")) ||
@@ -311,13 +343,13 @@ function isEligibleTextFallbackModel(modelId: string): boolean {
   return !EXCLUDED_MODEL_PATTERNS.some((pat) => lower.includes(pat));
 }
 
-function scoreDiscoveredModel(modelId: string): number {
+function scoreDiscoveredModel(modelId: string, preferLite = false): number {
   const lower = modelId.toLowerCase();
   let score = 0;
 
   // Strongly prioritize fast/lightweight flash and flash-lite models
   if (lower.includes("flash-lite")) {
-    score += 1070;
+    score += preferLite ? 1140 : 1070;
   } else if (lower.includes("flash")) {
     score += 1080;
   } else if (lower.includes("pro")) {
@@ -790,6 +822,7 @@ function buildProviderFailure(
 
 export interface StructuredGenerationOptions<T> {
   tier?: "flash" | "pro";
+  preferFastModel?: boolean;
   contents: string;
   responseSchema: Schema;
   routeName?: string;
@@ -1154,6 +1187,7 @@ async function invokeModelStructuredOnce<T>(
  */
 async function runGeminiTier<T>({
   tier = "flash",
+  preferFastModel = false,
   contents,
   responseSchema,
   routeName = "gemini-structured",
@@ -1176,7 +1210,9 @@ async function runGeminiTier<T>({
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const flashModel = await getGeminiModel();
+  const flashModel = preferFastModel
+    ? await getGeminiFastModel()
+    : await getGeminiModel();
   const proModel = await getGeminiProModel();
   const primaryModel = tier === "pro" ? proModel : flashModel;
   const invokeOptions = {
@@ -1261,6 +1297,11 @@ async function runGeminiTier<T>({
       ...proFlashFallback,
       ...manualFallbacks,
     ]);
+    if (preferFastModel && discoveredFallbacks.length > 1) {
+      discoveredFallbacks.sort(
+        (a, b) => scoreDiscoveredModel(b, true) - scoreDiscoveredModel(a, true)
+      );
+    }
 
     const seen = new Set<string>([primaryModel.toLowerCase()]);
     const healthyFallbacks: string[] = [];

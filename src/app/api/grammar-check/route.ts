@@ -38,13 +38,10 @@ const DEFAULT_VERDICT_LABELS: Record<GrammarCheckVerdict, string> = {
 };
 
 const CONTEXT_GUIDANCE: Record<GrammarCheckContext, string> = {
-  auto: "Auto-detect the most likely intended register (casual, work, or academic) and evaluate accordingly.",
-  casual:
-    "Target context is Casual / everyday conversational English (contractions, idioms, relaxed phrasing are natural).",
-  academic:
-    "Target context is Academic / IELTS Writing (formal tone, precise vocabulary, complete well-structured clauses, no slang).",
-  work:
-    "Target context is Work / professional communication (polite, concise, clear, natural business English).",
+  auto: "auto-detect register (casual, work, or academic)",
+  casual: "Casual everyday English (contractions/idioms OK)",
+  academic: "Academic / IELTS formal writing (precise, complete clauses, no slang)",
+  work: "Work / professional English (clear, polite, concise)",
 };
 
 const GRAMMAR_CHECK_SCHEMA: Schema = {
@@ -182,10 +179,10 @@ function validateGrammarResult(
   if (typeof data.explanation !== "string" || !data.explanation.trim()) {
     return "missing explanation";
   }
-  if (!Array.isArray(data.alternatives) || data.alternatives.length < 3) {
-    return "requires 3 context-aware alternatives";
+  if (!Array.isArray(data.alternatives) || data.alternatives.length < 1) {
+    return "requires at least 1 context-aware alternative";
   }
-  const hasValidAlt = data.alternatives.every(
+  const hasValidAlt = data.alternatives.some(
     (item) =>
       item &&
       typeof item === "object" &&
@@ -248,41 +245,34 @@ export async function POST(request: Request) {
       : "auto";
 
     const systemInstruction =
-      "You are an expert English linguist, grammar checker, and register coach. Evaluate grammar, sentence completeness, naturalness, and register appropriateness accurately. Return strictly valid JSON matching the exact schema with 3 distinct context-aware alternative rewrites.";
+      "Fast English grammar, naturalness, and register checker. Return concise valid JSON matching the schema.";
 
-    const prompt = `Analyze the following English text for grammar, completeness, naturalness, and register fit.
-
-Context setting: ${context} (${CONTEXT_GUIDANCE[context]})
-User text:
+    const prompt = `Check this English text (${context}: ${CONTEXT_GUIDANCE[context]}):
 """
 ${text}
 """
 
-Classification rules for "verdict":
-- "correct": Grammatically sound, complete, and natural for the target context (or valid standalone idiomatic phrase if clearly complete in context).
-- "fragment": Missing a subject, finite verb, or main clause; incomplete thought that needs completion.
-- "unnatural": Grammatically understandable, but awkward, overly literal, unidiomatic, or mismatched to the requested register/context.
-- "incorrect": Contains clear grammar, tense, agreement, preposition, article, spelling, or punctuation mistakes.
-
-Output requirements (strict JSON):
-1. "verdict": one of "correct" | "fragment" | "unnatural" | "incorrect".
-2. "verdictLabel": short, clear 2-4 word status badge (e.g., "Natural & Correct", "Sentence Fragment", "Awkward Phrasing", "Grammar Error").
-3. "correctedText": the cleanest corrected and natural version tailored to the selected context. If already completely natural and error-free, return the polished input.
-4. "explanation": concise 1-3 sentence explanation in clear English explaining what is wrong, incomplete, unnatural, or why it already works well.
-5. "issues": array of specific fixes [{ "original": "...", "correction": "...", "reason": "..." }]. Return [] when there are no errors or phrasing issues.
-6. "alternatives": ALWAYS provide exactly 3 distinct, natural context-aware rewrites [{ "context": "...", "example": "...", "note": "..." }] covering contrasting registers (e.g. "Casual Spoken", "Work / Professional", "Academic / IELTS"), putting the requested context style first when applicable.`;
+Verdict: "correct" (sound & natural), "fragment" (incomplete clause), "unnatural" (grammatical but awkward/wrong register), "incorrect" (grammar/spelling/punctuation error).
+Return JSON:
+- verdict, verdictLabel (2-4 words), correctedText (cleanest natural version), explanation (1-2 concise sentences)
+- issues: [{original, correction, reason}] ([] if none)
+- alternatives: 3 concise rewrites [{context, example, note}] for Casual, Work, Academic (put target context first).`;
 
     const aiRes = await generateStructuredWithHybridModel<
       Partial<GrammarCheckResult>
     >({
       tier: "flash",
+      preferFastModel: true,
+      disableThinking: true,
+      timeoutMs: 9000,
+      fallbackTimeoutMs: 6500,
       routeName: "api/grammar-check",
       systemInstruction,
       contents: prompt,
       responseSchema: GRAMMAR_CHECK_SCHEMA,
-      maxOutputTokens: 1200,
-      fallbackMaxTokens: 1200,
-      temperature: 0.2,
+      maxOutputTokens: 900,
+      fallbackMaxTokens: 900,
+      temperature: 0.1,
       validate: validateGrammarResult,
     });
 

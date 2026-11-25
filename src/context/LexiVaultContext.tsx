@@ -946,59 +946,52 @@ export function LexiVaultProvider({
       if (!activeUser) return null;
 
       const normalized = normalizeTermKey(item.term);
-      let savedEntry =
+      const existingEntry =
         wordsRef.current.find((w) => normalizeTermKey(w.term) === normalized) ??
         null;
 
-      if (!savedEntry) {
-        const nowIso = new Date().toISOString();
-        const draft: WordEntry = {
-          id:
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `local-dp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          user_id: activeUser.id,
-          term: item.term,
-          pronunciation: item.pronunciation,
-          ipa: item.ipa,
-          cefr: item.cefr,
-          type: item.type,
-          meaning_id: item.meaning_id,
-          meaning_en: item.meaning_en,
-          examples_json: item.examples,
-          synonyms: item.synonyms,
-          antonyms: item.antonyms,
-          word_families_json: item.word_families,
-          register: item.register,
-          source_tag: "daily_pack",
-          audio_us_url: null,
-          audio_uk_url: null,
-          correct_count: 0,
-          wrong_count: 0,
-          last_practiced_at: null,
-          last_reviewed_date: null,
-          review_count: 0,
-          next_review_at: nowIso,
-          interval_days: 0,
-          ease_factor: 2.5,
-          repetitions: 0,
-          created_at: nowIso,
-        };
+      const nowIso = new Date().toISOString();
+      const draft: WordEntry | null = existingEntry
+        ? null
+        : {
+            id:
+              typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `local-dp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            user_id: activeUser.id,
+            term: item.term,
+            pronunciation: item.pronunciation,
+            ipa: item.ipa,
+            cefr: item.cefr,
+            type: item.type,
+            meaning_id: item.meaning_id,
+            meaning_en: item.meaning_en,
+            examples_json: item.examples,
+            synonyms: item.synonyms,
+            antonyms: item.antonyms,
+            word_families_json: item.word_families,
+            register: item.register,
+            source_tag: "daily_pack",
+            audio_us_url: null,
+            audio_uk_url: null,
+            correct_count: 0,
+            wrong_count: 0,
+            last_practiced_at: null,
+            last_reviewed_date: null,
+            review_count: 0,
+            next_review_at: nowIso,
+            interval_days: 0,
+            ease_factor: 2.5,
+            repetitions: 0,
+            created_at: nowIso,
+          };
 
-        savedEntry = await runCloudMutation(() =>
-          saveWordEntry(draft, activeUser.id)
-        );
-        setWords((prev) => [
-          savedEntry!,
-          ...prev.filter((w) => w.id !== savedEntry!.id),
-        ]);
-        void silentlyEnrichWordIfNeeded(savedEntry, activeUser.id);
-      }
-
-      // Persist Daily Pack completion progress
+      // Optimistically update Daily Pack progress and words state synchronously before cloud I/O
       const currentPack = dailyPackRef.current;
       const alreadyRecorded = Boolean(
-        currentPack?.completed_terms.includes(normalized)
+        currentPack?.completed_terms.some(
+          (term) => normalizeTermKey(term) === normalized
+        )
       );
 
       if (currentPack && currentPack.pack_date === todayStr) {
@@ -1008,7 +1001,9 @@ export function LexiVaultProvider({
         const isAllDone =
           currentPack.items.length > 0 &&
           currentPack.items.every((it) =>
-            nextCompleted.includes(normalizeTermKey(it.term))
+            nextCompleted.some(
+              (term) => normalizeTermKey(term) === normalizeTermKey(it.term)
+            )
           );
 
         const nextPack: DailyPackRecord = {
@@ -1018,20 +1013,62 @@ export function LexiVaultProvider({
             ? currentPack.completed_at ?? new Date().toISOString()
             : currentPack.completed_at ?? null,
         };
+        dailyPackRef.current = nextPack;
         setDailyPack(nextPack);
-        void runCloudMutation(() => saveDailyPack(nextPack, activeUser.id));
+        void runCloudMutation(() =>
+          saveDailyPack(nextPack, activeUser.id)
+        ).catch((err) => {
+          console.warn("[LexiVault][daily-pack] Background saveDailyPack failed:", err);
+        });
       }
 
-      // Award +20 XP & update vocab + recall rings + streak + accuracy
-      if (!alreadyRecorded) {
-        const { updatedLog, newXp } = await runCloudMutation(() =>
-          incrementWordsAddedLog(todayStr, activeUser.id, 1, true)
-        );
-        setStudyLogs((prev) => [
-          updatedLog,
-          ...prev.filter((l) => l.study_date !== updatedLog.study_date),
+      if (draft) {
+        wordsRef.current = [
+          draft,
+          ...wordsRef.current.filter(
+            (w) => normalizeTermKey(w.term) !== normalized
+          ),
+        ];
+        setWords((prev) => [
+          draft,
+          ...prev.filter((w) => normalizeTermKey(w.term) !== normalized),
         ]);
-        setXp(newXp);
+      }
+
+      let savedEntry: WordEntry | null = existingEntry ?? draft;
+
+      if (draft) {
+        try {
+          const persisted = await runCloudMutation(() =>
+            saveWordEntry(draft, activeUser.id)
+          );
+          savedEntry = persisted;
+          setWords((prev) => [
+            persisted,
+            ...prev.filter(
+              (w) => w.id !== persisted.id && w.id !== draft.id
+            ),
+          ]);
+          void silentlyEnrichWordIfNeeded(persisted, activeUser.id);
+        } catch (err) {
+          console.warn("[LexiVault][daily-pack] Background saveWordEntry failed:", err);
+        }
+      }
+
+      // Award +20 XP & update vocab + recall rings + streak + accuracy in background
+      if (!alreadyRecorded) {
+        try {
+          const { updatedLog, newXp } = await runCloudMutation(() =>
+            incrementWordsAddedLog(todayStr, activeUser.id, 1, true)
+          );
+          setStudyLogs((prev) => [
+            updatedLog,
+            ...prev.filter((l) => l.study_date !== updatedLog.study_date),
+          ]);
+          setXp(newXp);
+        } catch (err) {
+          console.warn("[LexiVault][daily-pack] Background study log update failed:", err);
+        }
       }
 
       return savedEntry;

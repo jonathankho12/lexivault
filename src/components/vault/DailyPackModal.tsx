@@ -64,6 +64,7 @@ interface QuizCard {
   item: DailyPackItem;
   mode: QuizQuestionMode;
   promptSentence?: string;
+  promptTranslationId?: string;
   choices: string[];
   correctChoice: string;
   requeued?: boolean;
@@ -73,21 +74,54 @@ function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildBlankSentence(item: DailyPackItem): string | null {
-  const rawSentence = item.examples[0]?.sentence?.trim();
-  if (!rawSentence) return null;
+function countActualWordsExcludingBlanks(text: string): number {
+  const withoutBlanks = text.replace(/_+/g, " ");
+  const words = withoutBlanks.match(
+    /[A-Za-z0-9\u00C0-\u024F]+(?:['’-][A-Za-z0-9\u00C0-\u024F]+)*/g
+  );
+  return words ? words.length : 0;
+}
 
-  // Prefer replacing **bold** segment first (Gemini & fallback always bold the target)
-  const boldMatch = /\*\*([^*]+)\*\*/.exec(rawSentence);
-  if (boldMatch) {
-    return rawSentence.replace(/\*\*[^*]+\*\*/, "________");
+function buildBlankSentence(
+  item: DailyPackItem
+): { promptSentence: string; translationId?: string } | null {
+  const targetTerm = item.term.trim();
+  if (!targetTerm) return null;
+
+  const startBoundary = /^\w/.test(targetTerm) ? "\\b" : "";
+  const endBoundary = /\w$/.test(targetTerm) ? "\\b" : "";
+  const flexiblePattern = escapeRegExp(targetTerm).replace(/\s+/g, "\\s+");
+  const termRegex = new RegExp(
+    `${startBoundary}${flexiblePattern}${endBoundary}`,
+    "gi"
+  );
+
+  for (const example of item.examples ?? []) {
+    const rawSentence = example?.sentence?.trim();
+    if (!rawSentence) continue;
+
+    // Strip markdown bold markers so we strictly verify the target term in real sentence text
+    const cleanSentence = rawSentence.replace(/\*\*/g, "").trim();
+    if (!cleanSentence) continue;
+
+    termRegex.lastIndex = 0;
+    if (!termRegex.test(cleanSentence)) continue;
+
+    termRegex.lastIndex = 0;
+    const maskedSentence = cleanSentence
+      .replace(termRegex, "________")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+
+    if (!maskedSentence.includes("________")) continue;
+    if (countActualWordsExcludingBlanks(maskedSentence) < 3) continue;
+
+    return {
+      promptSentence: maskedSentence,
+      translationId: example.translation_id,
+    };
   }
 
-  // Fallback to case-insensitive term replacement
-  const regex = new RegExp(`\\b${escapeRegExp(item.term)}\\b`, "i");
-  if (regex.test(rawSentence)) {
-    return rawSentence.replace(regex, "________");
-  }
   return null;
 }
 
@@ -100,9 +134,9 @@ function buildQuizCard(
   nonce = 0,
   aiDistractors?: string[]
 ): QuizCard {
-  const blanked = buildBlankSentence(item);
+  const blankResult = buildBlankSentence(item);
   const mode: QuizQuestionMode =
-    preferredMode === "fill_blank" && blanked ? "fill_blank" : "meaning_mc";
+    preferredMode === "fill_blank" && blankResult ? "fill_blank" : "meaning_mc";
 
   const distractorPool = [
     ...pool,
@@ -111,7 +145,7 @@ function buildQuizCard(
     ...FALLBACK_DAILY_IDIOMS,
   ];
 
-  if (mode === "fill_blank" && blanked) {
+  if (mode === "fill_blank" && blankResult) {
     const { choices, correctChoice } = buildNormalizedTermChoices({
       target: item,
       blankTarget: item.term,
@@ -122,7 +156,8 @@ function buildQuizCard(
       uid: `${item.id}-fb-${nonce}`,
       item,
       mode: "fill_blank",
-      promptSentence: blanked,
+      promptSentence: blankResult.promptSentence,
+      promptTranslationId: blankResult.translationId,
       choices,
       correctChoice,
       requeued,
@@ -200,16 +235,28 @@ export function DailyPackModal() {
   const [quizQueue, setQuizQueue] = useState<QuizCard[]>([]);
   const [quizIndex, setQuizIndex] = useState(0);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
-  const [isSavingAnswer, setIsSavingAnswer] = useState(false);
+  const [optimisticCompletedKeys, setOptimisticCompletedKeys] = useState<
+    Set<string>
+  >(() => new Set());
 
   const requeueCounterRef = useRef(0);
   const initializedPackKeyRef = useRef<string | null>(null);
+  const lastPackKeyRef = useRef<string | null>(null);
+  const optimisticCompletedRef = useRef<Set<string>>(new Set());
+  const quizQueueRef = useRef<QuizCard[]>([]);
 
   const totalItems = dailyPack?.items.length ?? 0;
-  const completedSet = useMemo(
-    () => new Set(dailyPack?.completed_terms ?? []),
-    [dailyPack?.completed_terms]
-  );
+  const completedSet = useMemo(() => {
+    const merged = new Set<string>();
+    for (const term of dailyPack?.completed_terms ?? []) {
+      merged.add(normalizeTermKey(term));
+    }
+    for (const key of optimisticCompletedKeys) {
+      merged.add(key);
+    }
+    return merged;
+  }, [dailyPack?.completed_terms, optimisticCompletedKeys]);
+
   const completedCount = useMemo(() => {
     if (!dailyPack) return 0;
     return dailyPack.items.filter((it) =>
@@ -229,6 +276,7 @@ export function DailyPackModal() {
 
       if (remaining.length === 0 && packItems.length > 0) {
         setActiveChunk([]);
+        quizQueueRef.current = [];
         setQuizQueue([]);
         setStage("completed");
         return;
@@ -244,6 +292,7 @@ export function DailyPackModal() {
       );
       setActiveChunk(nextChunk);
       setMemIndex(0);
+      quizQueueRef.current = [];
       setQuizQueue([]);
       setQuizIndex(0);
       setSelectedChoice(null);
@@ -261,10 +310,21 @@ export function DailyPackModal() {
     if (!dailyPack || dailyPack.items.length === 0) return;
 
     const initKey = `${dailyPack.pack_date}-${dailyPack.items.length}-${dailyPack.items[0]?.id ?? ""}`;
+    if (lastPackKeyRef.current !== initKey) {
+      lastPackKeyRef.current = initKey;
+      const empty = new Set<string>();
+      optimisticCompletedRef.current = empty;
+      setOptimisticCompletedKeys(empty);
+    }
+
     if (initializedPackKeyRef.current === initKey) return;
     initializedPackKeyRef.current = initKey;
 
-    startNextChunk(dailyPack.items, new Set(dailyPack.completed_terms));
+    const initialCompleted = new Set<string>(optimisticCompletedRef.current);
+    for (const term of dailyPack.completed_terms) {
+      initialCompleted.add(normalizeTermKey(term));
+    }
+    startNextChunk(dailyPack.items, initialCompleted);
   }, [dailyPack, dailyPackModalOpen, startNextChunk]);
 
   // Escape key closes/dismisses cleanly
@@ -311,6 +371,7 @@ export function DailyPackModal() {
         idx
       )
     );
+    quizQueueRef.current = cards;
     setQuizQueue(cards);
     setQuizIndex(0);
     setSelectedChoice(null);
@@ -319,19 +380,22 @@ export function DailyPackModal() {
 
   const currentQuizCard = quizQueue[quizIndex] ?? null;
 
-  const handleSelectAnswer = async (choice: string) => {
-    if (!currentQuizCard || selectedChoice !== null || isSavingAnswer) return;
+  const handleSelectAnswer = (choice: string) => {
+    if (!currentQuizCard || selectedChoice !== null) return;
     setSelectedChoice(choice);
 
     const isCorrect = choice === currentQuizCard.correctChoice;
     if (isCorrect) {
       playCorrectChime(2);
-      setIsSavingAnswer(true);
-      try {
-        await completeDailyPackItem(currentQuizCard.item);
-      } finally {
-        setIsSavingAnswer(false);
+      const normalizedKey = normalizeTermKey(currentQuizCard.item.term);
+      if (!optimisticCompletedRef.current.has(normalizedKey)) {
+        const nextOptimistic = new Set(optimisticCompletedRef.current);
+        nextOptimistic.add(normalizedKey);
+        optimisticCompletedRef.current = nextOptimistic;
+        setOptimisticCompletedKeys(nextOptimistic);
       }
+      // Run cloud/Supabase persistence in background so Continue never blocks
+      void completeDailyPackItem(currentQuizCard.item);
     } else {
       playWrongThud();
       void recordDailyPackWrongAttempt();
@@ -347,15 +411,19 @@ export function DailyPackModal() {
         true,
         requeueCounterRef.current
       );
-      setQuizQueue((prev) => [...prev, requeuedCard]);
+      const nextQueue = [...quizQueueRef.current, requeuedCard];
+      quizQueueRef.current = nextQueue;
+      setQuizQueue(nextQueue);
     }
   };
 
   const handleAdvanceQuiz = () => {
     if (!currentQuizCard || selectedChoice === null) return;
     playGlassClick();
+    const activeQueue =
+      quizQueueRef.current.length > 0 ? quizQueueRef.current : quizQueue;
     const nextIdx = quizIndex + 1;
-    if (nextIdx < quizQueue.length) {
+    if (nextIdx < activeQueue.length) {
       setQuizIndex(nextIdx);
       setSelectedChoice(null);
       return;
@@ -363,8 +431,10 @@ export function DailyPackModal() {
 
     // Current round's quiz queue finished! Check if more rounds remain today
     const packItems = dailyPack?.items ?? [];
-    const freshCompleted = new Set(dailyPack?.completed_terms ?? []);
-    // Ensure the just-passed item is counted even before state flush
+    const freshCompleted = new Set<string>(optimisticCompletedRef.current);
+    for (const term of dailyPack?.completed_terms ?? []) {
+      freshCompleted.add(normalizeTermKey(term));
+    }
     if (selectedChoice === currentQuizCard.correctChoice) {
       freshCompleted.add(normalizeTermKey(currentQuizCard.item.term));
     }
@@ -385,7 +455,11 @@ export function DailyPackModal() {
   const handleProceedToNextRound = () => {
     if (!dailyPack) return;
     playGlassClick();
-    startNextChunk(dailyPack.items, new Set(dailyPack.completed_terms));
+    const mergedCompleted = new Set<string>(optimisticCompletedRef.current);
+    for (const term of dailyPack.completed_terms) {
+      mergedCompleted.add(normalizeTermKey(term));
+    }
+    startNextChunk(dailyPack.items, mergedCompleted);
   };
 
   const currentMemItem = activeChunk[memIndex] ?? null;
@@ -506,7 +580,12 @@ export function DailyPackModal() {
                     className="h-full w-full rounded-full bg-gradient-to-r from-[#FF9F0A] via-[#30D158] to-[#0A84FF] transform-gpu will-change-transform"
                     style={{ transformOrigin: "left" }}
                     initial={false}
-                    animate={{ scaleX: Math.max(0.03, progressPct / 100) }}
+                    animate={{
+                      scaleX:
+                        completedCount === 0
+                          ? 0
+                          : Math.max(0.03, completedCount / totalItems),
+                    }}
                     transition={IOS_SPRING}
                   />
                 </div>
@@ -828,12 +907,15 @@ export function DailyPackModal() {
                             {currentQuizCard.promptSentence}
                           </p>
                           {!isEn &&
-                            currentQuizCard.item.examples[0]?.translation_id && (
+                            (currentQuizCard.promptTranslationId ??
+                              currentQuizCard.item.examples[0]?.translation_id) && (
                               <p className="text-xs text-[#8E8E93]">
                                 <HighlightedSentence
                                   sentence={
-                                    currentQuizCard.item.examples[0]
-                                      .translation_id
+                                    (currentQuizCard.promptTranslationId ??
+                                      currentQuizCard.item.examples[0]
+                                        ?.translation_id) ||
+                                    ""
                                   }
                                 />
                               </p>
@@ -855,8 +937,8 @@ export function DailyPackModal() {
                             key={`${currentQuizCard.uid}-opt-${idx}`}
                             type="button"
                             whileTap={revealed ? undefined : TAP_SCALE}
-                            disabled={revealed || isSavingAnswer}
-                            onClick={() => void handleSelectAnswer(choice)}
+                            disabled={revealed}
+                            onClick={() => handleSelectAnswer(choice)}
                             className={cn(
                               "flex items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left text-sm font-medium transition-all",
                               !revealed &&
@@ -927,13 +1009,9 @@ export function DailyPackModal() {
                           <motion.button
                             type="button"
                             whileTap={TAP_SCALE}
-                            disabled={isSavingAnswer}
                             onClick={handleAdvanceQuiz}
-                            className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#1A8EFF] cursor-pointer disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#1A8EFF] cursor-pointer"
                           >
-                            {isSavingAnswer ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : null}
                             <span>{t.dailyPack.continueBtn}</span>
                           </motion.button>
                         </div>
