@@ -22,6 +22,15 @@ export type SourceTag =
 
 export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
+export type DailyPackTargetTier =
+  | "A1-A2"
+  | "A2-B1"
+  | "B1-B2"
+  | "B2-C1"
+  | "C1-C2";
+
+export type DailyPackLevelSetting = "auto" | DailyPackTargetTier;
+
 export type SuggestCategory = "mix" | "idiom" | "vocab" | "collocation";
 
 export type SuggestRegister = "any" | "Academic" | "Formal" | "Casual";
@@ -36,6 +45,7 @@ export interface DailyQuotaSettings {
   wordsPerDay: number;
   idiomsPerDay: number;
   autoShowPopup: boolean;
+  targetLevel: DailyPackLevelSetting;
 }
 
 export interface DailyPackItem {
@@ -59,6 +69,7 @@ export interface DailyPackRecord {
   pack_date: string; // YYYY-MM-DD in local timezone
   words_quota: number;
   idioms_quota: number;
+  target_tier?: DailyPackTargetTier;
   items: DailyPackItem[];
   completed_terms: string[]; // normalized term keys completed via recall quiz
   completed_at?: string | null;

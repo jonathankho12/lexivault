@@ -29,6 +29,8 @@ import {
   type DailyRingTargets,
   type MasteryRankInfo,
 } from "@/lib/gamification";
+import { resolveDailyPackTier } from "@/lib/dailyPackTiers";
+import { loadIeltsState } from "@/lib/ieltsStorage";
 import { getDueWords } from "@/lib/sm2";
 import {
   isSfxMuted,
@@ -75,9 +77,11 @@ import type {
   AuthUser,
   AutofillPayload,
   CaptureToastState,
+  CefrLevel,
   CloudSyncStatus,
   DailyPackItem,
   DailyPackRecord,
+  DailyPackTargetTier,
   DailyQuotaSettings,
   DailyRingsProgress,
   DiscoveryItem,
@@ -213,6 +217,9 @@ interface LexiVaultContextValue {
   // Daily Pack & Quota
   dailyQuota: DailyQuotaSettings;
   updateDailyQuota: (patch: Partial<DailyQuotaSettings>) => void;
+  placementCefr: CefrLevel | null;
+  resolvedDailyPackTier: DailyPackTargetTier;
+  applyPlacementLevel: (cefr: CefrLevel) => Promise<void>;
   dailyPack: DailyPackRecord | null;
   isDailyPackLoading: boolean;
   dailyPackError: string | null;
@@ -309,6 +316,7 @@ export function LexiVaultProvider({
   const [dailyQuota, setDailyQuota] = useState<DailyQuotaSettings>(
     DEFAULT_DAILY_QUOTA
   );
+  const [placementCefr, setPlacementCefr] = useState<CefrLevel | null>(null);
   const [dailyPack, setDailyPack] = useState<DailyPackRecord | null>(null);
   const [isDailyPackLoading, setIsDailyPackLoading] = useState(false);
   const [dailyPackError, setDailyPackError] = useState<string | null>(null);
@@ -336,6 +344,16 @@ export function LexiVaultProvider({
   ringTargetsRef.current = ringTargets;
   const dailyQuotaRef = useRef<DailyQuotaSettings>(dailyQuota);
   dailyQuotaRef.current = dailyQuota;
+  const placementCefrRef = useRef<CefrLevel | null>(placementCefr);
+  placementCefrRef.current = placementCefr;
+  const resolvedDailyPackTier = useMemo(
+    () => resolveDailyPackTier(dailyQuota.targetLevel, placementCefr),
+    [dailyQuota.targetLevel, placementCefr]
+  );
+  const resolvedDailyPackTierRef = useRef<DailyPackTargetTier>(
+    resolvedDailyPackTier
+  );
+  resolvedDailyPackTierRef.current = resolvedDailyPackTier;
   const dailyPackRef = useRef<DailyPackRecord | null>(dailyPack);
   dailyPackRef.current = dailyPack;
   const userRef = useRef<AuthUser | null>(user);
@@ -506,6 +524,19 @@ export function LexiVaultProvider({
           res.ringTargets
         );
         setIsHydrated(true);
+
+        void loadIeltsState(user.id)
+          .then((ieltsRes) => {
+            if (!active) return;
+            if (ieltsRes.profile.placement_completed) {
+              setPlacementCefr(ieltsRes.profile.cefr_level);
+            } else {
+              setPlacementCefr(null);
+            }
+          })
+          .catch(() => {
+            // Keep default placementCefr on error
+          });
 
         unsubscribeSync = subscribeRealtimeSync(localToday, user.id, {
           onWordsRefresh: (freshWords) => setWords(freshWords),
@@ -738,6 +769,7 @@ export function LexiVaultProvider({
               date: todayStr,
               wordsQuota: quota.wordsPerDay,
               idiomsQuota: quota.idiomsPerDay,
+              targetTier: resolvedDailyPackTierRef.current,
               existingTerms: wordsRef.current.map((w) => w.term),
               lang,
             }),
@@ -794,6 +826,7 @@ export function LexiVaultProvider({
             pack_date: string;
             words_quota: number;
             idioms_quota: number;
+            target_tier?: DailyPackTargetTier;
             items: DailyPackItem[];
             source?: "gemini" | "fallback";
           };
@@ -802,6 +835,7 @@ export function LexiVaultProvider({
             pack_date: todayStr,
             words_quota: quota.wordsPerDay,
             idioms_quota: quota.idiomsPerDay,
+            target_tier: json.target_tier ?? resolvedDailyPackTierRef.current,
             items: Array.isArray(json.items) ? json.items : [],
             completed_terms: [],
             completed_at: null,
@@ -1045,6 +1079,30 @@ export function LexiVaultProvider({
     }
     return ensureDailyPackLoaded(true);
   }, [ensureDailyPackLoaded, todayStr]);
+
+  const applyPlacementLevel = useCallback(
+    async (cefr: CefrLevel): Promise<void> => {
+      setPlacementCefr(cefr);
+      placementCefrRef.current = cefr;
+      const nextTier = resolveDailyPackTier(
+        dailyQuotaRef.current.targetLevel,
+        cefr
+      );
+      resolvedDailyPackTierRef.current = nextTier;
+
+      const existing = dailyPackRef.current;
+      if (
+        dailyQuotaRef.current.targetLevel === "auto" &&
+        existing &&
+        existing.pack_date === todayStr &&
+        existing.completed_terms.length === 0 &&
+        existing.target_tier !== nextTier
+      ) {
+        await ensureDailyPackLoaded(true);
+      }
+    },
+    [ensureDailyPackLoaded, todayStr]
+  );
 
   // ---------------------------------------------------------------------------
   // Vault Mutations
@@ -2253,6 +2311,9 @@ export function LexiVaultProvider({
     launchPractice,
     dailyQuota,
     updateDailyQuota,
+    placementCefr,
+    resolvedDailyPackTier,
+    applyPlacementLevel,
     dailyPack,
     isDailyPackLoading,
     dailyPackError,

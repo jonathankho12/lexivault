@@ -35,6 +35,10 @@ import {
   shuffleOptions,
 } from "@/lib/distractorEngine";
 import type { AppLanguage } from "@/lib/i18n";
+import {
+  formatDailyPackTierLabel,
+  getDailyPackTierMeta,
+} from "@/lib/dailyPackTiers";
 import { IOS_SHEET_SPRING, IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
   playCorrectChime,
@@ -150,6 +154,7 @@ export function DailyPackModal() {
   const {
     dailyPack,
     dailyQuota,
+    resolvedDailyPackTier,
     isDailyPackLoading,
     dailyPackError,
     dailyPackModalOpen,
@@ -159,6 +164,13 @@ export function DailyPackModal() {
     recordDailyPackWrongAttempt,
     setActiveTab,
   } = useLexiVault();
+  const activeTierMeta = getDailyPackTierMeta(
+    dailyPack?.target_tier ?? resolvedDailyPackTier
+  );
+  const activeTierLabel = formatDailyPackTierLabel(
+    dailyQuota.targetLevel,
+    dailyPack?.target_tier ?? resolvedDailyPackTier
+  );
   const { lang, t } = useLanguage();
   const isEn = lang === "en";
 
@@ -419,9 +431,19 @@ export function DailyPackModal() {
                   <Flame className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#FF9F0A]">
-                    {t.dailyPack.eyebrow}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[#FF9F0A]">
+                      {t.dailyPack.eyebrow}
+                    </p>
+                    <span
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-[10px] font-bold",
+                        activeTierMeta.badgeClass
+                      )}
+                    >
+                      {activeTierLabel}
+                    </span>
+                  </div>
                   <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">
                     {t.dailyPack.modalTitle}
                     {totalItems > 0 && (

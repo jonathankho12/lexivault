@@ -395,6 +395,8 @@ export interface TranslationDictionary {
       wordsPerDayDesc: string;
       idiomsPerDay: string;
       idiomsPerDayDesc: string;
+      targetLevelLabel: string;
+      targetLevelDesc: string;
       autoShowPopup: string;
       autoShowOnDesc: string;
       autoShowOffDesc: string;
@@ -517,7 +519,7 @@ export interface TranslationDictionary {
 export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
   id: {
     auth: {
-      subtitle: "Pelatih Kosakata, Idiom & Kolokasi Bahasa Inggris Pribadi",
+      subtitle: "Pelatih Kosakata, Idiom & IELTS Adaptif (A1–C2)",
       lexiInspiration: "Inspirasi dari anjing setia Abel, Lexi",
       loginTab: "Masuk",
       registerTab: "Daftar Akun",
@@ -544,7 +546,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       hidePassword: "Sembunyikan password",
     },
     nav: {
-      brandSubtitle: "Personal English Vault",
+      brandSubtitle: "Adaptive English Vault (A1–C2)",
       vault: "Vault",
       flashcards: "Flashcards",
       cardsMobile: "Cards",
@@ -588,8 +590,8 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       reviewBtn: "Lihat Materi Hari Ini",
       doLaterBtn: "Nanti aja",
       close: "Tutup",
-      loadingTitle: "Menyiapkan Target Harian C1–C2...",
-      loadingSubtitle: "Meracik kosakata & idiom baru tanpa duplikat dari Vault-mu.",
+      loadingTitle: "Menyiapkan Target Harian Adaptif...",
+      loadingSubtitle: "Meracik kosakata & idiom sesuai level targetmu tanpa duplikat dari Vault.",
       errorFallback: "Gagal memuat Target Harian hari ini. Silakan coba lagi.",
       retryBtn: "Coba Lagi",
       roundLabel: "Ronde",
@@ -651,10 +653,10 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
     suggest: {
       title: "Tambah Kata / Idiom AI",
       subtitle:
-        "Temukan ekspresi bahasa Inggris level C1–C2 yang belum ada di Vault-mu, lalu simpan dalam 1 klik.",
+        "Temukan ekspresi bahasa Inggris adaptif (A1–C2) yang belum ada di Vault-mu, lalu simpan dalam 1 klik.",
       categoryLabel: "Kategori",
       registerLabel: "Register / Nada",
-      catMix: "Mix (C1–C2)",
+      catMix: "Mix (A1–C2)",
       catIdiom: "Idiom",
       catVocab: "Vocab",
       catCollocation: "Collocation",
@@ -667,20 +669,20 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       added: "Tersimpan ✓",
       generateMore: "Cari Lagi",
       generating: "Mencari...",
-      loadingHint: "AI sedang meracik 4 ekspresi C1–C2 baru tanpa duplikat...",
+      loadingHint: "AI sedang meracik 4 ekspresi baru tanpa duplikat...",
       emptyTitle: "Semua saran pada filter ini sudah ada di Vault",
       emptySubtitle:
         "Coba ganti filter kategori/register atau klik Cari Lagi untuk batch segar.",
       errorFallback: "Gagal memuat saran AI. Silakan coba lagi.",
       retryBtn: "Coba Lagi",
       close: "Tutup",
-      sourceAi: "Gemini AI · C1–C2",
-      sourceCurated: "Kurasi C1–C2",
+      sourceAi: "Gemini AI · A1–C2",
+      sourceCurated: "Kurasi A1–C2",
     },
     extractor: {
       title: "Paste & Panen Kata",
       subtitle:
-        "Tempel paragraf artikel, catatan kuliah, atau cerita — AI mengekstrak kosakata & idiom C1/C2 sekaligus.",
+        "Tempel paragraf artikel, catatan kuliah, atau cerita — AI mengekstrak kosakata & idiom penting (A1–C2) sekaligus.",
       textPlaceholder:
         "Tempel teks bahasa Inggris di sini (minimal 15 karakter)...",
       sourceLabel: "Tag Sumber",
@@ -847,7 +849,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       todayFallback: "Hari Ini",
       title: "Daily New Discovery",
       reloadBtn: "Muat Ulang",
-      heroTitle: "Paket Harian Eksklusif",
+      heroTitle: "Paket Harian Adaptif",
       heroSubtitle:
         "Simpan ke Vault untuk masuk otomatis ke pool tes kumulatif, atau langsung uji kemampuan lewat mini-quiz hari ini.",
       allSavedBtn: "Semua Tersimpan",
@@ -859,22 +861,22 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       saving: "Menyimpan...",
       allInVaultTitle: "Semua kata di Discover sudah ada di Vault!",
       allInVaultSubtitle:
-        "Buat batch kosakata, idiom, atau kolokasi C1–C2 baru yang belum ada di Vault-mu.",
+        "Buat batch kosakata, idiom, atau kolokasi A1–C2 baru yang belum ada di Vault-mu.",
       generateMoreTitle: "Tambah Kata & Idiom Tanpa Batas",
       generateMoreBtn: "+ Tambah Kata & Idiom Baru",
       generatingMoreBtn: "Meracik Ekspresi Baru...",
       typeLabel: "Tipe",
       toneLabel: "Nada / Level",
       typeMix: "Mix (Semua)",
-      toneC1C2: "C1–C2",
+      toneC1C2: "Adaptive",
       errorLoadMore: "Gagal memuat kata tambahan. Coba lagi.",
       retryBtn: "Coba Lagi",
       hideSaved: "Hanya yang Baru",
       showAll: "Tampilkan Semua",
     },
     ielts: {
-      bannerEyebrow: "Pelacak IELTS Academic & CEFR",
-      bannerTitleFallback: "Peta Kemampuan IELTS Academic Kamu",
+      bannerEyebrow: "Pelacak IELTS & CEFR Adaptif (A1–C2)",
+      bannerTitleFallback: "Peta Kemampuan Bahasa Inggris & IELTS Kamu",
       retakePlacement: "Ulangi Placement Test",
       startPlacement: "Mulai Placement Test",
       reading: "Reading",
@@ -925,9 +927,11 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       },
       dailyPack: {
         wordsPerDay: "Kata Baru / Hari",
-        wordsPerDayDesc: "Kosakata C1–C2 baru dalam paket harianmu (0–30)",
+        wordsPerDayDesc: "Kosakata baru sesuai target levelmu (0–30)",
         idiomsPerDay: "Idiom Baru / Hari",
-        idiomsPerDayDesc: "Idiom C1–C2 baru dalam paket harianmu (0–20)",
+        idiomsPerDayDesc: "Idiom & frasa baru sesuai target levelmu (0–20)",
+        targetLevelLabel: "Target Level CEFR",
+        targetLevelDesc: "Pilih tier kesulitan paket harian atau gunakan Auto sesuai Placement Test.",
         autoShowPopup: "Tampilkan Pop-up Otomatis Tiap Hari",
         autoShowOnDesc:
           "Aktif — pop-up Target Harian muncul otomatis sekali sehari saat membuka Vault",
@@ -1060,7 +1064,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
   },
   en: {
     auth: {
-      subtitle: "Personal English Vocabulary, Idiom & Collocation Trainer",
+      subtitle: "Adaptive English Vocabulary, Idioms & IELTS Trainer (A1–C2)",
       lexiInspiration: "Inspired by Abel's loyal Rottweiler, Lexi",
       loginTab: "Sign In",
       registerTab: "Create Account",
@@ -1087,7 +1091,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       hidePassword: "Hide password",
     },
     nav: {
-      brandSubtitle: "Personal English Vault",
+      brandSubtitle: "Adaptive English Vault (A1–C2)",
       vault: "Vault",
       flashcards: "Flashcards",
       cardsMobile: "Cards",
@@ -1131,8 +1135,8 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       reviewBtn: "Review Today's Pack",
       doLaterBtn: "Do it later",
       close: "Close",
-      loadingTitle: "Curating Today's C1–C2 Daily Pack...",
-      loadingSubtitle: "Selecting fresh vocabulary & idioms excluded from your Vault.",
+      loadingTitle: "Curating Today's Adaptive Daily Pack...",
+      loadingSubtitle: "Selecting fresh vocabulary & idioms tailored to your target level.",
       errorFallback: "Failed to load today's Daily Pack. Please try again.",
       retryBtn: "Try Again",
       roundLabel: "Round",
@@ -1194,10 +1198,10 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
     suggest: {
       title: "AI Suggest Idiom / Word",
       subtitle:
-        "Discover fresh C1–C2 English expressions not yet in your Vault and save them in one click.",
+        "Discover fresh adaptive English expressions (A1–C2) not yet in your Vault and save them in one click.",
       categoryLabel: "Category",
       registerLabel: "Register / Tone",
-      catMix: "Mix (C1–C2)",
+      catMix: "Mix (A1–C2)",
       catIdiom: "Idiom",
       catVocab: "Vocab",
       catCollocation: "Collocation",
@@ -1210,20 +1214,20 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       added: "Added ✓",
       generateMore: "Generate More",
       generating: "Generating...",
-      loadingHint: "AI is curating 4 fresh non-duplicate C1–C2 expressions...",
+      loadingHint: "AI is curating 4 fresh non-duplicate expressions...",
       emptyTitle: "All suggestions in this filter are already in your Vault",
       emptySubtitle:
         "Try switching the category or register filter, or tap Generate More for a new batch.",
       errorFallback: "Failed to load AI suggestions. Please try again.",
       retryBtn: "Try Again",
       close: "Close",
-      sourceAi: "Gemini AI · C1–C2",
-      sourceCurated: "Curated C1–C2",
+      sourceAi: "Gemini AI · A1–C2",
+      sourceCurated: "Curated A1–C2",
     },
     extractor: {
       title: "Paste & Harvest Vocabulary",
       subtitle:
-        "Paste an article paragraph, lecture notes, or story — AI extracts C1/C2 vocabulary & idioms at once.",
+        "Paste an article paragraph, lecture notes, or story — AI extracts key vocabulary & idioms (A1–C2) at once.",
       textPlaceholder: "Paste English text here (minimum 15 characters)...",
       sourceLabel: "Source Tag",
       extractBtn: "Extract Vocabulary",
@@ -1235,7 +1239,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       savedPrefix: "Successfully saved",
       savedSuffix: "expressions to Vault!",
       emptyErr:
-        "No notable C1/C2 vocabulary or idioms detected. Try a richer paragraph.",
+        "No notable vocabulary or idioms detected. Try a richer paragraph.",
       genericErr: "Failed to extract vocabulary. Please try again.",
       close: "Close",
       alreadyInVault: "Already in Vault",
@@ -1387,7 +1391,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       todayFallback: "Today",
       title: "Daily New Discovery",
       reloadBtn: "Refresh",
-      heroTitle: "Exclusive Daily Pack",
+      heroTitle: "Adaptive Daily Pack",
       heroSubtitle:
         "Save to your Vault to include in cumulative drills, or test yourself immediately with today's mini-quiz.",
       allSavedBtn: "All Saved",
@@ -1399,22 +1403,22 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       saving: "Saving...",
       allInVaultTitle: "All Discover items are already in your Vault!",
       allInVaultSubtitle:
-        "Generate a fresh batch of C1–C2 vocabulary, idioms, or collocations excluded from your Vault.",
+        "Generate a fresh batch of A1–C2 vocabulary, idioms, or collocations excluded from your Vault.",
       generateMoreTitle: "Endless AI Discovery",
       generateMoreBtn: "+ Generate More Words & Idioms",
       generatingMoreBtn: "Generating Fresh Expressions...",
       typeLabel: "Type",
       toneLabel: "Tone / Level",
       typeMix: "Mix (All)",
-      toneC1C2: "C1–C2",
+      toneC1C2: "Adaptive",
       errorLoadMore: "Failed to generate more expressions. Please try again.",
       retryBtn: "Retry",
       hideSaved: "Fresh Only",
       showAll: "Show All",
     },
     ielts: {
-      bannerEyebrow: "IELTS Academic & CEFR Tracker",
-      bannerTitleFallback: "Your IELTS Academic Skill Map",
+      bannerEyebrow: "Adaptive IELTS & CEFR Tracker (A1–C2)",
+      bannerTitleFallback: "Your English & IELTS Skill Map",
       retakePlacement: "Retake Placement Test",
       startPlacement: "Start Placement Test",
       reading: "Reading",
@@ -1465,9 +1469,11 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       },
       dailyPack: {
         wordsPerDay: "New Words / Day",
-        wordsPerDayDesc: "Fresh C1–C2 vocabulary in your daily pack (0–30)",
+        wordsPerDayDesc: "Fresh vocabulary tailored to your target level (0–30)",
         idiomsPerDay: "New Idioms / Day",
-        idiomsPerDayDesc: "Fresh C1–C2 idioms in your daily pack (0–20)",
+        idiomsPerDayDesc: "Fresh idioms & expressions tailored to your target level (0–20)",
+        targetLevelLabel: "CEFR Target Tier",
+        targetLevelDesc: "Pick your Daily Pack difficulty tier or use Auto from your Placement Test.",
         autoShowPopup: "Auto-show Daily Pop-up",
         autoShowOnDesc:
           "Enabled — automatically opens once per new day when visiting Vault",

@@ -1,5 +1,5 @@
 import { normalizeTermKey } from "@/lib/utils";
-import type { DailyPackItem } from "@/types/lexivault";
+import type { DailyPackItem, DailyPackTargetTier } from "@/types/lexivault";
 
 export const FALLBACK_DAILY_WORDS: DailyPackItem[] = [
   {
@@ -1586,27 +1586,840 @@ function deterministicShuffle<T>(arr: T[], seedStr: string): T[] {
   return copy;
 }
 
+const TIER_FALLBACK_ITEMS: Record<
+  Exclude<DailyPackTargetTier, "C1-C2">,
+  { words: DailyPackItem[]; idioms: DailyPackItem[] }
+> = {
+  "A1-A2": {
+    words: [
+      {
+        id: "dp-a1-arrive",
+        term: "arrive",
+        pronunciation: "uh·RYV",
+        ipa: "/əˈraɪv/",
+        cefr: "A1",
+        type: "vocab",
+        meaning_en: "To reach a place at the end of a journey.",
+        meaning_id: "Tiba atau sampai di suatu tempat.",
+        examples: [
+          {
+            sentence: "We will **arrive** at the train station at 8 a.m.",
+            translation_id: "Kami akan **tiba** di stasiun kereta pukul 8 pagi.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["reach", "get to"],
+        antonyms: ["leave", "depart"],
+        word_families: [{ word: "arrival", pos: "noun" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a1-borrow",
+        term: "borrow",
+        pronunciation: "BOR·oh",
+        ipa: "/ˈbɒr.əʊ/",
+        cefr: "A2",
+        type: "vocab",
+        meaning_en: "To take and use something from someone with the plan to return it.",
+        meaning_id: "Meminjam sesuatu untuk sementara waktu.",
+        examples: [
+          {
+            sentence: "Can I **borrow** your charger for ten minutes?",
+            translation_id: "Boleh saya **meminjam** pengisi dayamu selama sepuluh menit?",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["use temporarily"],
+        antonyms: ["lend"],
+        word_families: [{ word: "borrower", pos: "noun" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a1-schedule",
+        term: "schedule",
+        pronunciation: "SKEJ·ool",
+        ipa: "/ˈʃedʒ.uːl/",
+        cefr: "A2",
+        type: "vocab",
+        meaning_en: "A plan that lists times for events, classes, or tasks.",
+        meaning_id: "Jadwal atau daftar rencana waktu kegiatan.",
+        examples: [
+          {
+            sentence: "My work **schedule** is very busy on Mondays.",
+            translation_id: "**Jadwal** kerja saya sangat padat setiap hari Senin.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["timetable", "plan"],
+        antonyms: [],
+        word_families: [{ word: "scheduled", pos: "adj" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a1-prefer",
+        term: "prefer",
+        pronunciation: "prih·FUR",
+        ipa: "/prɪˈfɜːr/",
+        cefr: "A1",
+        type: "vocab",
+        meaning_en: "To like one thing or person better than another.",
+        meaning_id: "Lebih memilih atau lebih menyukai sesuatu daripada yang lain.",
+        examples: [
+          {
+            sentence: "I **prefer** hot tea to iced coffee in the morning.",
+            translation_id: "Saya **lebih suka** teh hangat daripada kopi es di pagi hari.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["favor", "choose"],
+        antonyms: ["dislike"],
+        word_families: [{ word: "preference", pos: "noun" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a1-comfortable",
+        term: "comfortable",
+        pronunciation: "KUHM·fer·tuh·buhl",
+        ipa: "/ˈkʌm.fə.tə.bəl/",
+        cefr: "A2",
+        type: "vocab",
+        meaning_en: "Giving a pleasant feeling of relaxation and ease.",
+        meaning_id: "Nyaman dan membuat santai.",
+        examples: [
+          {
+            sentence: "These walking shoes are light and very **comfortable**.",
+            translation_id: "Sepatu jalan ini ringan dan sangat **nyaman**.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["cozy", "pleasant"],
+        antonyms: ["uncomfortable"],
+        word_families: [{ word: "comfort", pos: "noun" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a1-prepare",
+        term: "prepare",
+        pronunciation: "prih·PAIR",
+        ipa: "/prɪˈpeər/",
+        cefr: "A1",
+        type: "vocab",
+        meaning_en: "To make something or yourself ready for use or an event.",
+        meaning_id: "Mempersiapkan sesuatu atau diri sendiri.",
+        examples: [
+          {
+            sentence: "She likes to **prepare** lunch the night before work.",
+            translation_id: "Dia suka **menyiapkan** makan siang pada malam sebelum bekerja.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["get ready", "arrange"],
+        antonyms: [],
+        word_families: [{ word: "preparation", pos: "noun" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+    ],
+    idioms: [
+      {
+        id: "dp-a1-look-for",
+        term: "look for",
+        pronunciation: "LUK for",
+        ipa: "/lʊk fɔːr/",
+        cefr: "A1",
+        type: "idiom",
+        meaning_en: "To try to find someone or something.",
+        meaning_id: "Mencari seseorang atau sesuatu.",
+        examples: [
+          {
+            sentence: "I need to **look for** my house keys before we leave.",
+            translation_id: "Saya harus **mencari** kunci rumah sebelum kita berangkat.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["search for", "seek"],
+        antonyms: [],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a1-right-away",
+        term: "right away",
+        pronunciation: "RYT uh·WAY",
+        ipa: "/raɪt əˈweɪ/",
+        cefr: "A2",
+        type: "idiom",
+        meaning_en: "Immediately, without any delay.",
+        meaning_id: "Segera atau langsung saat itu juga.",
+        examples: [
+          {
+            sentence: "Please call me **right away** when you get home.",
+            translation_id: "Tolong hubungi saya **segera** setelah kamu sampai di rumah.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["immediately", "at once"],
+        antonyms: ["later"],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a1-get-along",
+        term: "get along",
+        pronunciation: "get uh·LONG",
+        ipa: "/ɡet əˈlɒŋ/",
+        cefr: "A2",
+        type: "idiom",
+        meaning_en: "To have a friendly relationship with someone.",
+        meaning_id: "Akur atau berhubungan baik dengan seseorang.",
+        examples: [
+          {
+            sentence: "My new roommate and I **get along** really well.",
+            translation_id: "Saya dan teman sekamar baru saya sangat **akur**.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["be friendly", "connect well"],
+        antonyms: ["argue"],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a1-take-care",
+        term: "take care",
+        pronunciation: "TAYK kair",
+        ipa: "/teɪk keər/",
+        cefr: "A1",
+        type: "idiom",
+        meaning_en: "To stay safe and healthy, or to look after someone.",
+        meaning_id: "Menjaga diri atau merawat seseorang dengan baik.",
+        examples: [
+          {
+            sentence: "Drive safely and **take care** on your trip!",
+            translation_id: "Menyetirlah dengan aman dan **hati-hati** di perjalanan!",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["stay safe", "look after"],
+        antonyms: [],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+    ],
+  },
+  "A2-B1": {
+    words: [
+      {
+        id: "dp-a2b1-improve",
+        term: "improve",
+        pronunciation: "im·PROOV",
+        ipa: "/ɪmˈpruːv/",
+        cefr: "A2",
+        type: "vocab",
+        meaning_en: "To make something better or become better over time.",
+        meaning_id: "Meningkatkan atau memperbaiki kualitas sesuatu.",
+        examples: [
+          {
+            sentence: "Reading aloud every day will **improve** your pronunciation.",
+            translation_id: "Membaca nyaring setiap hari akan **meningkatkan** pelafalanmu.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["enhance", "develop"],
+        antonyms: ["worsen"],
+        word_families: [{ word: "improvement", pos: "noun" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a2b1-reliable",
+        term: "reliable",
+        pronunciation: "rih·LY·uh·buhl",
+        ipa: "/rɪˈlaɪ.ə.bəl/",
+        cefr: "B1",
+        type: "vocab",
+        meaning_en: "Able to be trusted to work well or do what is promised.",
+        meaning_id: "Dapat diandalkan dan dipercaya.",
+        examples: [
+          {
+            sentence: "The morning bus is fast and **reliable** even in heavy rain.",
+            translation_id: "Bus pagi itu cepat dan **dapat diandalkan** bahkan saat hujan deras.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["dependable", "trustworthy"],
+        antonyms: ["unreliable"],
+        word_families: [{ word: "reliability", pos: "noun" }],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a2b1-afford",
+        term: "afford",
+        pronunciation: "uh·FORD",
+        ipa: "/əˈfɔːrd/",
+        cefr: "B1",
+        type: "vocab",
+        meaning_en: "To have enough money or time to buy or do something.",
+        meaning_id: "Mampu secara finansial atau waktu untuk membeli/melakukan sesuatu.",
+        examples: [
+          {
+            sentence: "We saved for six months so we could **afford** a new laptop.",
+            translation_id: "Kami menabung enam bulan agar **mampu membeli** laptop baru.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["pay for", "manage"],
+        antonyms: [],
+        word_families: [{ word: "affordable", pos: "adj" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a2b1-convenient",
+        term: "convenient",
+        pronunciation: "kuhn·VEEN·yuhnt",
+        ipa: "/kənˈviː.ni.ənt/",
+        cefr: "B1",
+        type: "vocab",
+        meaning_en: "Easy to use, close by, or fitting well with your plans.",
+        meaning_id: "Praktis, mudah diakses, atau sesuai dengan jadwal.",
+        examples: [
+          {
+            sentence: "Living near the subway makes my commute much more **convenient**.",
+            translation_id: "Tinggal dekat stasiun kereta membuat perjalanan kerja jauh lebih **praktis**.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["handy", "practical"],
+        antonyms: ["inconvenient"],
+        word_families: [{ word: "convenience", pos: "noun" }],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a2b1-encourage",
+        term: "encourage",
+        pronunciation: "en·KUR·ij",
+        ipa: "/ɪnˈkʌr.ɪdʒ/",
+        cefr: "B1",
+        type: "vocab",
+        meaning_en: "To give someone support or confidence to do something.",
+        meaning_id: "Mendorong atau memberi semangat kepada seseorang.",
+        examples: [
+          {
+            sentence: "Good teachers **encourage** students to ask questions in class.",
+            translation_id: "Guru yang baik **mendorong** siswa untuk bertanya di kelas.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["support", "motivate"],
+        antonyms: ["discourage"],
+        word_families: [{ word: "encouragement", pos: "noun" }],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+    ],
+    idioms: [
+      {
+        id: "dp-a2b1-figure-out",
+        term: "figure out",
+        pronunciation: "FIG·yer owt",
+        ipa: "/ˈfɪɡ.ər aʊt/",
+        cefr: "B1",
+        type: "idiom",
+        meaning_en: "To understand or find the answer to a problem.",
+        meaning_id: "Memahami atau menemukan solusi dari suatu masalah.",
+        examples: [
+          {
+            sentence: "It took me an hour to **figure out** how the new printer works.",
+            translation_id: "Saya butuh satu jam untuk **memahami** cara kerja printer baru itu.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["solve", "work out"],
+        antonyms: [],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a2b1-make-up-mind",
+        term: "make up one's mind",
+        pronunciation: "MAYK uhp wuhnz mynd",
+        ipa: "/meɪk ʌp wʌnz maɪnd/",
+        cefr: "B1",
+        type: "idiom",
+        meaning_en: "To make a final decision after thinking about options.",
+        meaning_id: "Memutuskan pilihan secara mantap.",
+        examples: [
+          {
+            sentence: "I still cannot **make up my mind** about which course to take.",
+            translation_id: "Saya masih belum bisa **memutuskan** kursus mana yang akan diambil.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["decide", "choose"],
+        antonyms: ["hesitate"],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-a2b1-run-out-of",
+        term: "run out of",
+        pronunciation: "ruhn OWT uhv",
+        ipa: "/rʌn aʊt əv/",
+        cefr: "A2",
+        type: "idiom",
+        meaning_en: "To use all of something so that none is left.",
+        meaning_id: "Kehabisan sesuatu.",
+        examples: [
+          {
+            sentence: "We **ran out of** milk, so I stopped by the store.",
+            translation_id: "Kami **kehabisan** susu, jadi saya mampir ke toko.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["use up", "exhaust"],
+        antonyms: ["stock up on"],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+    ],
+  },
+  "B1-B2": {
+    words: [
+      {
+        id: "dp-b1b2-efficient",
+        term: "efficient",
+        pronunciation: "ih·FISH·uhnt",
+        ipa: "/ɪˈfɪʃ.ənt/",
+        cefr: "B1",
+        type: "vocab",
+        meaning_en: "Working well and producing good results without wasting time or energy.",
+        meaning_id: "Efisien; bekerja efektif tanpa membuang waktu atau tenaga.",
+        examples: [
+          {
+            sentence: "Automated reminders created a more **efficient** onboarding workflow.",
+            translation_id: "Pengingat otomatis menciptakan alur orientasi yang lebih **efisien**.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["productive", "streamlined"],
+        antonyms: ["inefficient"],
+        word_families: [{ word: "efficiency", pos: "noun" }],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b1b2-persuade",
+        term: "persuade",
+        pronunciation: "per·SWAYD",
+        ipa: "/pəˈsweɪd/",
+        cefr: "B1",
+        type: "vocab",
+        meaning_en: "To convince someone to agree with an idea or take a specific action.",
+        meaning_id: "Membujuk atau meyakinkan seseorang agar setuju.",
+        examples: [
+          {
+            sentence: "Clear user data helped **persuade** the manager to approve the redesign.",
+            translation_id: "Data pengguna yang jelas membantu **meyakinkan** manajer untuk menyetujui desain ulang.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["convince", "influence"],
+        antonyms: ["dissuade"],
+        word_families: [{ word: "persuasive", pos: "adj" }],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b1b2-flexible",
+        term: "flexible",
+        pronunciation: "FLEK·suh·buhl",
+        ipa: "/ˈflek.sə.bəl/",
+        cefr: "B2",
+        type: "vocab",
+        meaning_en: "Able to adapt easily to new situations or changes in plans.",
+        meaning_id: "Fleksibel; mudah menyesuaikan diri dengan perubahan.",
+        examples: [
+          {
+            sentence: "A **flexible** schedule helps remote teams work across time zones.",
+            translation_id: "Jadwal yang **fleksibel** membantu tim jarak jauh bekerja lintas zona waktu.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["adaptable", "versatile"],
+        antonyms: ["rigid"],
+        word_families: [{ word: "flexibility", pos: "noun" }],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b1b2-substantial",
+        term: "substantial",
+        pronunciation: "suhb·STAN·shuhl",
+        ipa: "/səbˈstæn.ʃəl/",
+        cefr: "B2",
+        type: "vocab",
+        meaning_en: "Large in amount, value, or importance.",
+        meaning_id: "Besar, berarti, atau signifikan jumlah maupun dampaknya.",
+        examples: [
+          {
+            sentence: "The city made a **substantial** investment in solar-powered buses.",
+            translation_id: "Kota tersebut melakukan investasi yang **besar** pada bus bertenaga surya.",
+            context: "Academic",
+          },
+        ],
+        synonyms: ["significant", "considerable"],
+        antonyms: ["minor"],
+        word_families: [{ word: "substantially", pos: "adv" }],
+        register: "Academic",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b1b2-prioritize",
+        term: "prioritize",
+        pronunciation: "pry·OR·ih·tyz",
+        ipa: "/praɪˈɒr.ɪ.taɪz/",
+        cefr: "B2",
+        type: "vocab",
+        meaning_en: "To decide which tasks are most important and handle them first.",
+        meaning_id: "Memprioritaskan atau mendahulukan hal yang paling penting.",
+        examples: [
+          {
+            sentence: "Before exam week, you should **prioritize** your weakest subjects.",
+            translation_id: "Sebelum pekan ujian, kamu sebaiknya **memprioritaskan** mata pelajaran terlemahmu.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["rank first", "focus on"],
+        antonyms: ["neglect"],
+        word_families: [{ word: "priority", pos: "noun" }],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+    ],
+    idioms: [
+      {
+        id: "dp-b1b2-on-the-same-page",
+        term: "on the same page",
+        pronunciation: "on thuh SAYM payj",
+        ipa: "/ɒn ðə seɪm peɪdʒ/",
+        cefr: "B2",
+        type: "idiom",
+        meaning_en: "Having the same understanding or agreement about a plan.",
+        meaning_id: "Sepaham atau memiliki pemahaman yang sama.",
+        examples: [
+          {
+            sentence: "Let's hold a quick call so the whole team is **on the same page**.",
+            translation_id: "Mari adakan rapat singkat agar seluruh tim **sepaham**.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["in agreement", "aligned"],
+        antonyms: ["at odds"],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b1b2-in-the-long-run",
+        term: "in the long run",
+        pronunciation: "in thuh LONG ruhn",
+        ipa: "/ɪn ðə lɒŋ rʌn/",
+        cefr: "B1",
+        type: "idiom",
+        meaning_en: "Over a long period of time in the future, rather than immediately.",
+        meaning_id: "Dalam jangka panjang.",
+        examples: [
+          {
+            sentence: "Buying quality tools saves money **in the long run**.",
+            translation_id: "Membeli peralatan berkualitas menghemat uang **dalam jangka panjang**.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["eventually", "over time"],
+        antonyms: ["in the short term"],
+        word_families: [],
+        register: "Casual",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b1b2-take-into-account",
+        term: "take into account",
+        pronunciation: "TAYK in·too uh·KOWNT",
+        ipa: "/teɪk ˈɪn.tuː əˈkaʊnt/",
+        cefr: "B2",
+        type: "idiom",
+        meaning_en: "To consider a particular fact or factor before making a decision.",
+        meaning_id: "Mempertimbangkan atau memperhitungkan suatu faktor.",
+        examples: [
+          {
+            sentence: "We must **take into account** local weather before setting the event date.",
+            translation_id: "Kita harus **mempertimbangkan** cuaca lokal sebelum menentukan tanggal acara.",
+            context: "Formal",
+          },
+        ],
+        synonyms: ["consider", "factor in"],
+        antonyms: ["ignore"],
+        word_families: [],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+    ],
+  },
+  "B2-C1": {
+    words: [
+      {
+        id: "dp-b2c1-pragmatic",
+        term: "pragmatic",
+        pronunciation: "prag·MAT·ik",
+        ipa: "/præɡˈmæt.ɪk/",
+        cefr: "C1",
+        type: "vocab",
+        meaning_en: "Dealing with problems sensibly and realistically based on practical outcomes.",
+        meaning_id: "Pragmatis; realistis dan fokus pada solusi praktis.",
+        examples: [
+          {
+            sentence: "She took a **pragmatic** approach to trimming the budget without cutting quality.",
+            translation_id: "Ia mengambil pendekatan **pragmatis** untuk memangkas anggaran tanpa menurunkan kualitas.",
+            context: "Daily",
+          },
+        ],
+        synonyms: ["practical", "realistic"],
+        antonyms: ["idealistic"],
+        word_families: [{ word: "pragmatism", pos: "noun" }],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b2c1-feasible",
+        term: "feasible",
+        pronunciation: "FEE·zuh·buhl",
+        ipa: "/ˈfiː.zə.bəl/",
+        cefr: "B2",
+        type: "vocab",
+        meaning_en: "Possible and practical to achieve smoothly under current conditions.",
+        meaning_id: "Layak dan mungkin untuk dilaksanakan secara realistis.",
+        examples: [
+          {
+            sentence: "Engineers confirmed that completing the bridge by autumn is **feasible**.",
+            translation_id: "Para insinyur memastikan penyelesaian jembatan pada musim gugur itu **layak dilakukan**.",
+            context: "Academic",
+          },
+        ],
+        synonyms: ["viable", "achievable"],
+        antonyms: ["impractical"],
+        word_families: [{ word: "feasibility", pos: "noun" }],
+        register: "Academic",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b2c1-mitigate",
+        term: "mitigate",
+        pronunciation: "MIT·ih·gayt",
+        ipa: "/ˈmɪt.ɪ.ɡeɪt/",
+        cefr: "C1",
+        type: "vocab",
+        meaning_en: "To reduce the severity, harm, or negative impact of something.",
+        meaning_id: "Mengurangi atau meredam tingkat keparahan suatu risiko atau dampak.",
+        examples: [
+          {
+            sentence: "Early flood warnings help **mitigate** property damage in coastal towns.",
+            translation_id: "Peringatan banjir dini membantu **mengurangi** kerusakan properti di kota pesisir.",
+            context: "Academic",
+          },
+        ],
+        synonyms: ["alleviate", "lessen"],
+        antonyms: ["exacerbate"],
+        word_families: [{ word: "mitigation", pos: "noun" }],
+        register: "Academic",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b2c1-coherent",
+        term: "coherent",
+        pronunciation: "koh·HEER·uhnt",
+        ipa: "/kəʊˈhɪə.rənt/",
+        cefr: "B2",
+        type: "vocab",
+        meaning_en: "Logically connected, clear, and consistent as a whole.",
+        meaning_id: "Koheren; tersusun logis, runtut, dan mudah diikuti.",
+        examples: [
+          {
+            sentence: "Her essay presented a **coherent** argument supported by clear evidence.",
+            translation_id: "Esainya menyajikan argumen yang **runtut dan logis** didukung bukti jelas.",
+            context: "Academic",
+          },
+        ],
+        synonyms: ["logical", "consistent"],
+        antonyms: ["incoherent"],
+        word_families: [{ word: "coherence", pos: "noun" }],
+        register: "Academic",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b2c1-compelling",
+        term: "compelling",
+        pronunciation: "kuhm·PEL·ing",
+        ipa: "/kəmˈpel.ɪŋ/",
+        cefr: "C1",
+        type: "vocab",
+        meaning_en: "Powerfully convincing or holding attention because it is so strong.",
+        meaning_id: "Sangat meyakinkan atau memikat perhatian.",
+        examples: [
+          {
+            sentence: "The study offered **compelling** evidence for shorter workweeks.",
+            translation_id: "Studi tersebut memberikan bukti yang **sangat meyakinkan** untuk pekan kerja lebih singkat.",
+            context: "Academic",
+          },
+        ],
+        synonyms: ["convincing", "persuasive"],
+        antonyms: ["unconvincing"],
+        word_families: [{ word: "compel", pos: "verb" }],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+    ],
+    idioms: [
+      {
+        id: "dp-b2c1-strike-a-balance",
+        term: "strike a balance",
+        pronunciation: "STRYK uh BAL·uhns",
+        ipa: "/straɪk ə ˈbæl.əns/",
+        cefr: "B2",
+        type: "idiom",
+        meaning_en: "To find a fair and sensible middle ground between two opposing needs.",
+        meaning_id: "Menemukan titik keseimbangan yang tepat antara dua hal.",
+        examples: [
+          {
+            sentence: "Policies must **strike a balance** between innovation and user privacy.",
+            translation_id: "Kebijakan harus **menemukan keseimbangan** antara inovasi dan privasi pengguna.",
+            context: "Formal",
+          },
+        ],
+        synonyms: ["find middle ground"],
+        antonyms: ["go to extremes"],
+        word_families: [],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b2c1-shed-light-on",
+        term: "shed light on",
+        pronunciation: "shed LYT on",
+        ipa: "/ʃed laɪt ɒn/",
+        cefr: "C1",
+        type: "idiom",
+        meaning_en: "To clarify or reveal new information about a complex topic.",
+        meaning_id: "Memberi kejelasan atau mengungkap fakta baru tentang suatu hal.",
+        examples: [
+          {
+            sentence: "New archaeological scans **shed light on** ancient trade routes.",
+            translation_id: "Pemindaian arkeologi baru **mengungkap kejelasan** tentang jalur dagang kuno.",
+            context: "Academic",
+          },
+        ],
+        synonyms: ["clarify", "illuminate"],
+        antonyms: ["obscure"],
+        word_families: [],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+      {
+        id: "dp-b2c1-pave-the-way",
+        term: "pave the way",
+        pronunciation: "PAYV thuh way",
+        ipa: "/peɪv ðə weɪ/",
+        cefr: "B2",
+        type: "idiom",
+        meaning_en: "To create the right conditions for future progress or success.",
+        meaning_id: "Membuka jalan bagi kemajuan atau perkembangan berikutnya.",
+        examples: [
+          {
+            sentence: "The pilot program **paved the way** for nationwide green transit.",
+            translation_id: "Program perintis itu **membuka jalan** bagi transportasi hijau nasional.",
+            context: "Formal",
+          },
+        ],
+        synonyms: ["prepare the ground", "enable"],
+        antonyms: ["hinder"],
+        word_families: [],
+        register: "Formal",
+        source_tag: "daily_pack",
+      },
+    ],
+  },
+};
+
 export function pickFallbackDailyPack(
   dateStr: string,
   wordsQuota: number,
   idiomsQuota: number,
-  excludeKeys: Set<string>
+  excludeKeys: Set<string>,
+  targetTier: DailyPackTargetTier = "C1-C2"
 ): DailyPackItem[] {
   const safeWordsQuota = Math.max(0, Math.min(30, Math.round(wordsQuota)));
   const safeIdiomsQuota = Math.max(0, Math.min(20, Math.round(idiomsQuota)));
 
-  const availableWords = deterministicShuffle(
-    FALLBACK_DAILY_WORDS.filter(
-      (item) => !excludeKeys.has(normalizeTermKey(item.term))
+  const tierBank =
+    targetTier === "C1-C2" ? null : TIER_FALLBACK_ITEMS[targetTier];
+  const wordPool = tierBank
+    ? [...tierBank.words, ...FALLBACK_DAILY_WORDS]
+    : FALLBACK_DAILY_WORDS;
+  const idiomPool = tierBank
+    ? [...tierBank.idioms, ...FALLBACK_DAILY_IDIOMS]
+    : FALLBACK_DAILY_IDIOMS;
+
+  const availableWords = [
+    ...(tierBank
+      ? deterministicShuffle(
+          tierBank.words.filter(
+            (item) => !excludeKeys.has(normalizeTermKey(item.term))
+          ),
+          `${dateStr}-${targetTier}-words`
+        )
+      : []),
+    ...deterministicShuffle(
+      wordPool.filter(
+        (item) =>
+          !excludeKeys.has(normalizeTermKey(item.term)) &&
+          !(tierBank?.words.some((w) => w.id === item.id) ?? false)
+      ),
+      `${dateStr}-words`
     ),
-    `${dateStr}-words`
-  );
-  const availableIdioms = deterministicShuffle(
-    FALLBACK_DAILY_IDIOMS.filter(
-      (item) => !excludeKeys.has(normalizeTermKey(item.term))
+  ];
+
+  const availableIdioms = [
+    ...(tierBank
+      ? deterministicShuffle(
+          tierBank.idioms.filter(
+            (item) => !excludeKeys.has(normalizeTermKey(item.term))
+          ),
+          `${dateStr}-${targetTier}-idioms`
+        )
+      : []),
+    ...deterministicShuffle(
+      idiomPool.filter(
+        (item) =>
+          !excludeKeys.has(normalizeTermKey(item.term)) &&
+          !(tierBank?.idioms.some((i) => i.id === item.id) ?? false)
+      ),
+      `${dateStr}-idioms`
     ),
-    `${dateStr}-idioms`
-  );
+  ];
 
   const pickedWords = availableWords.slice(0, safeWordsQuota).map((item) => ({
     ...item,

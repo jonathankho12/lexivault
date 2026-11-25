@@ -208,11 +208,12 @@ export async function savePlacementCompletion(
   bandScore: number,
   subBands: {
     reading: number;
-    listening: number;
+    listening?: number | null;
     writing: number;
   },
   details: Record<string, unknown>,
-  todayStr: string
+  todayStr: string,
+  cefrOverride?: CefrLevel
 ): Promise<{
   profile: IeltsProfile;
   attempts: IeltsAttempt[];
@@ -221,7 +222,7 @@ export async function savePlacementCompletion(
 }> {
   const nowIso = new Date().toISOString();
   const normalizedBand = roundToHalfBand(bandScore);
-  const cefr = bandToCefr(normalizedBand);
+  const cefr = cefrOverride ?? bandToCefr(normalizedBand);
 
   const attemptDraft: IeltsAttempt = {
     id:
@@ -240,7 +241,10 @@ export async function savePlacementCompletion(
     cefr_level: cefr,
     estimated_band: normalizedBand,
     reading_band: roundToHalfBand(subBands.reading),
-    listening_band: roundToHalfBand(subBands.listening),
+    listening_band:
+      subBands.listening !== undefined && subBands.listening !== null
+        ? roundToHalfBand(subBands.listening)
+        : null,
     writing_band: roundToHalfBand(subBands.writing),
     speaking_band: null,
     placement_completed: true,

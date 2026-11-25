@@ -12,6 +12,7 @@ import type {
 } from "@/types/lexivault";
 import { isLocalOnlyUserId, normalizeUsername } from "@/lib/auth";
 import { cacheWordMeanings, resolveWordMeanings } from "@/lib/bilingualCache";
+import { isValidDailyPackLevelSetting } from "@/lib/dailyPackTiers";
 import {
   DAILY_RING_TARGETS,
   getMasteryRankInfo,
@@ -1139,6 +1140,7 @@ export const DEFAULT_DAILY_QUOTA: DailyQuotaSettings = {
   wordsPerDay: 10,
   idiomsPerDay: 5,
   autoShowPopup: true,
+  targetLevel: "auto",
 };
 
 function clampInt(
@@ -1172,6 +1174,9 @@ export function normalizeDailyQuota(
       typeof partial?.autoShowPopup === "boolean"
         ? partial.autoShowPopup
         : DEFAULT_DAILY_QUOTA.autoShowPopup,
+    targetLevel: isValidDailyPackLevelSetting(partial?.targetLevel)
+      ? partial.targetLevel
+      : DEFAULT_DAILY_QUOTA.targetLevel,
   };
 }
 
@@ -1847,6 +1852,8 @@ export async function loadInitialData(
           wordsPerDay: profileRow.daily_words_quota,
           idiomsPerDay: profileRow.daily_idioms_quota,
           autoShowPopup: profileRow.auto_show_daily_pack,
+          targetLevel:
+            cloudMeta.dailyQuota?.targetLevel ?? localQuota.targetLevel,
         })
       : cloudMeta.dailyQuota
         ? normalizeDailyQuota(cloudMeta.dailyQuota)
@@ -3212,6 +3219,7 @@ export function subscribeRealtimeSync(
                 wordsPerDay: row.daily_words_quota,
                 idiomsPerDay: row.daily_idioms_quota,
                 autoShowPopup: row.auto_show_daily_pack,
+                targetLevel: readLocalDailyQuota(userId).targetLevel,
               }),
               ringTargets: row.ring_targets_json
                 ? normalizeRingTargets(row.ring_targets_json)

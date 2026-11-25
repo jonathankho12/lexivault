@@ -7,9 +7,9 @@ import type {
 export const CEFR_ORDER: CefrLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
 
 export const CEFR_RANGES: Record<CefrLevel, string> = {
-  A1: "< 3.0",
-  A2: "3.0–3.5",
-  B1: "4.0–5.0",
+  A1: "2.5–3.5",
+  A2: "3.5–4.5",
+  B1: "4.5–5.5",
   B2: "5.5–6.5",
   C1: "7.0–8.0",
   C2: "8.5–9.0",
@@ -21,9 +21,9 @@ export function roundToHalfBand(raw: number): number {
 }
 
 export function bandToCefr(band: number): CefrLevel {
-  if (band < 3.0) return "A1";
-  if (band <= 3.5) return "A2";
-  if (band <= 5.0) return "B1";
+  if (band <= 3.5) return "A1";
+  if (band <= 4.5) return "A2";
+  if (band <= 5.5) return "B1";
   if (band <= 6.5) return "B2";
   if (band <= 8.0) return "C1";
   return "C2";
@@ -31,10 +31,10 @@ export function bandToCefr(band: number): CefrLevel {
 
 export function bandToCefrPercent(band: number): number {
   const clamped = Math.max(0, Math.min(9, band));
-  if (clamped < 3.0) return Math.round((clamped / 3.0) * 16.6);
-  if (clamped <= 3.5) return 17 + Math.round(((clamped - 3.0) / 0.5) * 16.6);
-  if (clamped <= 5.0) return 34 + Math.round(((clamped - 3.5) / 1.5) * 16.6);
-  if (clamped <= 6.5) return 51 + Math.round(((clamped - 5.0) / 1.5) * 16.6);
+  if (clamped <= 3.5) return Math.round((clamped / 3.5) * 16.6);
+  if (clamped <= 4.5) return 17 + Math.round(((clamped - 3.5) / 1.0) * 16.6);
+  if (clamped <= 5.5) return 34 + Math.round(((clamped - 4.5) / 1.0) * 16.6);
+  if (clamped <= 6.5) return 51 + Math.round(((clamped - 5.5) / 1.0) * 16.6);
   if (clamped <= 8.0) return 68 + Math.round(((clamped - 6.5) / 1.5) * 16.6);
   return 85 + Math.round(((clamped - 8.0) / 1.0) * 15);
 }

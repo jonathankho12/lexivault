@@ -22,6 +22,7 @@ import { TextExtractorSheet } from "@/components/vault/TextExtractorSheet";
 import { VaultWordCard } from "@/components/vault/VaultWordCard";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
+import { formatDailyPackTierLabel } from "@/lib/dailyPackTiers";
 import { IOS_SPRING, STAGGER_CONTAINER, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
 import {
@@ -47,6 +48,7 @@ export function VaultView() {
     isHydrated,
     dailyPack,
     dailyQuota,
+    resolvedDailyPackTier,
     openDailyPackModal,
     launchCommuteMode,
   } = useLexiVault();
@@ -243,7 +245,7 @@ export function VaultView() {
                 <p className="text-xs text-[#8E8E93] truncate">
                   {dailyPackSummary.isPaused
                     ? t.dailyPack.pausedSubtitle
-                    : `${dailyQuota.wordsPerDay} ${t.dailyPack.wordsCountLabel} · ${dailyQuota.idiomsPerDay} ${t.dailyPack.idiomsCountLabel} · C1–C2`}
+                    : `${dailyQuota.wordsPerDay} ${t.dailyPack.wordsCountLabel} · ${dailyQuota.idiomsPerDay} ${t.dailyPack.idiomsCountLabel} · ${formatDailyPackTierLabel(dailyQuota.targetLevel, resolvedDailyPackTier)}`}
                 </p>
               </div>
             </div>

@@ -54,6 +54,68 @@ export interface PlacementQuestion {
   explanation_id: string;
 }
 
+export type AdaptivePlacementStage = "grammar" | "vocab" | "reading" | "writing";
+
+export interface AdaptivePlacementMcq {
+  id: string;
+  stage: "grammar" | "vocab";
+  cefr: CefrLevel;
+  prompt: string;
+  options: [string, string, string, string];
+  correctAnswer: string;
+  skillTagEn: string;
+  skillTagId: string;
+}
+
+export interface AdaptiveReadingQuestion {
+  id: string;
+  kind: "literal" | "inference";
+  prompt: string;
+  options: [string, string, string, string];
+  correctAnswer: string;
+  skillTagEn: string;
+  skillTagId: string;
+}
+
+export interface AdaptiveReadingPassage {
+  id: string;
+  cefr: CefrLevel;
+  title: string;
+  passage: string;
+  questions: [AdaptiveReadingQuestion, AdaptiveReadingQuestion];
+}
+
+export interface PlacementWritingGradeResult {
+  cefr: CefrLevel;
+  band: number;
+  grammar_accuracy: number;
+  sentence_control: number;
+  lexical_range: number;
+  has_basic_a1_a2_errors: boolean;
+  weaknesses_en: string[];
+  weaknesses_id: string[];
+  summary_en: string;
+  summary_id: string;
+  modelUsed: string;
+}
+
+export interface PlacementDiagnosticSummary {
+  cefr: CefrLevel;
+  estimatedBand: number;
+  subScores: {
+    grammar: number;
+    vocabulary: number;
+    reading: number;
+    writing: number;
+  };
+  weaknessesEn: string[];
+  weaknessesId: string[];
+  capReasonEn: string | null;
+  capReasonId: string | null;
+  writingSummaryEn: string;
+  writingSummaryId: string;
+}
+
 export type ReadingQuestionType = "tfng" | "mcq" | "fill_blank";
 
 export interface ReadingQuestion {

@@ -20,9 +20,9 @@ export const viewport: Viewport = {
 
 const SITE_URL = "https://lexivault.my.id";
 const SITE_TITLE =
-  "LexiVault — AI-Powered English Vocabulary, Idioms & Collocations (A1–C2)";
+  "LexiVault — AI-Powered English Vocabulary, Idioms & IELTS (A1–C2)";
 const SITE_DESCRIPTION =
-  "Master English vocabulary, idioms, and collocations from A1 to C2 with AI-powered definitions, SM-2 spaced repetition flashcards, daily learning packs, IELTS prep, US/UK pronunciation audio, and real-time cloud sync.";
+  "Master English vocabulary, idioms, collocations, and IELTS from A1 to C2 with adaptive daily learning packs, AI-powered definitions, SM-2 spaced repetition flashcards, US/UK pronunciation audio, and real-time cloud sync.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "LexiVault — AI-Powered English Vocabulary, Idioms & Collocations (A1–C2)",
+        alt: "LexiVault — AI-Powered English Vocabulary, Idioms & IELTS (A1–C2)",
       },
     ],
   },

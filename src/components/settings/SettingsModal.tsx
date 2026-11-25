@@ -34,6 +34,10 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePwaInstall } from "@/context/PwaInstallContext";
 import { clearPronunciationCache } from "@/lib/audioCache";
+import {
+  DAILY_PACK_TIER_LIST,
+  getDailyPackTierMeta,
+} from "@/lib/dailyPackTiers";
 import { IOS_SHEET_SPRING, TAP_SCALE } from "@/lib/motion";
 import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
 import { cn, getLocalDateString } from "@/lib/utils";
@@ -58,6 +62,8 @@ export function SettingsModal({
     resetRingTargets,
     dailyQuota,
     updateDailyQuota,
+    placementCefr,
+    resolvedDailyPackTier,
     dailyPack,
     todayStr,
     applyQuotaToTodayPack,
@@ -706,6 +712,88 @@ export function SettingsModal({
                   />
                 </div>
 
+                {/* CEFR Target Level Selector (Auto + 5 Granular Tiers) */}
+                <div className="p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-white">
+                        {t.settings.dailyPack.targetLevelLabel}
+                      </p>
+                      <p className="text-[11px] text-[#8E8E93]">
+                        {t.settings.dailyPack.targetLevelDesc}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full border px-2.5 py-0.5 text-[11px] font-bold shrink-0",
+                        getDailyPackTierMeta(resolvedDailyPackTier).badgeClass
+                      )}
+                    >
+                      {dailyQuota.targetLevel === "auto"
+                        ? `Auto · ${getDailyPackTierMeta(resolvedDailyPackTier).displayLabel}`
+                        : getDailyPackTierMeta(resolvedDailyPackTier).displayLabel}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <motion.button
+                      type="button"
+                      whileTap={TAP_SCALE}
+                      onClick={() => {
+                        playGlassClick();
+                        setApplyPackMsg(null);
+                        updateDailyQuota({ targetLevel: "auto" });
+                      }}
+                      className={cn(
+                        "rounded-2xl border px-3 py-2 text-left transition-colors cursor-pointer",
+                        dailyQuota.targetLevel === "auto"
+                          ? "bg-[#0A84FF]/18 border-[#0A84FF]/55 text-white"
+                          : "bg-white/[0.04] border-white/[0.08] text-[#D1D1D6] hover:bg-white/[0.08]"
+                      )}
+                    >
+                      <p className="text-xs font-bold">
+                        Auto ({getDailyPackTierMeta(resolvedDailyPackTier).displayLabel})
+                      </p>
+                      <p className="text-[10px] text-[#8E8E93] truncate">
+                        {placementCefr
+                          ? lang === "en"
+                            ? `From Placement (${placementCefr})`
+                            : `Dari Placement (${placementCefr})`
+                          : lang === "en"
+                            ? "Default B1–B2"
+                            : "Default B1–B2"}
+                      </p>
+                    </motion.button>
+
+                    {DAILY_PACK_TIER_LIST.map((tier) => {
+                      const active = dailyQuota.targetLevel === tier.id;
+                      return (
+                        <motion.button
+                          key={tier.id}
+                          type="button"
+                          whileTap={TAP_SCALE}
+                          onClick={() => {
+                            playGlassClick();
+                            setApplyPackMsg(null);
+                            updateDailyQuota({ targetLevel: tier.id });
+                          }}
+                          className={cn(
+                            "rounded-2xl border px-3 py-2 text-left transition-colors cursor-pointer",
+                            active
+                              ? "bg-[#0A84FF]/18 border-[#0A84FF]/55 text-white"
+                              : "bg-white/[0.04] border-white/[0.08] text-[#D1D1D6] hover:bg-white/[0.08]"
+                          )}
+                        >
+                          <p className="text-xs font-bold">{tier.displayLabel}</p>
+                          <p className="text-[10px] text-[#8E8E93] truncate">
+                            {lang === "en" ? tier.nameEn : tier.nameId}
+                          </p>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Auto-show Daily Pop-up Toggle */}
                 <div className="flex items-center justify-between gap-3 p-4">
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -765,7 +853,9 @@ export function SettingsModal({
                         (dailyPack.completed_terms.length === 0 &&
                           (dailyPack.words_quota !== dailyQuota.wordsPerDay ||
                             dailyPack.idioms_quota !==
-                              dailyQuota.idiomsPerDay))) && (
+                              dailyQuota.idiomsPerDay ||
+                            (dailyPack.target_tier ?? "C1-C2") !==
+                              resolvedDailyPackTier))) && (
                         <motion.button
                           type="button"
                           whileTap={TAP_SCALE}
