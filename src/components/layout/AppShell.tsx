@@ -12,6 +12,7 @@ import {
   Layers,
   LogOut,
   Settings,
+  SpellCheck,
   User,
   UserPlus,
   Volume2,
@@ -34,6 +35,7 @@ const MOBILE_DOCK_IDS: ReadonlySet<TabId> = new Set([
   "vault",
   "flashcards",
   "practice",
+  "grammar",
   "ielts",
   "stats",
 ]);
@@ -82,6 +84,7 @@ export function AppShell({
       icon: Layers,
     },
     { id: "practice", label: t.nav.practice, icon: GraduationCap },
+    { id: "grammar", label: t.nav.grammar, icon: SpellCheck },
     { id: "ielts", label: t.nav.ielts, icon: Award },
     { id: "discover", label: t.nav.discover, icon: Compass },
     { id: "stats", label: t.nav.stats, icon: BarChart3 },
@@ -572,12 +575,12 @@ export function AppShell({
         </div>
       </main>
 
-      {/* Mobile Floating Liquid Glass Pill Dock — Strictly 5 Icons */}
+      {/* Mobile Floating Liquid Glass Pill Dock */}
       <nav
         aria-label="Mobile Floating Dock"
-        className="md:hidden fixed bottom-[max(0.85rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-40 w-[min(calc(100vw-1rem),24rem)]"
+        className="md:hidden fixed bottom-[max(0.85rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-40 w-[min(calc(100vw-0.75rem),27rem)]"
       >
-        <div className="liquid-glass-chrome grid grid-cols-5 items-center rounded-full p-1">
+        <div className="liquid-glass-chrome grid grid-cols-6 items-center rounded-full p-1">
           {mobileDockItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
@@ -614,7 +617,7 @@ export function AppShell({
                     active ? "text-[#0A84FF]" : "text-current"
                   )}
                 />
-                <span className="text-[10px] font-semibold tracking-tight truncate max-w-full">
+                <span className="text-[9.5px] sm:text-[10px] font-semibold tracking-tight truncate max-w-full">
                   {item.mobileLabel ?? item.label}
                 </span>
               </motion.button>

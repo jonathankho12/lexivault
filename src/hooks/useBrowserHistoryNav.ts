@@ -7,6 +7,7 @@ const VALID_TABS: ReadonlySet<TabId> = new Set([
   "vault",
   "flashcards",
   "practice",
+  "grammar",
   "ielts",
   "discover",
   "stats",

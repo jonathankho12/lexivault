@@ -8,6 +8,7 @@ export type TabId =
   | "vault"
   | "flashcards"
   | "practice"
+  | "grammar"
   | "ielts"
   | "discover"
   | "stats";
@@ -266,3 +267,32 @@ export interface AutofillPayload {
 }
 
 export type SyncMode = "supabase" | "local";
+
+export type GrammarCheckContext = "auto" | "casual" | "academic" | "work";
+
+export type GrammarCheckVerdict =
+  | "correct"
+  | "fragment"
+  | "unnatural"
+  | "incorrect";
+
+export interface GrammarCheckIssue {
+  original: string;
+  correction: string;
+  reason: string;
+}
+
+export interface GrammarCheckAlternative {
+  context: string;
+  example: string;
+  note: string;
+}
+
+export interface GrammarCheckResult {
+  verdict: GrammarCheckVerdict;
+  verdictLabel: string;
+  correctedText: string;
+  explanation: string;
+  issues: GrammarCheckIssue[];
+  alternatives: GrammarCheckAlternative[];
+}

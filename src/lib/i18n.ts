@@ -36,6 +36,7 @@ export interface TranslationDictionary {
     flashcards: string;
     cardsMobile: string;
     practice: string;
+    grammar: string;
     ielts: string;
     discover: string;
     stats: string;
@@ -551,6 +552,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       flashcards: "Flashcards",
       cardsMobile: "Cards",
       practice: "Practice",
+      grammar: "Grammar",
       ielts: "IELTS",
       discover: "Discover",
       stats: "Stats",
@@ -1096,6 +1098,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       flashcards: "Flashcards",
       cardsMobile: "Cards",
       practice: "Practice",
+      grammar: "Grammar",
       ielts: "IELTS",
       discover: "Discover",
       stats: "Stats",

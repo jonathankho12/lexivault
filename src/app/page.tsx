@@ -3,6 +3,7 @@
 import { AuthView } from "@/components/auth/AuthView";
 import { DiscoverView } from "@/components/discover/DiscoverView";
 import { FlashcardsView } from "@/components/flashcards/FlashcardsView";
+import { GrammarCheckerView } from "@/components/GrammarCheckerView";
 import { IeltsView } from "@/components/ielts/IeltsView";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { AppShell } from "@/components/layout/AppShell";
@@ -44,6 +45,8 @@ export default function HomePage() {
         return <FlashcardsView />;
       case "practice":
         return <PracticeView />;
+      case "grammar":
+        return <GrammarCheckerView />;
       case "ielts":
         return <IeltsView />;
       case "discover":
