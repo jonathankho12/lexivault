@@ -25,7 +25,8 @@ export function AccentToggle({
       role="group"
       aria-label="Global pronunciation accent"
       className={cn(
-        "relative inline-flex items-center rounded-full p-1",
+        "relative inline-flex items-center rounded-full",
+        compact ? "p-0.5" : "p-1",
         "bg-white/[0.06] border border-white/[0.11]",
         "shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.16)]"
       )}
@@ -40,7 +41,7 @@ export function AccentToggle({
             onClick={() => setAccent(opt.id)}
             className={cn(
               "relative z-10 flex items-center gap-1.5 rounded-full font-medium transition-colors select-none cursor-pointer",
-              compact ? "px-3 py-1 text-xs" : "px-3.5 py-1.5 text-xs",
+              compact ? "px-2 py-1 text-[11px]" : "px-3.5 py-1.5 text-xs",
               active ? "text-white" : "text-[#8E8E93] hover:text-[#F5F5F7]"
             )}
           >

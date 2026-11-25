@@ -461,20 +461,15 @@ export function AppShell({
       </aside>
 
       {/* Mobile Top Translucent Header */}
-      <header className="md:hidden sticky top-0 z-30 pt-[env(safe-area-inset-top)] liquid-glass-chrome border-x-0 border-t-0">
-        <div className="flex items-center justify-between gap-1.5 px-2.5 py-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+      <header className="md:hidden sticky top-0 z-30 pt-[env(safe-area-inset-top)] liquid-glass-chrome mobile-chrome-bar mobile-chrome-top rounded-none">
+        <div className="flex items-center justify-between gap-2 px-3 py-2">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <LexiLogo size="sm" />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold tracking-tight text-white truncate">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center min-w-0">
+                <span className="text-[15px] leading-tight font-bold tracking-tight text-white whitespace-nowrap">
                   LexiVault
                 </span>
-                {user && !isGuest && (
-                  <span className="text-[10px] font-medium text-[#70BCFF] truncate max-w-[60px]">
-                    @{user.username}
-                  </span>
-                )}
               </div>
               <button
                 type="button"
@@ -482,7 +477,7 @@ export function AppShell({
                   playGlassClick();
                   openStreakCalendar();
                 }}
-                className="text-[10px] text-[#8E8E93] hover:text-[#F5F5F7] truncate text-left transition-[opacity,color] cursor-pointer"
+                className="block max-w-full truncate text-left text-[11px] leading-tight text-[#8E8E93] hover:text-[#F5F5F7] transition-[opacity,color] cursor-pointer"
               >
                 {isGuest
                   ? t.nav.guestModeLabel
@@ -493,19 +488,7 @@ export function AppShell({
             </div>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                playGlassClick();
-                openStreakCalendar();
-              }}
-              aria-label="Daily Activity Rings & Streak"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.05] border border-white/[0.1] hover:bg-white/[0.1] transition-[transform,opacity,border-color,background-color] cursor-pointer"
-            >
-              <ActivityRings rings={dailyRings} variant="mini" />
-            </button>
-
+          <div className="flex items-center gap-1.5 shrink-0">
             <motion.button
               type="button"
               whileTap={TAP_SCALE}
@@ -573,41 +556,13 @@ export function AppShell({
                 />
               )}
             </motion.button>
-
-            {user && isGuest && (
-              <motion.button
-                type="button"
-                whileTap={TAP_SCALE}
-                onClick={() => {
-                  playGlassClick();
-                  void openRegisterFromGuest();
-                }}
-                aria-label={t.nav.createAccountSync}
-                title={t.nav.createAccountSync}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer"
-              >
-                <UserPlus className="h-3.5 w-3.5" />
-              </motion.button>
-            )}
-            {user && !isGuest && (
-              <motion.button
-                type="button"
-                whileTap={TAP_SCALE}
-                onClick={() => void logout()}
-                aria-label={t.nav.logout}
-                title={t.nav.logout}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.07] border border-white/[0.12] text-[#FF8982] hover:bg-[#FF453A]/15 transition-[opacity,border-color,background-color] cursor-pointer"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-              </motion.button>
-            )}
           </div>
         </div>
       </header>
 
       {/* Main Content — Instant 60 FPS Tab Switch */}
       <main className="md:pl-64 lg:pl-72">
-        <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 pt-4 sm:pt-7 pb-[calc(6.75rem+env(safe-area-inset-bottom))] md:pb-12">
+        <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 pt-4 sm:pt-7 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-12">
           {isGuest && (
             <div className="md:hidden mb-3.5 flex items-center justify-between gap-2 rounded-2xl bg-white/[0.04] border border-white/[0.08] px-3.5 py-2">
               <div className="min-w-0">
@@ -636,12 +591,12 @@ export function AppShell({
         </div>
       </main>
 
-      {/* Mobile Floating Liquid Glass Pill Dock */}
+      {/* Mobile Edge-to-Edge Bottom Navigation Bar */}
       <nav
-        aria-label="Mobile Floating Dock"
-        className="md:hidden fixed bottom-[max(0.85rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-40 w-[min(calc(100vw-0.75rem),27rem)]"
+        aria-label="Mobile Navigation"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 liquid-glass-chrome mobile-chrome-bar mobile-chrome-bottom rounded-none px-1.5 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
       >
-        <div className="liquid-glass-chrome grid grid-cols-6 items-center rounded-full p-1">
+        <div className="mx-auto grid max-w-md grid-cols-6 items-center gap-0.5">
           {mobileDockItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
@@ -655,7 +610,7 @@ export function AppShell({
                   setActiveTab(item.id);
                 }}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-0.5 rounded-full py-2 px-0.5 transition-colors cursor-pointer select-none",
+                  "relative flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 px-0.5 transition-colors cursor-pointer select-none",
                   active ? "text-white" : "text-[#8E8E93]"
                 )}
               >
@@ -663,13 +618,13 @@ export function AppShell({
                   <motion.span
                     layoutId="mobileDockActivePill"
                     transition={IOS_SPRING}
-                    className="transform-gpu will-change-transform absolute inset-0 -z-10 rounded-full bg-white/[0.12] border border-white/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+                    className="transform-gpu will-change-transform absolute inset-0 -z-10 rounded-2xl bg-white/[0.12] border border-white/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
                   />
                 )}
                 {item.id === "flashcards" && isHydrated && dueWordsCount > 0 && (
                   <span
                     aria-hidden="true"
-                    className="absolute top-1.5 right-3.5 h-2 w-2 rounded-full bg-[#FF9F0A]"
+                    className="absolute top-1 right-3 h-2 w-2 rounded-full bg-[#FF9F0A]"
                   />
                 )}
                 <Icon

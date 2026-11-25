@@ -37,6 +37,11 @@ export function getStoredTheme(): ThemePreference {
   }
 }
 
+const HEADER_THEME_COLORS: Record<ResolvedTheme, string> = {
+  dark: "#0B0B0F",
+  light: "#FFFFFF",
+};
+
 export function applyThemeToDom(preference: ThemePreference): ResolvedTheme {
   const resolved = resolveTheme(preference);
   if (typeof document === "undefined") {
@@ -49,13 +54,11 @@ export function applyThemeToDom(preference: ThemePreference): ResolvedTheme {
   root.classList.add(resolved);
   root.style.colorScheme = resolved;
 
-  const themeMeta = document.querySelector('meta[name="theme-color"]');
-  if (themeMeta) {
-    themeMeta.setAttribute(
-      "content",
-      resolved === "light" ? "#F5F7FB" : "#000000"
-    );
-  }
+  const headerColor = HEADER_THEME_COLORS[resolved];
+  const themeMetas = document.querySelectorAll('meta[name="theme-color"]');
+  themeMetas.forEach((meta) => {
+    meta.setAttribute("content", headerColor);
+  });
 
   return resolved;
 }
@@ -274,4 +277,4 @@ export function setThemeWithTransition(
  * Synchronous inline script injected into <head> before React hydration
  * to prevent any dark/light flash on initial load or reload.
  */
-export const THEME_INIT_SCRIPT = `(function(){try{var k="${THEME_STORAGE_KEY}";var s=localStorage.getItem(k);var p=(s==="light"||s==="dark"||s==="system")?s:"${DEFAULT_THEME}";var r=p==="system"?(window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;var d=document.documentElement;d.setAttribute("data-theme",r);d.classList.remove("dark","light");d.classList.add(r);d.style.colorScheme=r;}catch(e){}})();`;
+export const THEME_INIT_SCRIPT = `(function(){try{var k="${THEME_STORAGE_KEY}";var s=localStorage.getItem(k);var p=(s==="light"||s==="dark"||s==="system")?s:"${DEFAULT_THEME}";var r=p==="system"?(window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;var d=document.documentElement;d.setAttribute("data-theme",r);d.classList.remove("dark","light");d.classList.add(r);d.style.colorScheme=r;var c=r==="light"?"#FFFFFF":"#0B0B0F";var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++)m[i].setAttribute("content",c);}catch(e){}})();`;
