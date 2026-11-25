@@ -37,6 +37,7 @@ import {
   getDailyPackTierMeta,
   resolveDailyPackTier,
 } from "@/lib/dailyPackTiers";
+import { hasUserMetLexi, markUserMetLexi } from "@/lib/lexi";
 import { loadIeltsState } from "@/lib/ieltsStorage";
 import { getDueWords } from "@/lib/sm2";
 import {
@@ -57,6 +58,7 @@ import {
   loadInitialData,
   normalizeDailyQuota,
   PENDING_GUEST_UPGRADE_KEY,
+  readLocalCefrOnboarding,
   recordPracticeAttempt,
   recordSm2ReviewAttempt,
   recordWrongQuizLogOnly,
@@ -103,6 +105,9 @@ import type {
 } from "@/types/lexivault";
 
 const ACCENT_STORAGE_KEY = "lexivault_accent_v1";
+const LEXI_ENABLED_STORAGE_KEY = "lexivault_lexi_enabled";
+const pendingLexiIntroSessionKey = (userId: string) =>
+  `lexivault_pending_lexi_intro_${userId}`;
 const dailyDismissKey = (userId: string, dateStr: string) =>
   `lexivault_daily_dismissed_${userId}_${dateStr}`;
 
@@ -236,6 +241,12 @@ interface LexiVaultContextValue {
   effectiveCefr: CefrLevel;
   cefrOnboardingCompleted: boolean;
   showCefrOnboarding: boolean;
+  cefrOnboardingInitialStep: "select" | "placement";
+  isLexiIntroOpen: boolean;
+  completeLexiIntro: (action: "check-level" | "skip") => Promise<void>;
+  lexiEnabled: boolean;
+  setLexiEnabled: (enabled: boolean) => void;
+  toggleLexiEnabled: () => void;
   cefrPromotion: CefrPromotionStatus;
   completeCefrOnboarding: (
     cefr: CefrLevel,
@@ -353,6 +364,12 @@ export function LexiVaultProvider({
   const [userCefr, setUserCefr] = useState<CefrLevel | null>(null);
   const [cefrOnboardingCompleted, setCefrOnboardingCompleted] = useState(true);
   const [showCefrOnboarding, setShowCefrOnboarding] = useState(false);
+  const [cefrOnboardingInitialStep, setCefrOnboardingInitialStep] = useState<
+    "select" | "placement"
+  >("select");
+  const [showLexiIntro, setShowLexiIntro] = useState(false);
+  const [previewLexiIntro, setPreviewLexiIntro] = useState(false);
+  const [lexiEnabled, setLexiEnabledState] = useState(true);
   const [placementLaunchNonce, setPlacementLaunchNonce] = useState(0);
   const [celebrationToast, setCelebrationToast] =
     useState<CelebrationToastState | null>(null);
@@ -408,6 +425,9 @@ export function LexiVaultProvider({
   );
   const autoPopupCheckedKeyRef = useRef<string | null>(null);
   const wordsLogQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingLexiIntroRef = useRef(false);
+  const justRegisteredUserIdRef = useRef<string | null>(null);
+  const onboardingFlowActiveRef = useRef(false);
 
   const runCloudMutation = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T> => {
@@ -463,6 +483,16 @@ export function LexiVaultProvider({
     const savedAccent = window.localStorage.getItem(ACCENT_STORAGE_KEY);
     if (savedAccent === "UK" || savedAccent === "US") {
       setAccentState(savedAccent);
+    }
+
+    const savedLexiEnabled = window.localStorage.getItem(LEXI_ENABLED_STORAGE_KEY);
+    if (savedLexiEnabled === "false") {
+      setLexiEnabledState(false);
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("previewLexiIntro") === "1") {
+      setPreviewLexiIntro(true);
     }
 
     let mounted = true;
@@ -524,6 +554,8 @@ export function LexiVaultProvider({
       setUserCefr(null);
       setCefrOnboardingCompleted(true);
       setShowCefrOnboarding(false);
+      setCefrOnboardingInitialStep("select");
+      setShowLexiIntro(false);
       setCelebrationToast(null);
       setSyncMode("local");
       setSyncStatus("local");
@@ -560,7 +592,42 @@ export function LexiVaultProvider({
         setUserCefr(res.cefrLevel);
         setPlacementCefr(res.placementCompleted ? res.cefrLevel : null);
         setCefrOnboardingCompleted(res.cefrOnboardingCompleted);
-        setShowCefrOnboarding(!res.cefrOnboardingCompleted);
+
+        const isJustRegistered =
+          pendingLexiIntroRef.current ||
+          justRegisteredUserIdRef.current === user.id ||
+          (typeof window !== "undefined" &&
+            window.sessionStorage.getItem(
+              pendingLexiIntroSessionKey(user.id)
+            ) === "1");
+        const alreadyMetLexi = hasUserMetLexi(user.id);
+        const shouldShowNewUserLexiIntro =
+          !alreadyMetLexi &&
+          (isJustRegistered || !res.cefrOnboardingCompleted);
+
+        pendingLexiIntroRef.current = false;
+
+        if (shouldShowNewUserLexiIntro) {
+          onboardingFlowActiveRef.current = true;
+          if (typeof window !== "undefined") {
+            try {
+              window.sessionStorage.setItem(
+                pendingLexiIntroSessionKey(user.id),
+                "1"
+              );
+            } catch {
+              // Ignore sessionStorage restrictions
+            }
+          }
+          // Step 1: Show IntroducingLexiModal first; hold CefrOnboardingModal & DailyPackModal back.
+          setShowLexiIntro(true);
+          setShowCefrOnboarding(false);
+          autoPopupCheckedKeyRef.current = `${user.id}_${localToday}`;
+        } else {
+          onboardingFlowActiveRef.current = !res.cefrOnboardingCompleted;
+          setShowLexiIntro(false);
+          setShowCefrOnboarding(!res.cefrOnboardingCompleted);
+        }
         setSyncMode(res.syncMode);
         setSyncError(res.syncError);
         setSyncStatus(
@@ -658,6 +725,37 @@ export function LexiVaultProvider({
     setSfxMutedState((prev) => {
       const next = !prev;
       persistSfxMuted(next);
+      return next;
+    });
+  }, []);
+
+  const setLexiEnabled = useCallback((enabled: boolean) => {
+    setLexiEnabledState(enabled);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          LEXI_ENABLED_STORAGE_KEY,
+          enabled ? "true" : "false"
+        );
+      } catch {
+        // Ignore storage access errors
+      }
+    }
+  }, []);
+
+  const toggleLexiEnabled = useCallback(() => {
+    setLexiEnabledState((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            LEXI_ENABLED_STORAGE_KEY,
+            next ? "true" : "false"
+          );
+        } catch {
+          // Ignore storage access errors
+        }
+      }
       return next;
     });
   }, []);
@@ -969,7 +1067,18 @@ export function LexiVaultProvider({
   // Auto-open Daily Pack modal once per session on new day if incomplete & autoShowPopup ON
   useEffect(() => {
     if (!isHydrated || !user || activeTab !== "vault") return;
-    if (!cefrOnboardingCompleted || showCefrOnboarding) return;
+    if (
+      !cefrOnboardingCompleted ||
+      showCefrOnboarding ||
+      showLexiIntro ||
+      previewLexiIntro ||
+      onboardingFlowActiveRef.current ||
+      (typeof window !== "undefined" &&
+        window.sessionStorage.getItem(pendingLexiIntroSessionKey(user.id)) ===
+          "1")
+    ) {
+      return;
+    }
 
     const checkKey = `${user.id}_${todayStr}`;
     if (autoPopupCheckedKeyRef.current === checkKey) return;
@@ -1006,7 +1115,9 @@ export function LexiVaultProvider({
     cefrOnboardingCompleted,
     ensureDailyPackLoaded,
     isHydrated,
+    previewLexiIntro,
     showCefrOnboarding,
+    showLexiIntro,
     todayStr,
     user,
   ]);
@@ -1242,6 +1353,10 @@ export function LexiVaultProvider({
       setCefrOnboardingCompleted(true);
       if (!options?.keepModalOpen) {
         setShowCefrOnboarding(false);
+        if (onboardingFlowActiveRef.current) {
+          onboardingFlowActiveRef.current = false;
+          autoPopupCheckedKeyRef.current = `${activeUser.id}_${todayStr}`;
+        }
       }
 
       const nextQuota = normalizeDailyQuota({
@@ -1278,9 +1393,21 @@ export function LexiVaultProvider({
 
   const dismissCefrOnboarding = useCallback(async (): Promise<void> => {
     const activeUser = userRef.current;
+    onboardingFlowActiveRef.current = false;
     setCefrOnboardingCompleted(true);
     setShowCefrOnboarding(false);
     if (!activeUser) return;
+    autoPopupCheckedKeyRef.current = `${activeUser.id}_${todayStr}`;
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.setItem(
+          dailyDismissKey(activeUser.id, todayStr),
+          "1"
+        );
+      } catch {
+        // Ignore sessionStorage restrictions
+      }
+    }
     const fallbackCefr = userCefrRef.current ?? placementCefrRef.current ?? "B1";
     setUserCefr((prev) => prev ?? fallbackCefr);
     await runCloudMutation(() =>
@@ -1289,7 +1416,122 @@ export function LexiVaultProvider({
         cefrOnboardingCompleted: true,
       })
     );
-  }, [runCloudMutation]);
+  }, [runCloudMutation, todayStr]);
+
+  const completeLexiIntro = useCallback(
+    async (action: "check-level" | "skip"): Promise<void> => {
+      const activeUser = userRef.current;
+      pendingLexiIntroRef.current = false;
+      justRegisteredUserIdRef.current = null;
+
+      if (typeof window !== "undefined") {
+        if (activeUser) {
+          markUserMetLexi(activeUser.id);
+          try {
+            window.sessionStorage.removeItem(
+              pendingLexiIntroSessionKey(activeUser.id)
+            );
+          } catch {
+            // Ignore sessionStorage restrictions
+          }
+        }
+        try {
+          const url = new URL(window.location.href);
+          if (url.searchParams.has("previewLexiIntro")) {
+            url.searchParams.delete("previewLexiIntro");
+            window.history.replaceState(
+              window.history.state,
+              "",
+              `${url.pathname}${url.search}${url.hash}`
+            );
+          }
+        } catch {
+          // Ignore history API errors
+        }
+      }
+
+      const wasPreview = previewLexiIntro;
+      setShowLexiIntro(false);
+      setPreviewLexiIntro(false);
+
+      if (!activeUser) {
+        const guest = continueAsGuestSession();
+        markUserMetLexi(guest.id);
+        setAuthInitialMode("login");
+        setUser(guest);
+        if (action === "check-level") {
+          const alreadyOnboarded = Boolean(
+            readLocalCefrOnboarding(guest.id)?.completed
+          );
+          if (alreadyOnboarded) {
+            setPlacementLaunchNonce((n) => n + 1);
+            setActiveTab("ielts");
+          } else {
+            onboardingFlowActiveRef.current = true;
+            setCefrOnboardingInitialStep("select");
+            setActiveTab("vault");
+          }
+        } else {
+          onboardingFlowActiveRef.current = false;
+          setCefrOnboardingInitialStep("select");
+          if (typeof window !== "undefined") {
+            try {
+              window.sessionStorage.setItem(
+                dailyDismissKey(guest.id, todayStr),
+                "1"
+              );
+            } catch {
+              // Ignore sessionStorage restrictions
+            }
+          }
+          setActiveTab("vault");
+        }
+        return;
+      }
+
+      if (action === "check-level") {
+        if (!cefrOnboardingCompleted) {
+          onboardingFlowActiveRef.current = true;
+          autoPopupCheckedKeyRef.current = `${activeUser.id}_${todayStr}`;
+          setCefrOnboardingInitialStep("select");
+          setShowCefrOnboarding(true);
+        } else {
+          onboardingFlowActiveRef.current = false;
+          setPlacementLaunchNonce((n) => n + 1);
+          setActiveTab("ielts");
+        }
+        return;
+      }
+
+      onboardingFlowActiveRef.current = false;
+      setCefrOnboardingInitialStep("select");
+      autoPopupCheckedKeyRef.current = `${activeUser.id}_${todayStr}`;
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem(
+            dailyDismissKey(activeUser.id, todayStr),
+            "1"
+          );
+        } catch {
+          // Ignore sessionStorage restrictions
+        }
+      }
+      if (!cefrOnboardingCompleted || showCefrOnboarding) {
+        await dismissCefrOnboarding();
+      }
+      if (wasPreview) {
+        setActiveTab("vault");
+      }
+    },
+    [
+      cefrOnboardingCompleted,
+      dismissCefrOnboarding,
+      previewLexiIntro,
+      setActiveTab,
+      showCefrOnboarding,
+      todayStr,
+    ]
+  );
 
   const clearCelebrationToast = useCallback(() => {
     setCelebrationToast(null);
@@ -2497,6 +2739,8 @@ export function LexiVaultProvider({
       password: string,
       rememberMe: boolean
     ): Promise<AuthActionResult> => {
+      pendingLexiIntroRef.current = true;
+      onboardingFlowActiveRef.current = true;
       const res = await signUpWithUsername(
         username,
         password,
@@ -2504,6 +2748,17 @@ export function LexiVaultProvider({
         lang
       );
       if (res.user) {
+        justRegisteredUserIdRef.current = res.user.id;
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.setItem(
+              pendingLexiIntroSessionKey(res.user.id),
+              "1"
+            );
+          } catch {
+            // Ignore sessionStorage restrictions
+          }
+        }
         if (res.user.provider === "supabase") {
           await seedStarterWordsForSupabaseUser(
             getLocalDateString(),
@@ -2515,6 +2770,8 @@ export function LexiVaultProvider({
         setActiveTab("vault");
         return { ok: true };
       }
+      pendingLexiIntroRef.current = false;
+      onboardingFlowActiveRef.current = false;
       return { ok: false, error: res.error };
     },
     [lang, setActiveTab]
@@ -2524,6 +2781,9 @@ export function LexiVaultProvider({
     batchRefreshAbortRef.current?.abort();
     batchRefreshAbortRef.current = null;
     batchRefreshRunningRef.current = false;
+    pendingLexiIntroRef.current = false;
+    justRegisteredUserIdRef.current = null;
+    onboardingFlowActiveRef.current = false;
     setBatchRefresh(INITIAL_BATCH_REFRESH_STATE);
     await signOutUser();
     setAuthInitialMode("login");
@@ -2617,6 +2877,12 @@ export function LexiVaultProvider({
     effectiveCefr,
     cefrOnboardingCompleted,
     showCefrOnboarding,
+    cefrOnboardingInitialStep,
+    isLexiIntroOpen: showLexiIntro || previewLexiIntro,
+    completeLexiIntro,
+    lexiEnabled,
+    setLexiEnabled,
+    toggleLexiEnabled,
     cefrPromotion,
     completeCefrOnboarding,
     dismissCefrOnboarding,

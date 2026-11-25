@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { CefrOnboardingModal } from "@/components/CefrOnboardingModal";
+import { IntroducingLexiModal } from "@/components/IntroducingLexiModal";
 import { ActivityRings } from "@/components/gamification/ActivityRings";
 import { AccentToggle } from "@/components/layout/AccentToggle";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
@@ -693,6 +694,9 @@ export function AppShell({
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
       />
+
+      {/* First-Time Lexi Guardian Introduction Modal */}
+      <IntroducingLexiModal />
 
       {/* First-Time CEFR Onboarding Modal */}
       <CefrOnboardingModal />

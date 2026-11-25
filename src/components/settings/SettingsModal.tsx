@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import { CefrRecommendationBanner } from "@/components/gamification/CefrRecommendationBanner";
+import { LexiAvatar } from "@/components/LexiAvatar";
 import { GetAndroidAppPill } from "@/components/pwa/AndroidAppModal";
 import { SettingsDeveloperCard } from "@/components/ui/DeveloperCredits";
 import { FlagEnIcon, FlagIdIcon } from "@/components/ui/FlagIcons";
@@ -62,6 +63,8 @@ export function SettingsModal({
     setAccent,
     sfxMuted,
     toggleSfxMuted,
+    lexiEnabled,
+    toggleLexiEnabled,
     ringTargets,
     updateRingTargets,
     resetRingTargets,
@@ -1051,6 +1054,49 @@ export function SettingsModal({
                       className={cn(
                         "h-5.5 w-5.5 rounded-full bg-white shadow transition-transform transform-gpu",
                         !sfxMuted ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {/* Lexi Companion Toggle */}
+                <div className="flex items-center justify-between gap-3 p-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <LexiAvatar
+                      mood={lexiEnabled ? "happy" : "sleepy"}
+                      size="xs"
+                      animated={lexiEnabled}
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-white">
+                        Lexi Companion
+                      </p>
+                      <p className="text-[11px] text-[#8E8E93]">
+                        Show Lexi&apos;s daily vault status card on your dashboard
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Lexi Companion"
+                    aria-checked={lexiEnabled}
+                    onClick={() => {
+                      playGlassClick();
+                      toggleLexiEnabled();
+                    }}
+                    className={cn(
+                      "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors cursor-pointer p-0.5",
+                      lexiEnabled
+                        ? "bg-[#30D158] border-[#30D158]"
+                        : "bg-white/[0.1] border-white/[0.15]"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-5.5 w-5.5 rounded-full bg-white shadow transition-transform transform-gpu",
+                        lexiEnabled ? "translate-x-5" : "translate-x-0"
                       )}
                     />
                   </button>

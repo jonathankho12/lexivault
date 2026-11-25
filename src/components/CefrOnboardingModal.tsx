@@ -27,6 +27,8 @@ export function CefrOnboardingModal() {
     user,
     isHydrated,
     showCefrOnboarding,
+    isLexiIntroOpen,
+    cefrOnboardingInitialStep,
     completeCefrOnboarding,
     dismissCefrOnboarding,
   } = useLexiVault();
@@ -39,11 +41,11 @@ export function CefrOnboardingModal() {
 
   useEffect(() => {
     if (showCefrOnboarding) {
-      setStep("select");
+      setStep(cefrOnboardingInitialStep);
       setSelectedCefr("B1");
       setSaving(false);
     }
-  }, [showCefrOnboarding, user?.id]);
+  }, [cefrOnboardingInitialStep, showCefrOnboarding, user?.id]);
 
   const handleConfirmLevel = async () => {
     if (!selectedCefr || saving) return;
@@ -60,7 +62,7 @@ export function CefrOnboardingModal() {
 
   return (
     <AnimatePresence>
-      {isHydrated && user && showCefrOnboarding && (
+      {isHydrated && user && showCefrOnboarding && !isLexiIntroOpen && (
         <div
           key="cefr-onboarding-portal"
           className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-0 md:p-6"

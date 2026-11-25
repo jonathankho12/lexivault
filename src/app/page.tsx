@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthView } from "@/components/auth/AuthView";
+import { IntroducingLexiModal } from "@/components/IntroducingLexiModal";
 import { DiscoverView } from "@/components/discover/DiscoverView";
 import { FlashcardsView } from "@/components/flashcards/FlashcardsView";
 import { GrammarCheckerView } from "@/components/GrammarCheckerView";
@@ -36,7 +37,12 @@ export default function HomePage() {
   }
 
   if (!user) {
-    return <AuthView />;
+    return (
+      <>
+        <AuthView />
+        <IntroducingLexiModal />
+      </>
+    );
   }
 
   const renderTab = (tab: TabId) => {

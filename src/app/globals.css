@@ -729,9 +729,298 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .tab-panel-enter,
-  .shimmer-glass::after {
-    animation: none;
+  .shimmer-glass::after,
+  .lexi-avatar-sleepy,
+  .lexi-avatar-alert,
+  .lexi-avatar-happy,
+  .lexi-avatar-restless,
+  .lexi-eye-blink,
+  .lexi-ear-alert-left,
+  .lexi-ear-alert-right,
+  .lexi-ear-happy-left,
+  .lexi-ear-happy-right,
+  .lexi-ear-restless-left,
+  .lexi-ear-restless-right,
+  .lexi-happy-aura,
+  .lexi-sleep-z-1,
+  .lexi-sleep-z-2,
+  .lexi-sleep-z-3,
+  .lexi-sparkle-1,
+  .lexi-sparkle-2,
+  .lexi-sparkle-3 {
+    animation: none !important;
+    transition: none !important;
   }
+}
+
+/* 60 FPS GPU-Only Micro-Animations for Lexi Avatar */
+@keyframes lexiSleepyBreathe {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -1.5px, 0) scale(1.022);
+  }
+}
+
+@keyframes lexiAlertIdle {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -1px, 0) scale(1.015);
+  }
+}
+
+@keyframes lexiEyeBlink {
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+  94% {
+    transform: scaleY(0.08);
+  }
+  97% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes lexiAlertEarLeft {
+  0%,
+  52%,
+  64%,
+  100% {
+    transform: rotate(0deg) translate3d(0, 0, 0);
+  }
+  56% {
+    transform: rotate(-6deg) translate3d(0, -1px, 0);
+  }
+  60% {
+    transform: rotate(-1.5deg) translate3d(0, 0, 0);
+  }
+}
+
+@keyframes lexiAlertEarRight {
+  0%,
+  52%,
+  64%,
+  100% {
+    transform: rotate(0deg) translate3d(0, 0, 0);
+  }
+  56% {
+    transform: rotate(6deg) translate3d(0, -1px, 0);
+  }
+  60% {
+    transform: rotate(1.5deg) translate3d(0, 0, 0);
+  }
+}
+
+@keyframes lexiHappyBob {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -2.5px, 0) scale(1.03);
+  }
+}
+
+@keyframes lexiHappyEarLeft {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(2deg);
+  }
+}
+
+@keyframes lexiHappyEarRight {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(6deg);
+  }
+  75% {
+    transform: rotate(-2deg);
+  }
+}
+
+@keyframes lexiHappyAura {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes lexiSparkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.65) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08) rotate(22deg);
+  }
+}
+
+@keyframes lexiRestlessNudge {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  28% {
+    transform: translate3d(-1.5px, -0.4px, 0) rotate(-1.7deg);
+  }
+  72% {
+    transform: translate3d(1.5px, -0.4px, 0) rotate(1.7deg);
+  }
+}
+
+@keyframes lexiRestlessEarFlick {
+  0%,
+  60%,
+  78%,
+  100% {
+    transform: rotate(0deg);
+  }
+  64% {
+    transform: rotate(9deg) translate3d(0, -1px, 0);
+  }
+  69% {
+    transform: rotate(2deg);
+  }
+  73% {
+    transform: rotate(7deg) translate3d(0, -0.6px, 0);
+  }
+}
+
+@keyframes lexiSleepZ {
+  0% {
+    opacity: 0;
+    transform: translate3d(-2px, 4px, 0) scale(0.8);
+  }
+  35% {
+    opacity: 0.92;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(3px, -6px, 0) scale(1.1);
+  }
+}
+
+.lexi-avatar-sleepy {
+  animation: lexiSleepyBreathe 4.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+.lexi-avatar-alert {
+  animation: lexiAlertIdle 3.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+.lexi-avatar-happy {
+  animation: lexiHappyBob 2.3s ease-in-out infinite;
+  will-change: transform;
+}
+
+.lexi-avatar-restless {
+  animation: lexiRestlessNudge 3s ease-in-out infinite;
+  will-change: transform;
+}
+
+.lexi-eye-blink {
+  animation: lexiEyeBlink 4.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+.lexi-ear-alert-left {
+  animation: lexiAlertEarLeft 4.8s ease-in-out infinite;
+}
+
+.lexi-ear-alert-right {
+  animation: lexiAlertEarRight 4.8s ease-in-out infinite;
+}
+
+.lexi-ear-happy-left {
+  animation: lexiHappyEarLeft 2.3s ease-in-out infinite;
+}
+
+.lexi-ear-happy-right {
+  animation: lexiHappyEarRight 2.3s ease-in-out infinite;
+}
+
+.lexi-ear-restless-right {
+  animation: lexiRestlessEarFlick 3.4s ease-in-out infinite;
+}
+
+.lexi-happy-aura {
+  animation: lexiHappyAura 2.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.lexi-sparkle-1 {
+  animation: lexiSparkle 2.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.lexi-sparkle-2 {
+  animation: lexiSparkle 2.2s ease-in-out 0.65s infinite;
+  will-change: transform, opacity;
+}
+
+.lexi-sparkle-3 {
+  animation: lexiSparkle 2.2s ease-in-out 1.25s infinite;
+  will-change: transform, opacity;
+}
+
+.lexi-sleep-z-1 {
+  animation: lexiSleepZ 2.9s ease-in-out 0s infinite;
+  will-change: transform, opacity;
+}
+
+.lexi-sleep-z-2 {
+  animation: lexiSleepZ 2.9s ease-in-out 0.95s infinite;
+  will-change: transform, opacity;
+}
+
+.lexi-sleep-z-3 {
+  animation: lexiSleepZ 2.9s ease-in-out 1.9s infinite;
+  will-change: transform, opacity;
+}
+
+.lexi-head-tilt,
+.lexi-ear-left,
+.lexi-ear-right {
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.group:hover .lexi-head-tilt {
+  transform: rotate(-2.5deg) translate3d(0, -1px, 0);
+}
+
+.group:hover .lexi-ear-left {
+  transform: rotate(-5deg) translate3d(0, -1px, 0);
+}
+
+.group:hover .lexi-ear-right {
+  transform: rotate(5deg) translate3d(0, -1px, 0);
 }
 
 /* View Transitions API: GPU-Accelerated Circular Theme Reveal */

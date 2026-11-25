@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { CefrRecommendationBanner } from "@/components/gamification/CefrRecommendationBanner";
+import { LexiStatusCard } from "@/components/LexiStatusCard";
 import { ShimmerWordSkeleton } from "@/components/ui/ShimmerWordSkeleton";
 import { AiSuggestSheet } from "@/components/vault/AiSuggestSheet";
 import { DailyPackModal } from "@/components/vault/DailyPackModal";
@@ -62,6 +63,7 @@ export function VaultView() {
     resolvedDailyPackTier,
     openDailyPackModal,
     launchCommuteMode,
+    lexiEnabled,
   } = useLexiVault();
   const { lang, t } = useLanguage();
 
@@ -279,6 +281,9 @@ export function VaultView() {
       />
 
       <DailyPackModal />
+
+      {/* Lexi Companion Daily Vault Maintenance Card */}
+      {lexiEnabled && <LexiStatusCard />}
 
       {/* Persistent Daily Learning Pack CTA Card */}
       {isHydrated && (
