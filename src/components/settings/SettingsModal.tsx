@@ -14,12 +14,15 @@ import {
   Loader2,
   LogOut,
   Minus,
+  Monitor,
+  Moon,
   Plus,
   RefreshCw,
   RotateCcw,
   Settings,
   ShieldCheck,
   Sparkles,
+  Sun,
   Trash2,
   User,
   UserPlus,
@@ -34,6 +37,7 @@ import { FlagEnIcon, FlagIdIcon } from "@/components/ui/FlagIcons";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePwaInstall } from "@/context/PwaInstallContext";
+import { useTheme } from "@/context/ThemeContext";
 import { clearPronunciationCache } from "@/lib/audioCache";
 import {
   DAILY_PACK_TIER_LIST,
@@ -86,6 +90,7 @@ export function SettingsModal({
   } = useLexiVault();
   const { openAppModal } = usePwaInstall();
   const { lang, setLang, t } = useLanguage();
+  const { theme, resolvedTheme, setTheme } = useTheme();
 
   const [editingPassword, setEditingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -576,6 +581,60 @@ export function SettingsModal({
                       >
                         <Check className="h-3 w-3 stroke-[2.5]" />
                       </span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* THEME / APPEARANCE */}
+            <section className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
+                  {lang === "en" ? "Appearance" : "Tampilan"}
+                </h3>
+                {theme === "system" && (
+                  <span className="text-[10px] font-medium text-[#70BCFF]">
+                    {lang === "en"
+                      ? `Following System (${resolvedTheme === "light" ? "Light" : "Dark"})`
+                      : `Mengikuti Sistem (${resolvedTheme === "light" ? "Terang" : "Gelap"})`}
+                  </span>
+                )}
+              </div>
+
+              <div
+                role="radiogroup"
+                aria-label={lang === "en" ? "Theme" : "Tema"}
+                className="grid grid-cols-3 gap-1 rounded-2xl bg-white/[0.04] border border-white/[0.08] p-1"
+              >
+                {(
+                  [
+                    { id: "dark", label: "Dark", Icon: Moon },
+                    { id: "light", label: "Light", Icon: Sun },
+                    { id: "system", label: "System", Icon: Monitor },
+                  ] as const
+                ).map(({ id, label, Icon }) => {
+                  const active = theme === id;
+                  return (
+                    <motion.button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      whileTap={TAP_SCALE}
+                      onClick={() => {
+                        playGlassClick();
+                        setTheme(id);
+                      }}
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-colors cursor-pointer",
+                        active
+                          ? "bg-[#0A84FF] text-white shadow-sm"
+                          : "text-[#8E8E93] hover:text-white hover:bg-white/[0.06]"
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span>{label}</span>
                     </motion.button>
                   );
                 })}

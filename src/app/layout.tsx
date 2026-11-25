@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { LexiVaultProvider } from "@/context/LexiVaultContext";
 import { PwaInstallProvider } from "@/context/PwaInstallContext";
+import { ThemeProvider } from "@/context/ThemeContext";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const inter = Inter({
@@ -100,13 +102,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id" className={`${inter.variable} dark`}>
-      <body className="min-h-screen bg-black text-[#F5F5F7] antialiased selection:bg-[#0A84FF]/35 selection:text-white">
-        <LanguageProvider>
-          <PwaInstallProvider>
-            <LexiVaultProvider>{children}</LexiVaultProvider>
-          </PwaInstallProvider>
-        </LanguageProvider>
+    <html
+      lang="id"
+      data-theme="dark"
+      className={`${inter.variable} dark`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
+      <body className="min-h-screen bg-[var(--ios-obsidian)] text-[var(--ios-text-primary)] antialiased selection:bg-[#0A84FF]/30 selection:text-[var(--ios-text-primary)]">
+        <ThemeProvider>
+          <LanguageProvider>
+            <PwaInstallProvider>
+              <LexiVaultProvider>{children}</LexiVaultProvider>
+            </PwaInstallProvider>
+          </LanguageProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

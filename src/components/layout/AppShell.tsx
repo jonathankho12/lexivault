@@ -11,8 +11,10 @@ import {
   GraduationCap,
   Layers,
   LogOut,
+  Moon,
   Settings,
   SpellCheck,
+  Sun,
   Trophy,
   User,
   UserPlus,
@@ -29,6 +31,7 @@ import { LexiLogo } from "@/components/ui/LexiLogo";
 import { WordDetailSheet } from "@/components/ui/WordDetailSheet";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
+import { useTheme } from "@/context/ThemeContext";
 import { IOS_SPRING, TAB_TRANSITION, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
 import { cn, formatCefrBadgeClass } from "@/lib/utils";
@@ -70,8 +73,18 @@ export function AppShell({
     openRegisterFromGuest,
     logout,
   } = useLexiVault();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const themeToggleLabel =
+    resolvedTheme === "dark"
+      ? lang === "en"
+        ? "Switch to Light Mode"
+        : "Ganti ke Mode Terang"
+      : lang === "en"
+        ? "Switch to Dark Mode"
+        : "Ganti ke Mode Gelap";
 
   useOverlayBackGuard("settings", settingsOpen, () => setSettingsOpen(false));
 
@@ -313,24 +326,44 @@ export function AppShell({
               </button>
             </div>
 
-            {/* Settings Trigger Button */}
-            <motion.button
-              type="button"
-              whileTap={TAP_SCALE}
-              onClick={() => {
-                playGlassClick();
-                setSettingsOpen(true);
-              }}
-              className="flex w-full items-center justify-between gap-2 rounded-2xl bg-white/[0.05] border border-white/[0.09] px-3.5 py-2.5 text-xs font-semibold text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer transition-colors"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Settings className="h-4 w-4 text-[#0A84FF]" />
-                <span>{t.nav.settings}</span>
-              </span>
-              <span className="text-[10px] font-medium text-[#8E8E93]">
-                {isGuest ? t.nav.syncGuest : `@${user?.username ?? ""}`}
-              </span>
-            </motion.button>
+            {/* Settings Trigger & 1-Click Theme Toggle */}
+            <div className="flex items-center gap-2">
+              <motion.button
+                type="button"
+                whileTap={TAP_SCALE}
+                onClick={() => {
+                  playGlassClick();
+                  setSettingsOpen(true);
+                }}
+                className="flex flex-1 min-w-0 items-center justify-between gap-2 rounded-2xl bg-white/[0.05] border border-white/[0.09] px-3.5 py-2.5 text-xs font-semibold text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer transition-colors"
+              >
+                <span className="inline-flex items-center gap-2 min-w-0">
+                  <Settings className="h-4 w-4 text-[#0A84FF] shrink-0" />
+                  <span className="truncate">{t.nav.settings}</span>
+                </span>
+                <span className="text-[10px] font-medium text-[#8E8E93] truncate">
+                  {isGuest ? t.nav.syncGuest : `@${user?.username ?? ""}`}
+                </span>
+              </motion.button>
+
+              <motion.button
+                type="button"
+                whileTap={TAP_SCALE}
+                onClick={() => {
+                  playGlassClick();
+                  toggleTheme();
+                }}
+                aria-label={themeToggleLabel}
+                title={themeToggleLabel}
+                className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl bg-white/[0.05] border border-white/[0.09] text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer transition-colors"
+              >
+                {resolvedTheme === "dark" ? (
+                  <Sun className="h-4 w-4 text-[#FF9F0A]" />
+                ) : (
+                  <Moon className="h-4 w-4 text-[#0A84FF]" />
+                )}
+              </motion.button>
+            </div>
 
             {/* Logged-in User / Guest Profile, XP Rank & Auth Action */}
             {user && (
@@ -491,6 +524,24 @@ export function AppShell({
             </motion.button>
 
             <AccentToggle instanceId="mobile" compact />
+
+            <motion.button
+              type="button"
+              whileTap={TAP_SCALE}
+              onClick={() => {
+                playGlassClick();
+                toggleTheme();
+              }}
+              aria-label={themeToggleLabel}
+              title={themeToggleLabel}
+              className="flex h-8 w-8 items-center justify-center rounded-full border bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer transition-colors"
+            >
+              {resolvedTheme === "dark" ? (
+                <Sun className="h-3.5 w-3.5 text-[#FF9F0A]" />
+              ) : (
+                <Moon className="h-3.5 w-3.5 text-[#0A84FF]" />
+              )}
+            </motion.button>
 
             <motion.button
               type="button"
