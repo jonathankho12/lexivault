@@ -32,7 +32,7 @@ import { WordDetailSheet } from "@/components/ui/WordDetailSheet";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { useTheme } from "@/context/ThemeContext";
-import { IOS_SPRING, TAB_TRANSITION, TAP_SCALE } from "@/lib/motion";
+import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
 import { cn, formatCefrBadgeClass } from "@/lib/utils";
 import type { TabId } from "@/types/lexivault";
@@ -267,7 +267,7 @@ export function AppShell({
                   }}
                   aria-label="Daily Activity Rings"
                   title="Daily Activity Rings"
-                  className="shrink-0 cursor-pointer rounded-full p-0.5 hover:bg-white/[0.06]"
+                  className="shrink-0 cursor-pointer rounded-full p-0.5 hover:bg-white/[0.06] transition-[transform,opacity,border-color,background-color]"
                 >
                   <ActivityRings rings={dailyRings} variant="mini" />
                 </button>
@@ -285,7 +285,7 @@ export function AppShell({
                   setSettingsOpen(true);
                 }}
                 title={syncError?.formatted ?? t.nav.settings}
-                className="flex w-full items-center justify-between pt-1.5 border-t border-white/[0.08] text-[11px] text-left hover:opacity-90 cursor-pointer"
+                className="flex w-full items-center justify-between pt-1.5 border-t border-white/[0.08] text-[11px] text-left hover:opacity-90 cursor-pointer transition-[transform,opacity,border-color,background-color]"
               >
                 <span className="text-[#8E8E93]">{t.nav.syncLabel}</span>
                 <span
@@ -391,7 +391,7 @@ export function AppShell({
                         playGlassClick();
                         void openRegisterFromGuest();
                       }}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-3 py-1.5 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 cursor-pointer"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-3 py-1.5 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer"
                     >
                       <UserPlus className="h-3 w-3" />
                       <span>{t.nav.createAccountSync}</span>
@@ -421,7 +421,7 @@ export function AppShell({
                       onClick={() => void logout()}
                       title={t.nav.logout}
                       aria-label={t.nav.logout}
-                      className="inline-flex items-center gap-1 rounded-full bg-white/[0.07] border border-white/[0.1] px-2.5 py-1.5 text-[11px] font-medium text-[#FF8982] hover:bg-[#FF453A]/15 hover:border-[#FF453A]/35 cursor-pointer"
+                      className="inline-flex items-center gap-1 rounded-full bg-white/[0.07] border border-white/[0.1] px-2.5 py-1.5 text-[11px] font-medium text-[#FF8982] hover:bg-[#FF453A]/15 hover:border-[#FF453A]/35 transition-[opacity,border-color,background-color] cursor-pointer"
                     >
                       <LogOut className="h-3 w-3" />
                       <span>{t.nav.logout}</span>
@@ -480,7 +480,7 @@ export function AppShell({
                   playGlassClick();
                   openStreakCalendar();
                 }}
-                className="text-[10px] text-[#8E8E93] hover:text-[#F5F5F7] truncate text-left cursor-pointer"
+                className="text-[10px] text-[#8E8E93] hover:text-[#F5F5F7] truncate text-left transition-[opacity,color] cursor-pointer"
               >
                 {isGuest
                   ? t.nav.guestModeLabel
@@ -499,7 +499,7 @@ export function AppShell({
                 openStreakCalendar();
               }}
               aria-label="Daily Activity Rings & Streak"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.05] border border-white/[0.1] cursor-pointer"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.05] border border-white/[0.1] hover:bg-white/[0.1] transition-[transform,opacity,border-color,background-color] cursor-pointer"
             >
               <ActivityRings rings={dailyRings} variant="mini" />
             </button>
@@ -557,7 +557,7 @@ export function AppShell({
                   : t.nav.settings
               }
               className={cn(
-                "relative flex h-8 w-8 items-center justify-center rounded-full border cursor-pointer",
+                "relative flex h-8 w-8 items-center justify-center rounded-full border transition-[opacity,border-color,background-color] cursor-pointer",
                 hasSyncError
                   ? "bg-[#FF453A]/15 border-[#FF453A]/45 text-[#FF8982] hover:bg-[#FF453A]/25"
                   : "bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12]"
@@ -582,7 +582,7 @@ export function AppShell({
                 }}
                 aria-label={t.nav.createAccountSync}
                 title={t.nav.createAccountSync}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 text-[#70BCFF] hover:bg-[#0A84FF]/28 cursor-pointer"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer"
               >
                 <UserPlus className="h-3.5 w-3.5" />
               </motion.button>
@@ -594,7 +594,7 @@ export function AppShell({
                 onClick={() => void logout()}
                 aria-label={t.nav.logout}
                 title={t.nav.logout}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.07] border border-white/[0.12] text-[#FF8982] hover:bg-[#FF453A]/15 cursor-pointer"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.07] border border-white/[0.12] text-[#FF8982] hover:bg-[#FF453A]/15 transition-[opacity,border-color,background-color] cursor-pointer"
               >
                 <LogOut className="h-3.5 w-3.5" />
               </motion.button>
@@ -620,7 +620,7 @@ export function AppShell({
                   playGlassClick();
                   void openRegisterFromGuest();
                 }}
-                className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-2.5 py-1 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 cursor-pointer"
+                className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-2.5 py-1 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer"
               >
                 <UserPlus className="h-3 w-3" />
                 <span>{t.nav.createAccountSync}</span>
@@ -628,14 +628,9 @@ export function AppShell({
             </div>
           )}
 
-          <motion.div
-            key={activeTab}
-            initial={TAB_TRANSITION.initial}
-            animate={TAB_TRANSITION.animate}
-            className="transform-gpu will-change-transform"
-          >
+          <div key={activeTab} className="tab-panel-enter">
             {renderTab(activeTab)}
-          </motion.div>
+          </div>
         </div>
       </main>
 
@@ -740,7 +735,7 @@ export function AppShell({
                 type="button"
                 onClick={clearCelebrationToast}
                 aria-label="Dismiss notification"
-                className="rounded-full p-1 text-[#8E8E93] hover:text-white cursor-pointer"
+                className="rounded-full p-1 text-[#8E8E93] hover:text-white transition-[transform,opacity,border-color,background-color,color] cursor-pointer"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

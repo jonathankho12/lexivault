@@ -158,6 +158,8 @@ function getTransitionOrigin(origin?: ThemeTransitionOrigin): {
   return fallback;
 }
 
+let activeThemeTransitionId = 0;
+
 /**
  * Switches theme with an origin-aware circular View Transition reveal
  * when supported, reduced motion is off, and the resolved theme changes.
@@ -198,9 +200,11 @@ export function setThemeWithTransition(
   }
 
   const { x, y } = getTransitionOrigin(eventOrElement);
-  const endRadius = Math.hypot(
-    Math.max(x, window.innerWidth - x),
-    Math.max(y, window.innerHeight - y)
+  const endRadius = Math.ceil(
+    Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    )
   );
 
   let applied = false;
@@ -211,14 +215,36 @@ export function setThemeWithTransition(
     onApply?.(resolved, viaViewTransition);
   };
 
+  const root = document.documentElement;
+  const transitionId = ++activeThemeTransitionId;
+  const clearTransitionClass = () => {
+    if (activeThemeTransitionId === transitionId) {
+      root.classList.remove("theme-transitioning");
+    }
+  };
+
+  root.classList.add("theme-transitioning");
+
   try {
     const transition = startViewTransition.call(document, () => {
       apply(true);
     });
 
+    if (transition.finished && typeof transition.finished.finally === "function") {
+      transition.finished.finally(clearTransitionClass).catch(() => {
+        // Ignore AbortError if a rapid follow-up toggle skips this transition
+      });
+    } else {
+      transition.ready
+        .then(() => {
+          setTimeout(clearTransitionClass, 540);
+        })
+        .catch(clearTransitionClass);
+    }
+
     transition.ready
       .then(() => {
-        document.documentElement.animate(
+        root.animate(
           {
             clipPath: [
               `circle(0px at ${x}px ${y}px)`,
@@ -226,8 +252,9 @@ export function setThemeWithTransition(
             ],
           },
           {
-            duration: 450,
-            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            duration: 520,
+            easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+            fill: "both",
             pseudoElement: "::view-transition-new(root)",
           }
         );
@@ -236,6 +263,7 @@ export function setThemeWithTransition(
         // Ignore AbortError if a rapid follow-up toggle skips this transition
       });
   } catch {
+    clearTransitionClass();
     apply(false);
   }
 

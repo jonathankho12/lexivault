@@ -5,6 +5,8 @@
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   --ios-obsidian: #000000;
   --ios-surface: #0B0B0F;
   --ios-card: rgba(255, 255, 255, 0.055);
@@ -654,11 +656,98 @@ body {
   scrollbar-width: none;
 }
 
-/* View Transitions API: Circular Theme Reveal */
+/* Global GPU-Friendly UI Micro-Transitions */
+@layer base {
+  button,
+  [role="button"] {
+    transition-property: opacity, border-color, background-color;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  button:not([style*="transform"]),
+  [role="button"]:not([style*="transform"]) {
+    transition-property: transform, opacity, border-color, background-color;
+  }
+}
+
+@layer components {
+  .liquid-glass,
+  .liquid-glass-pill,
+  .liquid-glass-elevated,
+  [role="dialog"],
+  [aria-modal="true"] {
+    transition-property: border-color, background-color;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  :is(
+    .liquid-glass,
+    .liquid-glass-pill,
+    .liquid-glass-elevated,
+    [role="dialog"],
+    [aria-modal="true"]
+  ):not([style*="transform"]) {
+    transition-property: transform, opacity, border-color, background-color;
+  }
+}
+
+@layer utilities {
+  :is(
+    button,
+    a,
+    [role="button"],
+    [role="dialog"],
+    [aria-modal="true"],
+    .liquid-glass,
+    .liquid-glass-pill,
+    .liquid-glass-elevated
+  ):is(.transition, .transition-all) {
+    transition-property: transform, opacity, border-color, background-color;
+    transition-duration: var(--tw-duration, 200ms);
+    transition-timing-function: var(--tw-ease, cubic-bezier(0.16, 1, 0.3, 1));
+  }
+}
+
+@keyframes tabPanelEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.tab-panel-enter {
+  animation: tabPanelEnter 220ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-panel-enter,
+  .shimmer-glass::after {
+    animation: none;
+  }
+}
+
+/* View Transitions API: GPU-Accelerated Circular Theme Reveal */
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: none !important;
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 ::view-transition-old(root) {
@@ -667,4 +756,5 @@ body {
 
 ::view-transition-new(root) {
   z-index: 9999;
+  will-change: clip-path;
 }
