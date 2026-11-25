@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { CefrOnboardingModal } from "@/components/CefrOnboardingModal";
 import { IntroducingLexiModal } from "@/components/IntroducingLexiModal";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { ActivityRings } from "@/components/gamification/ActivityRings";
 import { AccentToggle } from "@/components/layout/AccentToggle";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
@@ -697,6 +698,9 @@ export function AppShell({
 
       {/* First-Time Lexi Guardian Introduction Modal */}
       <IntroducingLexiModal />
+
+      {/* Versioned What's New Feature Announcement Modal */}
+      <WhatsNewModal />
 
       {/* First-Time CEFR Onboarding Modal */}
       <CefrOnboardingModal />

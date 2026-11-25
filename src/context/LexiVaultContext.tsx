@@ -38,6 +38,13 @@ import {
   resolveDailyPackTier,
 } from "@/lib/dailyPackTiers";
 import { hasUserMetLexi, markUserMetLexi } from "@/lib/lexi";
+import {
+  getLatestRelease,
+  hasUserSeenRelease,
+  LEXI_COMPANION_RELEASE_ID,
+  markReleaseSeen,
+  type FeatureRelease,
+} from "@/lib/releases";
 import { loadIeltsState } from "@/lib/ieltsStorage";
 import { getDueWords } from "@/lib/sm2";
 import {
@@ -244,6 +251,9 @@ interface LexiVaultContextValue {
   cefrOnboardingInitialStep: "select" | "placement";
   isLexiIntroOpen: boolean;
   completeLexiIntro: (action: "check-level" | "skip") => Promise<void>;
+  activeWhatsNewRelease: FeatureRelease | null;
+  isWhatsNewOpen: boolean;
+  acknowledgeWhatsNew: () => void;
   lexiEnabled: boolean;
   setLexiEnabled: (enabled: boolean) => void;
   toggleLexiEnabled: () => void;
@@ -369,6 +379,10 @@ export function LexiVaultProvider({
   >("select");
   const [showLexiIntro, setShowLexiIntro] = useState(false);
   const [previewLexiIntro, setPreviewLexiIntro] = useState(false);
+  const [whatsNewRelease, setWhatsNewRelease] = useState<FeatureRelease | null>(
+    null
+  );
+  const [previewWhatsNew, setPreviewWhatsNew] = useState(false);
   const [lexiEnabled, setLexiEnabledState] = useState(true);
   const [placementLaunchNonce, setPlacementLaunchNonce] = useState(0);
   const [celebrationToast, setCelebrationToast] =
@@ -424,6 +438,7 @@ export function LexiVaultProvider({
     null
   );
   const autoPopupCheckedKeyRef = useRef<string | null>(null);
+  const whatsNewCheckedKeyRef = useRef<string | null>(null);
   const wordsLogQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingLexiIntroRef = useRef(false);
   const justRegisteredUserIdRef = useRef<string | null>(null);
@@ -494,6 +509,9 @@ export function LexiVaultProvider({
     if (params.get("previewLexiIntro") === "1") {
       setPreviewLexiIntro(true);
     }
+    if (params.get("previewWhatsNew") === "1") {
+      setPreviewWhatsNew(true);
+    }
 
     let mounted = true;
     getCurrentSessionUser().then((sessionUser) => {
@@ -556,6 +574,7 @@ export function LexiVaultProvider({
       setShowCefrOnboarding(false);
       setCefrOnboardingInitialStep("select");
       setShowLexiIntro(false);
+      setWhatsNewRelease(null);
       setCelebrationToast(null);
       setSyncMode("local");
       setSyncStatus("local");
@@ -564,6 +583,7 @@ export function LexiVaultProvider({
       setIsHydrated(false);
       prevRingsRef.current = null;
       autoPopupCheckedKeyRef.current = null;
+      whatsNewCheckedKeyRef.current = null;
       return;
     }
 
@@ -1064,14 +1084,58 @@ export function LexiVaultProvider({
     }
   }, [todayStr]);
 
-  // Auto-open Daily Pack modal once per session on new day if incomplete & autoShowPopup ON
+  // Auto-open What's New modal once per release for existing onboarded users
   useEffect(() => {
-    if (!isHydrated || !user || activeTab !== "vault") return;
+    if (!isHydrated || !user || previewWhatsNew) return;
     if (
       !cefrOnboardingCompleted ||
       showCefrOnboarding ||
       showLexiIntro ||
       previewLexiIntro ||
+      dailyPackModalOpen ||
+      onboardingFlowActiveRef.current ||
+      (typeof window !== "undefined" &&
+        window.sessionStorage.getItem(pendingLexiIntroSessionKey(user.id)) ===
+          "1")
+    ) {
+      return;
+    }
+
+    const latest = getLatestRelease();
+    if (!latest) return;
+
+    const checkKey = `${user.id}:${latest.id}`;
+    if (whatsNewCheckedKeyRef.current === checkKey) return;
+    whatsNewCheckedKeyRef.current = checkKey;
+
+    if (!hasUserSeenRelease(user.id, latest.id)) {
+      setWhatsNewRelease(latest);
+    }
+  }, [
+    cefrOnboardingCompleted,
+    dailyPackModalOpen,
+    isHydrated,
+    previewLexiIntro,
+    previewWhatsNew,
+    showCefrOnboarding,
+    showLexiIntro,
+    user,
+  ]);
+
+  // Auto-open Daily Pack modal once per session on new day if incomplete & autoShowPopup ON
+  useEffect(() => {
+    if (!isHydrated || !user || activeTab !== "vault") return;
+    const latestRelease = getLatestRelease();
+    const hasPendingWhatsNew =
+      Boolean(whatsNewRelease) ||
+      previewWhatsNew ||
+      Boolean(latestRelease && !hasUserSeenRelease(user.id, latestRelease.id));
+    if (
+      !cefrOnboardingCompleted ||
+      showCefrOnboarding ||
+      showLexiIntro ||
+      previewLexiIntro ||
+      hasPendingWhatsNew ||
       onboardingFlowActiveRef.current ||
       (typeof window !== "undefined" &&
         window.sessionStorage.getItem(pendingLexiIntroSessionKey(user.id)) ===
@@ -1116,10 +1180,12 @@ export function LexiVaultProvider({
     ensureDailyPackLoaded,
     isHydrated,
     previewLexiIntro,
+    previewWhatsNew,
     showCefrOnboarding,
     showLexiIntro,
     todayStr,
     user,
+    whatsNewRelease,
   ]);
 
   const completeDailyPackItem = useCallback(
@@ -1427,6 +1493,7 @@ export function LexiVaultProvider({
       if (typeof window !== "undefined") {
         if (activeUser) {
           markUserMetLexi(activeUser.id);
+          markReleaseSeen(activeUser.id, LEXI_COMPANION_RELEASE_ID);
           try {
             window.sessionStorage.removeItem(
               pendingLexiIntroSessionKey(activeUser.id)
@@ -1457,6 +1524,7 @@ export function LexiVaultProvider({
       if (!activeUser) {
         const guest = continueAsGuestSession();
         markUserMetLexi(guest.id);
+        markReleaseSeen(guest.id, LEXI_COMPANION_RELEASE_ID);
         setAuthInitialMode("login");
         setUser(guest);
         if (action === "check-level") {
@@ -1532,6 +1600,43 @@ export function LexiVaultProvider({
       todayStr,
     ]
   );
+
+  const activeWhatsNewRelease = useMemo(
+    () => whatsNewRelease ?? (previewWhatsNew ? getLatestRelease() : null),
+    [previewWhatsNew, whatsNewRelease]
+  );
+
+  const acknowledgeWhatsNew = useCallback(() => {
+    const currentRelease =
+      whatsNewRelease ?? (previewWhatsNew ? getLatestRelease() : null);
+    const activeUser = userRef.current;
+
+    if (currentRelease) {
+      markReleaseSeen(activeUser?.id ?? null, currentRelease.id);
+      if (activeUser && currentRelease.id === LEXI_COMPANION_RELEASE_ID) {
+        markUserMetLexi(activeUser.id);
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("previewWhatsNew")) {
+          url.searchParams.delete("previewWhatsNew");
+          window.history.replaceState(
+            window.history.state,
+            "",
+            `${url.pathname}${url.search}${url.hash}`
+          );
+        }
+      } catch {
+        // Ignore history API errors
+      }
+    }
+
+    setWhatsNewRelease(null);
+    setPreviewWhatsNew(false);
+  }, [previewWhatsNew, whatsNewRelease]);
 
   const clearCelebrationToast = useCallback(() => {
     setCelebrationToast(null);
@@ -2706,6 +2811,8 @@ export function LexiVaultProvider({
     setXp(0);
     setDailyPack(null);
     setDailyPackModalOpen(false);
+    setWhatsNewRelease(null);
+    whatsNewCheckedKeyRef.current = null;
     setSelectedWord(null);
     setActiveTab("vault");
   }, [setActiveTab]);
@@ -2793,6 +2900,8 @@ export function LexiVaultProvider({
     setXp(0);
     setDailyPack(null);
     setDailyPackModalOpen(false);
+    setWhatsNewRelease(null);
+    whatsNewCheckedKeyRef.current = null;
     setSelectedWord(null);
     setSyncError(null);
     clearLastSupabaseSyncError();
@@ -2880,6 +2989,9 @@ export function LexiVaultProvider({
     cefrOnboardingInitialStep,
     isLexiIntroOpen: showLexiIntro || previewLexiIntro,
     completeLexiIntro,
+    activeWhatsNewRelease,
+    isWhatsNewOpen: Boolean(activeWhatsNewRelease),
+    acknowledgeWhatsNew,
     lexiEnabled,
     setLexiEnabled,
     toggleLexiEnabled,

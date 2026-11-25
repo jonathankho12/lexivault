@@ -2,6 +2,7 @@
 
 import { AuthView } from "@/components/auth/AuthView";
 import { IntroducingLexiModal } from "@/components/IntroducingLexiModal";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { DiscoverView } from "@/components/discover/DiscoverView";
 import { FlashcardsView } from "@/components/flashcards/FlashcardsView";
 import { GrammarCheckerView } from "@/components/GrammarCheckerView";
@@ -41,6 +42,7 @@ export default function HomePage() {
       <>
         <AuthView />
         <IntroducingLexiModal />
+        <WhatsNewModal />
       </>
     );
   }
