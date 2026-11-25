@@ -138,7 +138,7 @@ export function AppShell({
   }, []);
 
   return (
-    <div className="relative min-h-dvh w-full overflow-x-hidden text-[#F5F5F7]">
+    <div className="relative min-h-dvh w-full overflow-x-clip text-[#F5F5F7]">
       <AmbientBackground />
 
       {/* Desktop Translucent Glass Sidebar */}
@@ -562,7 +562,7 @@ export function AppShell({
 
       {/* Main Content — Instant 60 FPS Tab Switch */}
       <main className="md:pl-64 lg:pl-72">
-        <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 pt-4 sm:pt-7 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-12">
+        <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 pt-4 sm:pt-7 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-12">
           {isGuest && (
             <div className="md:hidden mb-3.5 flex items-center justify-between gap-2 rounded-2xl bg-white/[0.04] border border-white/[0.08] px-3.5 py-2">
               <div className="min-w-0">
@@ -594,7 +594,7 @@ export function AppShell({
       {/* Mobile Edge-to-Edge Bottom Navigation Bar */}
       <nav
         aria-label="Mobile Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 liquid-glass-chrome mobile-chrome-bar mobile-chrome-bottom rounded-none px-1.5 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 m-0 bg-[var(--ios-surface)] mobile-chrome-bottom rounded-none px-1.5 pt-1.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <div className="mx-auto grid max-w-md grid-cols-6 items-center gap-0.5">
           {mobileDockItems.map((item) => {

@@ -127,7 +127,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="min-h-screen bg-[var(--ios-obsidian)] text-[var(--ios-text-primary)] antialiased selection:bg-[#0A84FF]/30 selection:text-[var(--ios-text-primary)]">
+      <body className="min-h-screen bg-[var(--ios-surface)] text-[var(--ios-text-primary)] antialiased selection:bg-[#0A84FF]/30 selection:text-[var(--ios-text-primary)]">
         <ThemeProvider>
           <LanguageProvider>
             <PwaInstallProvider>
