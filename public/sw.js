@@ -1,4 +1,4 @@
-const CACHE_NAME = "lexivault-static-v6";
+const CACHE_NAME = "lexivault-static-v7";
 const STATIC_ASSETS = [
   "/manifest.json",
   "/logo-badge.png",
@@ -6,6 +6,11 @@ const STATIC_ASSETS = [
   "/favicon.ico",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/icons/icon-maskable-192.png",
+  "/icons/icon-maskable-512.png",
+  "/icons/icon-monochrome-192.png",
+  "/icons/icon-monochrome-512.png",
+  "/icons/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {
