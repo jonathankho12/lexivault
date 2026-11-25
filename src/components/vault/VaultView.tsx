@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowUpDown,
   BookMarked,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   FileText,
   Flame,
@@ -35,6 +38,13 @@ import {
   normalizeSourceTag,
   normalizeTermKey,
 } from "@/lib/utils";
+import {
+  isValidVaultSortOption,
+  sortVaultWords,
+  VAULT_SORT_OPTIONS,
+  VAULT_SORT_STORAGE_KEY,
+  type VaultSortOption,
+} from "@/lib/vaultSort";
 import type { CefrLevel, RegisterType, WordType } from "@/types/lexivault";
 
 type TypeFilter = "all" | WordType;
@@ -91,6 +101,61 @@ export function VaultView() {
   const [registerFilter, setRegisterFilter] = useState<RegisterFilter>("all");
   const [cefrFilter, setCefrFilter] = useState<CefrFilter>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<VaultSortOption>("newest");
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(VAULT_SORT_STORAGE_KEY);
+      if (isValidVaultSortOption(saved)) {
+        setSortBy(saved);
+      }
+    } catch {
+      // Ignore storage access errors in restricted browsing contexts.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sortOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!sortMenuRef.current?.contains(event.target as Node)) {
+        setSortOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSortOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sortOpen]);
+
+  const handleSelectSort = useCallback((nextSort: VaultSortOption) => {
+    playGlassClick();
+    setSortBy(nextSort);
+    setSortOpen(false);
+    try {
+      window.localStorage.setItem(VAULT_SORT_STORAGE_KEY, nextSort);
+    } catch {
+      // Ignore storage access errors in restricted browsing contexts.
+    }
+  }, []);
+
+  const currentSortOption = useMemo(
+    () =>
+      VAULT_SORT_OPTIONS.find((opt) => opt.id === sortBy) ??
+      VAULT_SORT_OPTIONS[0],
+    [sortBy]
+  );
 
   const availableSources = useMemo(() => {
     const set = new Set<string>();
@@ -128,6 +193,24 @@ export function VaultView() {
       );
     });
   }, [words, search, typeFilter, registerFilter, cefrFilter, sourceFilter]);
+
+  const sortedWords = useMemo(
+    () => sortVaultWords(filteredWords, sortBy),
+    [filteredWords, sortBy]
+  );
+
+  const isFiltered =
+    search.trim().length > 0 ||
+    typeFilter !== "all" ||
+    registerFilter !== "all" ||
+    cefrFilter !== "all" ||
+    sourceFilter !== "all";
+
+  const resultsCountLabel = !isHydrated
+    ? "—"
+    : isFiltered || sortedWords.length !== words.length
+      ? `Showing ${sortedWords.length} of ${words.length} ${words.length === 1 ? "item" : "items"}`
+      : `Showing ${sortedWords.length} ${sortedWords.length === 1 ? "item" : "items"}`;
 
   return (
     <div className="space-y-5">
@@ -408,6 +491,84 @@ export function VaultView() {
             </button>
           ))}
         </div>
+
+        {/* Results Toolbar — directly below filter pills, outside horizontal scroll */}
+        <div className="relative z-30 flex items-center justify-between gap-2.5">
+          <p className="min-w-0 truncate text-xs font-medium text-[#8E8E93]">
+            {resultsCountLabel}
+          </p>
+
+          <div
+            ref={sortMenuRef}
+            className="relative shrink-0 max-w-[65%] sm:max-w-none"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                playGlassClick();
+                setSortOpen((prev) => !prev);
+              }}
+              aria-haspopup="listbox"
+              aria-expanded={sortOpen}
+              className={cn(
+                "liquid-glass-pill inline-flex w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+                sortOpen
+                  ? "border-[#0A84FF]/45 bg-white/[0.1] text-white"
+                  : "text-[#E5E5EA] hover:bg-white/[0.09] hover:text-white"
+              )}
+            >
+              <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-[#0A84FF]" />
+              <span className="truncate">
+                <span className="text-[#8E8E93]">Sort:</span>{" "}
+                {currentSortOption.label}
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0 text-[#8E8E93] transition-transform duration-150",
+                  sortOpen && "rotate-180"
+                )}
+              />
+            </button>
+
+            <AnimatePresence>
+              {sortOpen && (
+                <motion.div
+                  role="listbox"
+                  aria-label="Sort vocabulary items"
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  transition={{ duration: 0.14 }}
+                  className="liquid-glass-elevated absolute right-0 top-full z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5 origin-top-right"
+                >
+                  {VAULT_SORT_OPTIONS.map((option) => {
+                    const isSelected = option.id === sortBy;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => handleSelectSort(option.id)}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors cursor-pointer",
+                          isSelected
+                            ? "bg-[#0A84FF]/20 text-white"
+                            : "text-[#D1D1D6] hover:bg-white/[0.08] hover:text-white"
+                        )}
+                      >
+                        <span className="truncate">{option.label}</span>
+                        {isSelected && (
+                          <Check className="h-3.5 w-3.5 shrink-0 text-[#0A84FF]" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
 
       {/* AI Processing Skeleton */}
@@ -421,7 +582,7 @@ export function VaultView() {
           <ShimmerWordSkeleton />
           <ShimmerWordSkeleton />
         </div>
-      ) : filteredWords.length === 0 ? (
+      ) : sortedWords.length === 0 ? (
         <div className="liquid-glass rounded-3xl p-8 text-center">
           <BookMarked className="mx-auto h-9 w-9 text-[#8E8E93] mb-3" />
           <p className="text-base font-semibold text-[#F5F5F7]">
@@ -435,13 +596,13 @@ export function VaultView() {
         </div>
       ) : (
         <motion.div
-          key={`${typeFilter}-${registerFilter}-${sourceFilter}-${search ? "q" : "all"}`}
+          key={`${typeFilter}-${registerFilter}-${cefrFilter}-${sourceFilter}-${search ? "q" : "all"}`}
           variants={STAGGER_CONTAINER}
           initial="hidden"
           animate="visible"
           className="grid grid-cols-1 md:grid-cols-2 gap-4"
         >
-          {filteredWords.map((word) => (
+          {sortedWords.map((word) => (
             <VaultWordCard key={word.id} word={word} />
           ))}
         </motion.div>
