@@ -349,9 +349,9 @@ export function AppShell({
               <motion.button
                 type="button"
                 whileTap={TAP_SCALE}
-                onClick={() => {
+                onClick={(e) => {
                   playGlassClick();
-                  toggleTheme();
+                  toggleTheme(e);
                 }}
                 aria-label={themeToggleLabel}
                 title={themeToggleLabel}
@@ -528,9 +528,9 @@ export function AppShell({
             <motion.button
               type="button"
               whileTap={TAP_SCALE}
-              onClick={() => {
+              onClick={(e) => {
                 playGlassClick();
-                toggleTheme();
+                toggleTheme(e);
               }}
               aria-label={themeToggleLabel}
               title={themeToggleLabel}

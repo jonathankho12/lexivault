@@ -8,25 +8,27 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   applyThemeToDom,
   DEFAULT_THEME,
   getStoredTheme,
   isThemePreference,
   resolveTheme,
-  setThemePreference,
+  setThemeWithTransition,
   THEME_CHANGE_EVENT,
   THEME_STORAGE_KEY,
   type ResolvedTheme,
   type ThemePreference,
+  type ThemeTransitionOrigin,
 } from "@/lib/theme";
 
 interface ThemeContextValue {
   theme: ThemePreference;
   resolvedTheme: ResolvedTheme;
   mounted: boolean;
-  setTheme: (next: ThemePreference) => void;
-  toggleTheme: () => void;
+  setTheme: (next: ThemePreference, origin?: ThemeTransitionOrigin) => void;
+  toggleTheme: (origin?: ThemeTransitionOrigin) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
@@ -94,17 +96,32 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const setTheme = useCallback((next: ThemePreference) => {
-    const resolved = setThemePreference(next);
-    setThemeState(next);
-    setResolvedTheme(resolved);
-  }, []);
+  const setTheme = useCallback(
+    (next: ThemePreference, origin?: ThemeTransitionOrigin) => {
+      setThemeWithTransition(next, origin, (resolved, viaViewTransition) => {
+        if (viaViewTransition) {
+          flushSync(() => {
+            setThemeState(next);
+            setResolvedTheme(resolved);
+          });
+        } else {
+          setThemeState(next);
+          setResolvedTheme(resolved);
+        }
+      });
+    },
+    []
+  );
 
-  const toggleTheme = useCallback(() => {
-    const currentResolved = resolveTheme(theme);
-    const next: ThemePreference = currentResolved === "dark" ? "light" : "dark";
-    setTheme(next);
-  }, [theme, setTheme]);
+  const toggleTheme = useCallback(
+    (origin?: ThemeTransitionOrigin) => {
+      const currentResolved = resolveTheme(theme);
+      const next: ThemePreference =
+        currentResolved === "dark" ? "light" : "dark";
+      setTheme(next, origin);
+    },
+    [theme, setTheme]
+  );
 
   const value = useMemo(
     () => ({

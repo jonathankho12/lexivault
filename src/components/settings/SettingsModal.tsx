@@ -622,9 +622,9 @@ export function SettingsModal({
                       role="radio"
                       aria-checked={active}
                       whileTap={TAP_SCALE}
-                      onClick={() => {
+                      onClick={(e) => {
                         playGlassClick();
-                        setTheme(id);
+                        setTheme(id, e);
                       }}
                       className={cn(
                         "flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-colors cursor-pointer",

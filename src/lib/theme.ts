@@ -82,6 +82,166 @@ export function setThemePreference(preference: ThemePreference): ResolvedTheme {
   return resolved;
 }
 
+export interface ThemeTransitionEventLike {
+  clientX?: number;
+  clientY?: number;
+  currentTarget?: EventTarget | null;
+  target?: EventTarget | null;
+}
+
+export type ThemeTransitionOrigin =
+  | ThemeTransitionEventLike
+  | Element
+  | null
+  | undefined;
+
+interface ViewTransitionLike {
+  ready: Promise<void>;
+  finished?: Promise<void>;
+  skipTransition?: () => void;
+}
+
+function getCurrentResolvedTheme(): ResolvedTheme {
+  if (typeof document !== "undefined") {
+    const attr = document.documentElement.getAttribute("data-theme");
+    if (attr === "light" || attr === "dark") {
+      return attr;
+    }
+  }
+  return resolveTheme(getStoredTheme());
+}
+
+function getTransitionOrigin(origin?: ThemeTransitionOrigin): {
+  x: number;
+  y: number;
+} {
+  const fallback = {
+    x: typeof window !== "undefined" ? window.innerWidth / 2 : 0,
+    y: typeof window !== "undefined" ? window.innerHeight / 2 : 0,
+  };
+
+  if (!origin) {
+    return fallback;
+  }
+
+  if (typeof Element !== "undefined" && origin instanceof Element) {
+    const rect = origin.getBoundingClientRect();
+    if (rect.width > 0 || rect.height > 0) {
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    }
+    return fallback;
+  }
+
+  const evt = origin as ThemeTransitionEventLike;
+  if (
+    typeof evt.clientX === "number" &&
+    typeof evt.clientY === "number" &&
+    (evt.clientX !== 0 || evt.clientY !== 0)
+  ) {
+    return { x: evt.clientX, y: evt.clientY };
+  }
+
+  const targetEl = evt.currentTarget ?? evt.target;
+  if (typeof Element !== "undefined" && targetEl instanceof Element) {
+    const rect = targetEl.getBoundingClientRect();
+    if (rect.width > 0 || rect.height > 0) {
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    }
+  }
+
+  return fallback;
+}
+
+/**
+ * Switches theme with an origin-aware circular View Transition reveal
+ * when supported, reduced motion is off, and the resolved theme changes.
+ */
+export function setThemeWithTransition(
+  nextTheme: ThemePreference,
+  eventOrElement?: ThemeTransitionOrigin,
+  onApply?: (resolved: ResolvedTheme, viaViewTransition: boolean) => void
+): ResolvedTheme {
+  const nextResolved = resolveTheme(nextTheme);
+  const currentResolved = getCurrentResolvedTheme();
+
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const startViewTransition =
+    typeof document !== "undefined"
+      ? (
+          document as unknown as {
+            startViewTransition?: (
+              callback: () => void | Promise<void>
+            ) => ViewTransitionLike;
+          }
+        ).startViewTransition
+      : undefined;
+
+  if (
+    currentResolved === nextResolved ||
+    typeof startViewTransition !== "function" ||
+    prefersReducedMotion ||
+    typeof window === "undefined"
+  ) {
+    const resolved = setThemePreference(nextTheme);
+    onApply?.(resolved, false);
+    return resolved;
+  }
+
+  const { x, y } = getTransitionOrigin(eventOrElement);
+  const endRadius = Math.hypot(
+    Math.max(x, window.innerWidth - x),
+    Math.max(y, window.innerHeight - y)
+  );
+
+  let applied = false;
+  const apply = (viaViewTransition: boolean) => {
+    if (applied) return;
+    applied = true;
+    const resolved = setThemePreference(nextTheme);
+    onApply?.(resolved, viaViewTransition);
+  };
+
+  try {
+    const transition = startViewTransition.call(document, () => {
+      apply(true);
+    });
+
+    transition.ready
+      .then(() => {
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 450,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            pseudoElement: "::view-transition-new(root)",
+          }
+        );
+      })
+      .catch(() => {
+        // Ignore AbortError if a rapid follow-up toggle skips this transition
+      });
+  } catch {
+    apply(false);
+  }
+
+  return nextResolved;
+}
+
 /**
  * Synchronous inline script injected into <head> before React hydration
  * to prevent any dark/light flash on initial load or reload.
