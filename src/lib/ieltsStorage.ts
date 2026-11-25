@@ -1,5 +1,9 @@
 import { isLocalOnlyUserId } from "@/lib/auth";
-import { addUserXp, recordIeltsStudyLog } from "@/lib/storage";
+import {
+  addUserXp,
+  recordIeltsStudyLog,
+  writeLocalCefrOnboarding,
+} from "@/lib/storage";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
 import { bandToCefr, roundToHalfBand } from "@/lib/ieltsUtils";
 
@@ -275,6 +279,7 @@ export async function savePlacementCompletion(
   const nextAttempts = [attemptDraft, ...prevAttempts];
   writeLocalProfile(nextProfile);
   writeLocalAttempts(userId, nextAttempts);
+  writeLocalCefrOnboarding(userId, { completed: true, cefrLevel: cefr });
 
   const xpDelta = 75;
   const updatedLog = await recordIeltsStudyLog(

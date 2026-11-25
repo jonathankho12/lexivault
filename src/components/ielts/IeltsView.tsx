@@ -28,7 +28,13 @@ function isValidSubTab(value: string | null | undefined): value is IeltsSubTab {
 }
 
 export function IeltsView() {
-  const { user, isHydrated } = useLexiVault();
+  const {
+    user,
+    isHydrated,
+    userCefr,
+    placementLaunchNonce,
+    clearPlacementLaunch,
+  } = useLexiVault();
   const { t } = useLanguage();
 
   const subTabs: Array<{
@@ -173,14 +179,31 @@ export function IeltsView() {
       if (!active) return;
       setProfile(res.profile);
       setAttempts(res.attempts);
-      setShowPlacement(!res.profile.placement_completed);
+      setShowPlacement(
+        placementLaunchNonce > 0 || !res.profile.placement_completed
+      );
       setLoadingProfile(false);
     });
 
     return () => {
       active = false;
     };
-  }, [isHydrated, user]);
+  }, [isHydrated, placementLaunchNonce, user]);
+
+  useEffect(() => {
+    if (placementLaunchNonce <= 0) return;
+    setShowPlacement(true);
+    clearPlacementLaunch();
+  }, [clearPlacementLaunch, placementLaunchNonce]);
+
+  useEffect(() => {
+    if (!userCefr) return;
+    setProfile((prev) =>
+      prev && prev.cefr_level !== userCefr
+        ? { ...prev, cefr_level: userCefr }
+        : prev
+    );
+  }, [userCefr]);
 
   const handleProfileUpdated = (
     nextProfile: IeltsProfile,

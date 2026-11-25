@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Award,
   BarChart3,
@@ -13,11 +13,14 @@ import {
   LogOut,
   Settings,
   SpellCheck,
+  Trophy,
   User,
   UserPlus,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
+import { CefrOnboardingModal } from "@/components/CefrOnboardingModal";
 import { ActivityRings } from "@/components/gamification/ActivityRings";
 import { AccentToggle } from "@/components/layout/AccentToggle";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
@@ -28,7 +31,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { IOS_SPRING, TAB_TRANSITION, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
-import { cn } from "@/lib/utils";
+import { cn, formatCefrBadgeClass } from "@/lib/utils";
 import type { TabId } from "@/types/lexivault";
 
 const MOBILE_DOCK_IDS: ReadonlySet<TabId> = new Set([
@@ -61,6 +64,8 @@ export function AppShell({
     syncStatus,
     syncError,
     isHydrated,
+    celebrationToast,
+    clearCelebrationToast,
     openStreakCalendar,
     openRegisterFromGuest,
     logout,
@@ -69,6 +74,14 @@ export function AppShell({
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useOverlayBackGuard("settings", settingsOpen, () => setSettingsOpen(false));
+
+  useEffect(() => {
+    if (!celebrationToast) return;
+    const timer = setTimeout(() => {
+      clearCelebrationToast();
+    }, 5200);
+    return () => clearTimeout(timer);
+  }, [celebrationToast, clearCelebrationToast]);
 
   const navItems: Array<{
     id: TabId;
@@ -634,6 +647,56 @@ export function AppShell({
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
       />
+
+      {/* First-Time CEFR Onboarding Modal */}
+      <CefrOnboardingModal />
+
+      {/* Celebratory CEFR Level-Up Toast */}
+      <AnimatePresence>
+        {celebrationToast && (
+          <motion.div
+            key={celebrationToast.id}
+            initial={{ opacity: 0, y: -18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -14, scale: 0.96 }}
+            transition={IOS_SPRING}
+            role="status"
+            className="liquid-glass-elevated fixed top-[max(1rem,env(safe-area-inset-top))] right-4 left-4 md:left-auto md:right-6 z-[70] md:w-96 rounded-2xl border border-[#30D158]/45 bg-[#0C1412]/90 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.55)]"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#30D158]/20 border border-[#30D158]/45 text-[#7CF099]">
+                <Trophy className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-white truncate">
+                    {celebrationToast.title}
+                  </p>
+                  <span
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0",
+                      formatCefrBadgeClass(celebrationToast.cefr)
+                    )}
+                  >
+                    {celebrationToast.cefr}
+                  </span>
+                </div>
+                <p className="text-xs text-[#D1D1D6] leading-relaxed">
+                  {celebrationToast.message}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={clearCelebrationToast}
+                aria-label="Dismiss notification"
+                className="rounded-full p-1 text-[#8E8E93] hover:text-white cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

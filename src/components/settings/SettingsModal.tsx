@@ -27,6 +27,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import { CefrRecommendationBanner } from "@/components/gamification/CefrRecommendationBanner";
 import { GetAndroidAppPill } from "@/components/pwa/AndroidAppModal";
 import { SettingsDeveloperCard } from "@/components/ui/DeveloperCredits";
 import { FlagEnIcon, FlagIdIcon } from "@/components/ui/FlagIcons";
@@ -63,6 +64,7 @@ export function SettingsModal({
     dailyQuota,
     updateDailyQuota,
     placementCefr,
+    userCefr,
     resolvedDailyPackTier,
     dailyPack,
     todayStr,
@@ -714,7 +716,12 @@ export function SettingsModal({
 
                 {/* CEFR Target Level Selector (Auto + 5 Granular Tiers) */}
                 <div className="p-4 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CefrRecommendationBanner
+                    variant="settings"
+                    onCloseModal={onClose}
+                  />
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <div className="min-w-0">
                       <p className="text-xs sm:text-sm font-medium text-white">
                         {t.settings.dailyPack.targetLevelLabel}
@@ -759,8 +766,10 @@ export function SettingsModal({
                           ? lang === "en"
                             ? `From Placement (${placementCefr})`
                             : `Dari Placement (${placementCefr})`
-                          : lang === "en"
-                            ? "Default B1–B2"
+                          : userCefr
+                            ? lang === "en"
+                              ? `From CEFR (${userCefr})`
+                              : `Dari CEFR (${userCefr})`
                             : "Default B1–B2"}
                       </p>
                     </motion.button>

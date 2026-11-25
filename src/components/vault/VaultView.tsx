@@ -14,6 +14,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { CefrRecommendationBanner } from "@/components/gamification/CefrRecommendationBanner";
 import { ShimmerWordSkeleton } from "@/components/ui/ShimmerWordSkeleton";
 import { AiSuggestSheet } from "@/components/vault/AiSuggestSheet";
 import { DailyPackModal } from "@/components/vault/DailyPackModal";
@@ -292,6 +293,9 @@ export function VaultView() {
           )}
         </div>
       )}
+
+      {/* Automatic Next-Level CEFR Recommendation Banner */}
+      <CefrRecommendationBanner variant="vault" />
 
       {/* Floating Quick-Capture Input Bar */}
       <QuickCaptureBar onPendingTermChange={setPendingTerm} />

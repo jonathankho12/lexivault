@@ -331,8 +331,14 @@ create table if not exists public.user_profiles (
   daily_idioms_quota integer not null default 5,
   auto_show_daily_pack boolean not null default true,
   ring_targets_json jsonb not null default '{"vocab":3,"recall":15,"ielts":1}'::jsonb,
+  cefr_level text check (cefr_level is null or cefr_level in ('A1', 'A2', 'B1', 'B2', 'C1', 'C2')),
+  cefr_onboarding_completed boolean not null default false,
   updated_at timestamptz not null default now()
 );
+
+alter table public.user_profiles
+  add column if not exists cefr_level text,
+  add column if not exists cefr_onboarding_completed boolean not null default false;
 
 alter table public.user_profiles enable row level security;
 

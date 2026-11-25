@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+  CefrLevel,
   DailyDiscoveryPack,
   DailyPackRecord,
   DailyQuotaSettings,
@@ -12,6 +13,7 @@ import type {
 } from "@/types/lexivault";
 import { isLocalOnlyUserId, normalizeUsername } from "@/lib/auth";
 import { cacheWordMeanings, resolveWordMeanings } from "@/lib/bilingualCache";
+import { STARTER_WORD_TERMS } from "@/lib/cefrProgression";
 import { isValidDailyPackLevelSetting } from "@/lib/dailyPackTiers";
 import {
   DAILY_RING_TARGETS,
@@ -51,6 +53,10 @@ const reviewMetaKey = (userId: string) => `lexivault_review_meta_v1_${userId}`;
 const dailyQuotaKey = (userId: string) => `lexivault_daily_quota_v1_${userId}`;
 const dailyPackKey = (userId: string, dateStr: string) =>
   `lexivault_daily_pack_v1_${userId}_${dateStr}`;
+const cefrOnboardingKey = (userId: string) =>
+  `lexivault_cefr_onboarding_v1_${userId}`;
+const ieltsProfileLocalKey = (userId: string) =>
+  `lexivault_ielts_profile_v1_${userId}`;
 const syncedWordIdsKey = (userId: string) =>
   `lexivault_synced_word_ids_v1_${userId}`;
 const legacyUserMigratedKey = (userId: string) =>
@@ -1395,10 +1401,148 @@ function deriveXpFromLogs(logs: StudyLog[]): number {
   }, 0);
 }
 
+export interface CefrOnboardingRecord {
+  completed: boolean;
+  cefrLevel?: CefrLevel;
+  updatedAt: string;
+}
+
+export function readLocalCefrOnboarding(
+  userId: string
+): CefrOnboardingRecord | null {
+  if (typeof window === "undefined") return null;
+  const parsed = safeParseJson<Partial<CefrOnboardingRecord>>(
+    window.localStorage.getItem(cefrOnboardingKey(userId))
+  );
+  if (!parsed || typeof parsed.completed !== "boolean") return null;
+  const cefrLevel = normalizeCefrLevel(parsed.cefrLevel);
+  return {
+    completed: parsed.completed,
+    ...(cefrLevel ? { cefrLevel } : {}),
+    updatedAt:
+      typeof parsed.updatedAt === "string"
+        ? parsed.updatedAt
+        : new Date(0).toISOString(),
+  };
+}
+
+export function writeLocalCefrOnboarding(
+  userId: string,
+  record: { completed: boolean; cefrLevel?: CefrLevel }
+): CefrOnboardingRecord {
+  const existing = readLocalCefrOnboarding(userId);
+  const cefrLevel = normalizeCefrLevel(
+    record.cefrLevel ?? existing?.cefrLevel
+  );
+  const next: CefrOnboardingRecord = {
+    completed: record.completed,
+    ...(cefrLevel ? { cefrLevel } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(cefrOnboardingKey(userId), JSON.stringify(next));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+  return next;
+}
+
+function readLocalIeltsCefrSummary(userId: string): {
+  cefr_level?: CefrLevel;
+  placement_completed?: boolean;
+  estimated_band?: number;
+  updated_at?: string;
+} | null {
+  if (typeof window === "undefined") return null;
+  const parsed = safeParseJson<{
+    user_id?: string;
+    cefr_level?: unknown;
+    placement_completed?: unknown;
+    estimated_band?: unknown;
+    updated_at?: unknown;
+  }>(window.localStorage.getItem(ieltsProfileLocalKey(userId)));
+  if (!parsed || (parsed.user_id && parsed.user_id !== userId)) return null;
+  const cefr_level = normalizeCefrLevel(parsed.cefr_level);
+  return {
+    ...(cefr_level ? { cefr_level } : {}),
+    placement_completed: parsed.placement_completed === true,
+    estimated_band:
+      typeof parsed.estimated_band === "number" ? parsed.estimated_band : 0,
+    updated_at:
+      typeof parsed.updated_at === "string" ? parsed.updated_at : undefined,
+  };
+}
+
+function writeLocalIeltsCefrLevel(userId: string, cefrLevel: CefrLevel): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = safeParseJson<Record<string, unknown>>(
+      window.localStorage.getItem(ieltsProfileLocalKey(userId))
+    );
+    const nowIso = new Date().toISOString();
+    const next = {
+      user_id: userId,
+      estimated_band: 0,
+      reading_band: null,
+      listening_band: null,
+      writing_band: null,
+      speaking_band: null,
+      placement_completed: false,
+      ...(raw ?? {}),
+      cefr_level: cefrLevel,
+      updated_at: nowIso,
+    };
+    window.localStorage.setItem(
+      ieltsProfileLocalKey(userId),
+      JSON.stringify(next)
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function hasExistingVaultHistory(
+  words: WordEntry[],
+  logs: StudyLog[],
+  xp: number,
+  quota: DailyQuotaSettings,
+  userId: string
+): boolean {
+  if (logs.length > 0 || xp > 0 || quota.targetLevel !== "auto") {
+    return true;
+  }
+  if (
+    typeof window !== "undefined" &&
+    window.localStorage.getItem(demoClearedKey(userId)) === "true"
+  ) {
+    return true;
+  }
+  for (const w of words) {
+    const key = normalizeTermKey(w.term);
+    if (!STARTER_WORD_TERMS.has(key)) {
+      return true;
+    }
+    if (
+      (w.correct_count || 0) > 0 ||
+      (w.wrong_count || 0) > 0 ||
+      (w.review_count ?? 0) > 0 ||
+      Boolean(w.last_practiced_at) ||
+      Boolean(w.last_reviewed_date)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 interface CloudMetadataEnvelope {
   xp?: number;
   dailyQuota?: Partial<DailyQuotaSettings>;
   ringTargets?: Partial<DailyRingTargets>;
+  cefrLevel?: CefrLevel;
+  cefrOnboardingCompleted?: boolean;
 }
 
 async function mirrorCloudMetadataToAuth(
@@ -1408,6 +1552,8 @@ async function mirrorCloudMetadataToAuth(
     dailyQuota?: DailyQuotaSettings;
     ringTargets?: DailyRingTargets;
     dailyPack?: DailyPackRecord | null;
+    cefrLevel?: CefrLevel;
+    cefrOnboardingCompleted?: boolean;
   }
 ): Promise<boolean> {
   const supabase = getScopedSupabase(userId);
@@ -1437,6 +1583,10 @@ async function mirrorCloudMetadataToAuth(
         : {}),
       ...(patch.dailyQuota ? { dailyQuota: patch.dailyQuota } : {}),
       ...(patch.ringTargets ? { ringTargets: patch.ringTargets } : {}),
+      ...(patch.cefrLevel ? { cefrLevel: patch.cefrLevel } : {}),
+      ...(typeof patch.cefrOnboardingCompleted === "boolean"
+        ? { cefrOnboardingCompleted: patch.cefrOnboardingCompleted }
+        : {}),
     };
 
     const nextUserMeta: Record<string, unknown> = {
@@ -1589,6 +1739,9 @@ export interface HydratedCloudState {
   dailyQuota: DailyQuotaSettings;
   ringTargets: DailyRingTargets;
   dailyPack: DailyPackRecord | null;
+  cefrLevel: CefrLevel | null;
+  cefrOnboardingCompleted: boolean;
+  placementCompleted: boolean;
   syncMode: SyncMode;
   cloudReachable: boolean;
   syncError: SupabaseSyncErrorInfo | null;
@@ -1611,6 +1764,8 @@ export async function loadInitialData(
   const localRings = readCustomRingTargets();
   const localXp = readLocalXp(userId);
   const localPack = readLocalDailyPack(todayStr, userId);
+  const localOnboarding = readLocalCefrOnboarding(userId);
+  const localIelts = readLocalIeltsCefrSummary(userId);
 
   if (supabase) {
     const activeUserId = await resolveActiveSupabaseUserId(
@@ -1624,6 +1779,23 @@ export async function loadInitialData(
         options?.inMemoryWords && options.inMemoryWords.length > 0
           ? options.inMemoryWords
           : readLocalWords(todayStr, userId, false);
+      const fallbackPlacementDone = Boolean(localIelts?.placement_completed);
+      const fallbackCefr =
+        localOnboarding?.cefrLevel ??
+        (fallbackPlacementDone || (localIelts?.estimated_band ?? 0) > 0
+          ? localIelts?.cefr_level ?? null
+          : null);
+      const fallbackOnboardingDone =
+        Boolean(localOnboarding?.completed) ||
+        fallbackPlacementDone ||
+        Boolean(fallbackCefr) ||
+        hasExistingVaultHistory(
+          fallbackWords,
+          readLocalLogs(userId),
+          localXp,
+          localQuota,
+          userId
+        );
       return {
         words: fallbackWords,
         studyLogs: readLocalLogs(userId),
@@ -1631,6 +1803,9 @@ export async function loadInitialData(
         dailyQuota: localQuota,
         ringTargets: localRings,
         dailyPack: localPack,
+        cefrLevel: fallbackCefr,
+        cefrOnboardingCompleted: fallbackOnboardingDone,
+        placementCompleted: fallbackPlacementDone,
         syncMode: "local",
         cloudReachable: false,
         syncError: getLastSupabaseSyncError(),
@@ -1663,7 +1838,7 @@ export async function loadInitialData(
         .maybeSingle(),
       supabase
         .from("ielts_profiles")
-        .select("xp, mastery_rank")
+        .select("*")
         .eq("user_id", activeUserId)
         .maybeSingle(),
       supabase
@@ -1825,12 +2000,21 @@ export async function loadInitialData(
             daily_idioms_quota?: number;
             auto_show_daily_pack?: boolean;
             ring_targets_json?: Partial<DailyRingTargets>;
+            cefr_level?: string | null;
+            cefr_onboarding_completed?: boolean | null;
+            updated_at?: string | null;
           } | null)
         : null;
 
     const ieltsRow =
       ieltsSettled.status === "fulfilled" && !ieltsSettled.value.error
-        ? (ieltsSettled.value.data as { xp?: number } | null)
+        ? (ieltsSettled.value.data as {
+            xp?: number;
+            cefr_level?: string | null;
+            placement_completed?: boolean | null;
+            estimated_band?: number | null;
+            updated_at?: string | null;
+          } | null)
         : null;
 
     const cloudXp = Math.max(
@@ -1867,11 +2051,85 @@ export async function loadInitialData(
         : localRings;
     writeCustomRingTargets(resolvedRings);
 
+    const guestUpgradeOnboarding = localSources.pendingGuestId
+      ? readLocalCefrOnboarding(localSources.pendingGuestId)
+      : null;
+    const guestUpgradeIelts = localSources.pendingGuestId
+      ? readLocalIeltsCefrSummary(localSources.pendingGuestId)
+      : null;
+
+    const placementCompleted = Boolean(
+      ieltsRow?.placement_completed ||
+        localIelts?.placement_completed ||
+        guestUpgradeIelts?.placement_completed
+    );
+
+    const profileCefr = normalizeCefrLevel(profileRow?.cefr_level);
+    const cloudMetaCefr = normalizeCefrLevel(cloudMeta.cefrLevel);
+    const ieltsRowCefr = normalizeCefrLevel(ieltsRow?.cefr_level);
+    const ieltsHasExplicitScore =
+      Boolean(ieltsRow?.placement_completed) ||
+      Number(ieltsRow?.estimated_band ?? 0) > 0;
+    const ieltsUpdatedMs = Date.parse(ieltsRow?.updated_at ?? "") || 0;
+    const profileUpdatedMs = Date.parse(profileRow?.updated_at ?? "") || 0;
+
+    let resolvedCefrLevel: CefrLevel | null =
+      profileCefr ??
+      cloudMetaCefr ??
+      (ieltsHasExplicitScore ? ieltsRowCefr ?? null : null) ??
+      localOnboarding?.cefrLevel ??
+      guestUpgradeOnboarding?.cefrLevel ??
+      (localIelts?.placement_completed ||
+      (localIelts?.estimated_band ?? 0) > 0
+        ? localIelts?.cefr_level ?? null
+        : null) ??
+      (guestUpgradeIelts?.placement_completed ||
+      (guestUpgradeIelts?.estimated_band ?? 0) > 0
+        ? guestUpgradeIelts?.cefr_level ?? null
+        : null);
+
+    if (
+      ieltsRowCefr &&
+      (ieltsHasExplicitScore || Boolean(profileRow?.cefr_onboarding_completed)) &&
+      ieltsUpdatedMs > profileUpdatedMs
+    ) {
+      resolvedCefrLevel = ieltsRowCefr;
+    }
+
+    const existingHistory = hasExistingVaultHistory(
+      resolvedWords,
+      resolvedLogs,
+      resolvedXp,
+      resolvedQuota,
+      userId
+    );
+    const resolvedOnboardingCompleted = Boolean(
+      localOnboarding?.completed ||
+        guestUpgradeOnboarding?.completed ||
+        profileRow?.cefr_onboarding_completed ||
+        cloudMeta.cefrOnboardingCompleted ||
+        placementCompleted ||
+        resolvedCefrLevel ||
+        existingHistory
+    );
+
+    if (resolvedOnboardingCompleted && !localOnboarding?.completed) {
+      writeLocalCefrOnboarding(userId, {
+        completed: true,
+        cefrLevel: resolvedCefrLevel ?? undefined,
+      });
+    }
+    if (resolvedCefrLevel) {
+      writeLocalIeltsCefrLevel(userId, resolvedCefrLevel);
+    }
+
     if (options?.forceUploadAll || resolvedXp > cloudXp) {
       await saveCloudUserSettings(activeUserId, {
         dailyQuota: resolvedQuota,
         ringTargets: resolvedRings,
         xp: resolvedXp,
+        cefrLevel: resolvedCefrLevel ?? undefined,
+        cefrOnboardingCompleted: resolvedOnboardingCompleted,
       });
     }
 
@@ -1938,6 +2196,9 @@ export async function loadInitialData(
       dailyQuota: resolvedQuota,
       ringTargets: resolvedRings,
       dailyPack: resolvedPack,
+      cefrLevel: resolvedCefrLevel,
+      cefrOnboardingCompleted: resolvedOnboardingCompleted,
+      placementCompleted,
       syncMode: cloudReachable ? "supabase" : "local",
       cloudReachable,
       syncError,
@@ -1945,13 +2206,44 @@ export async function loadInitialData(
     };
   }
 
+  const localWords = readLocalWords(todayStr, userId, true);
+  const localLogs = readLocalLogs(userId);
+  const localPlacementDone = Boolean(localIelts?.placement_completed);
+  const localCefrLevel =
+    localOnboarding?.cefrLevel ??
+    (localPlacementDone || (localIelts?.estimated_band ?? 0) > 0
+      ? localIelts?.cefr_level ?? null
+      : null);
+  const localHistoryExists = hasExistingVaultHistory(
+    localWords,
+    localLogs,
+    localXp,
+    localQuota,
+    userId
+  );
+  const localOnboardingDone = Boolean(
+    localOnboarding?.completed ||
+      localPlacementDone ||
+      localCefrLevel ||
+      localHistoryExists
+  );
+  if (localOnboardingDone && !localOnboarding?.completed) {
+    writeLocalCefrOnboarding(userId, {
+      completed: true,
+      cefrLevel: localCefrLevel ?? undefined,
+    });
+  }
+
   return {
-    words: readLocalWords(todayStr, userId, true),
-    studyLogs: readLocalLogs(userId),
+    words: localWords,
+    studyLogs: localLogs,
     xp: localXp,
     dailyQuota: localQuota,
     ringTargets: localRings,
     dailyPack: localPack,
+    cefrLevel: localCefrLevel,
+    cefrOnboardingCompleted: localOnboardingDone,
+    placementCompleted: localPlacementDone,
     syncMode: "local",
     cloudReachable: false,
     syncError: null,
@@ -1994,6 +2286,9 @@ export async function saveCloudUserSettings(
     dailyQuota?: DailyQuotaSettings;
     ringTargets?: DailyRingTargets;
     xp?: number;
+    cefrLevel?: CefrLevel;
+    cefrOnboardingCompleted?: boolean;
+    syncIeltsProfile?: boolean;
   }
 ): Promise<boolean> {
   const nextQuota = settings.dailyQuota
@@ -2010,6 +2305,25 @@ export async function saveCloudUserSettings(
     writeLocalXp(userId, nextXp);
   }
 
+  const existingOnboarding = readLocalCefrOnboarding(userId);
+  const nextCefr = normalizeCefrLevel(
+    settings.cefrLevel ?? existingOnboarding?.cefrLevel
+  );
+  const nextOnboardingDone =
+    typeof settings.cefrOnboardingCompleted === "boolean"
+      ? settings.cefrOnboardingCompleted
+      : existingOnboarding?.completed;
+
+  if (settings.cefrLevel || typeof settings.cefrOnboardingCompleted === "boolean") {
+    writeLocalCefrOnboarding(userId, {
+      completed: Boolean(nextOnboardingDone),
+      cefrLevel: nextCefr,
+    });
+  }
+  if (settings.syncIeltsProfile && settings.cefrLevel) {
+    writeLocalIeltsCefrLevel(userId, settings.cefrLevel);
+  }
+
   const supabase = getScopedSupabase(userId);
   if (!supabase) return false;
 
@@ -2017,20 +2331,35 @@ export async function saveCloudUserSettings(
   const rankInfo = getMasteryRankInfo(nextXp);
   let synced = false;
 
+  const baseProfilePayload = {
+    user_id: userId,
+    xp: nextXp,
+    mastery_rank: rankInfo.rank,
+    daily_words_quota: nextQuota.wordsPerDay,
+    daily_idioms_quota: nextQuota.idiomsPerDay,
+    auto_show_daily_pack: nextQuota.autoShowPopup,
+    ring_targets_json: nextRings,
+    updated_at: nowIso,
+  };
+
+  const extendedProfilePayload = {
+    ...baseProfilePayload,
+    ...(nextCefr ? { cefr_level: nextCefr } : {}),
+    ...(typeof nextOnboardingDone === "boolean"
+      ? { cefr_onboarding_completed: nextOnboardingDone }
+      : {}),
+  };
+
   try {
-    const { error } = await supabase.from("user_profiles").upsert(
-      {
-        user_id: userId,
-        xp: nextXp,
-        mastery_rank: rankInfo.rank,
-        daily_words_quota: nextQuota.wordsPerDay,
-        daily_idioms_quota: nextQuota.idiomsPerDay,
-        auto_show_daily_pack: nextQuota.autoShowPopup,
-        ring_targets_json: nextRings,
-        updated_at: nowIso,
-      },
-      { onConflict: "user_id" }
-    );
+    let { error } = await supabase
+      .from("user_profiles")
+      .upsert(extendedProfilePayload, { onConflict: "user_id" });
+    if (error && isMissingColumnError(error)) {
+      const retry = await supabase
+        .from("user_profiles")
+        .upsert(baseProfilePayload, { onConflict: "user_id" });
+      error = retry.error;
+    }
     if (!error) {
       synced = true;
     } else {
@@ -2046,12 +2375,29 @@ export async function saveCloudUserSettings(
     );
   }
 
+  if (settings.syncIeltsProfile && settings.cefrLevel) {
+    try {
+      await supabase.from("ielts_profiles").upsert(
+        {
+          user_id: userId,
+          cefr_level: settings.cefrLevel,
+          updated_at: nowIso,
+        },
+        { onConflict: "user_id" }
+      );
+    } catch {
+      // Non-fatal: user_profiles & auth user_metadata also carry cefrLevel
+    }
+  }
+
   // Always mirror compact cloud settings & XP to Supabase Auth user_metadata so
   // settings & XP sync across devices even before SQL migration is applied.
   const mirrored = await mirrorCloudMetadataToAuth(userId, {
     xp: nextXp,
     dailyQuota: nextQuota,
     ringTargets: nextRings,
+    cefrLevel: nextCefr,
+    cefrOnboardingCompleted: nextOnboardingDone,
   });
 
   return synced || mirrored;
@@ -3117,6 +3463,8 @@ export function subscribeRealtimeSync(
       xp?: number;
       dailyQuota?: DailyQuotaSettings;
       ringTargets?: DailyRingTargets;
+      cefrLevel?: CefrLevel;
+      cefrOnboardingCompleted?: boolean;
     }) => void;
     onDailyPackRefresh?: (pack: DailyPackRecord) => void;
   }
@@ -3212,7 +3560,10 @@ export function subscribeRealtimeSync(
               daily_idioms_quota?: number;
               auto_show_daily_pack?: boolean;
               ring_targets_json?: Partial<DailyRingTargets>;
+              cefr_level?: string | null;
+              cefr_onboarding_completed?: boolean | null;
             };
+            const refreshedCefr = normalizeCefrLevel(row.cefr_level);
             callbacks.onProfileRefresh({
               xp: typeof row.xp === "number" ? row.xp : undefined,
               dailyQuota: normalizeDailyQuota({
@@ -3224,6 +3575,11 @@ export function subscribeRealtimeSync(
               ringTargets: row.ring_targets_json
                 ? normalizeRingTargets(row.ring_targets_json)
                 : DAILY_RING_TARGETS,
+              cefrLevel: refreshedCefr,
+              cefrOnboardingCompleted:
+                typeof row.cefr_onboarding_completed === "boolean"
+                  ? row.cefr_onboarding_completed
+                  : undefined,
             });
           }
         }

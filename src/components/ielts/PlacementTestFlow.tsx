@@ -29,15 +29,24 @@ import type { IeltsAttempt, IeltsProfile } from "@/types/ielts";
 export function PlacementTestFlow({
   onFinished,
   onCancel,
+  onResultCalculated,
+  startImmediately = false,
+  finishLabel,
+  cancelLabel,
 }: {
   onFinished: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
   onCancel?: () => void;
+  onResultCalculated?: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
+  startImmediately?: boolean;
+  finishLabel?: string;
+  cancelLabel?: string;
 }) {
-  const { user, todayStr, syncExternalStudyLog } = useLexiVault();
+  const { user, todayStr, syncExternalStudyLog, applyPlacementLevel } =
+    useLexiVault();
   const { lang } = useLanguage();
   const isEn = lang === "en";
 
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(startImmediately);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [paraphraseText, setParaphraseText] = useState("");
@@ -178,6 +187,8 @@ export function PlacementTestFlow({
       );
 
       syncExternalStudyLog(saved.updatedLog, saved.newXp);
+      void applyPlacementLevel(saved.profile.cefr_level);
+      onResultCalculated?.(saved.profile, saved.attempts);
 
       setResultSummary({
         band: overallBand,
@@ -257,9 +268,10 @@ export function PlacementTestFlow({
           className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-6 py-3 text-sm font-semibold text-white cursor-pointer"
         >
           <span>
-            {isEn
-              ? "Open Full IELTS Dashboard"
-              : "Buka Dashboard IELTS Lengkap"}
+            {finishLabel ??
+              (isEn
+                ? "Open Full IELTS Dashboard"
+                : "Buka Dashboard IELTS Lengkap")}
           </span>
           <ArrowRight className="h-4 w-4" />
         </motion.button>
@@ -355,7 +367,7 @@ export function PlacementTestFlow({
                 onClick={onCancel}
                 className="text-[#8E8E93] hover:text-white cursor-pointer"
               >
-                {isEn ? "Exit" : "Keluar"}
+                {cancelLabel ?? (isEn ? "Exit" : "Keluar")}
               </button>
             )}
           </div>

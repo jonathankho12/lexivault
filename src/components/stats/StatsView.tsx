@@ -14,6 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ActivityRings } from "@/components/gamification/ActivityRings";
+import { CefrRecommendationBanner } from "@/components/gamification/CefrRecommendationBanner";
 import { StreakCalendar } from "@/components/stats/StreakCalendar";
 import { AudioButton } from "@/components/ui/AudioButton";
 import { useLanguage } from "@/context/LanguageContext";
@@ -362,6 +363,9 @@ export function StatsView() {
           })}
         </div>
       </div>
+
+      {/* Automatic Next-Level CEFR Readiness & Promotion Card */}
+      <CefrRecommendationBanner variant="stats" />
 
       {/* CEFR Vocabulary Distribution (A1–C2) */}
       <div className="liquid-glass rounded-3xl p-5 sm:p-6 space-y-3.5">

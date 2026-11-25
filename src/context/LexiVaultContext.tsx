@@ -29,7 +29,14 @@ import {
   type DailyRingTargets,
   type MasteryRankInfo,
 } from "@/lib/gamification";
-import { resolveDailyPackTier } from "@/lib/dailyPackTiers";
+import {
+  computeCefrPromotionStatus,
+  type CefrPromotionStatus,
+} from "@/lib/cefrProgression";
+import {
+  getDailyPackTierMeta,
+  resolveDailyPackTier,
+} from "@/lib/dailyPackTiers";
 import { loadIeltsState } from "@/lib/ieltsStorage";
 import { getDueWords } from "@/lib/sm2";
 import {
@@ -160,6 +167,13 @@ function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+export interface CelebrationToastState {
+  id: number;
+  title: string;
+  message: string;
+  cefr: CefrLevel;
+}
+
 interface AuthActionResult {
   ok: boolean;
   error?: string;
@@ -218,6 +232,25 @@ interface LexiVaultContextValue {
   dailyQuota: DailyQuotaSettings;
   updateDailyQuota: (patch: Partial<DailyQuotaSettings>) => void;
   placementCefr: CefrLevel | null;
+  userCefr: CefrLevel | null;
+  effectiveCefr: CefrLevel;
+  cefrOnboardingCompleted: boolean;
+  showCefrOnboarding: boolean;
+  cefrPromotion: CefrPromotionStatus;
+  completeCefrOnboarding: (
+    cefr: CefrLevel,
+    options?: { fromPlacement?: boolean; keepModalOpen?: boolean }
+  ) => Promise<void>;
+  dismissCefrOnboarding: () => Promise<void>;
+  levelUpCefr: (
+    nextCefr: CefrLevel,
+    options?: { celebrate?: boolean; silent?: boolean; forceAutoTier?: boolean }
+  ) => Promise<void>;
+  placementLaunchNonce: number;
+  launchPlacementTest: () => void;
+  clearPlacementLaunch: () => void;
+  celebrationToast: CelebrationToastState | null;
+  clearCelebrationToast: () => void;
   resolvedDailyPackTier: DailyPackTargetTier;
   applyPlacementLevel: (cefr: CefrLevel) => Promise<void>;
   dailyPack: DailyPackRecord | null;
@@ -317,6 +350,12 @@ export function LexiVaultProvider({
     DEFAULT_DAILY_QUOTA
   );
   const [placementCefr, setPlacementCefr] = useState<CefrLevel | null>(null);
+  const [userCefr, setUserCefr] = useState<CefrLevel | null>(null);
+  const [cefrOnboardingCompleted, setCefrOnboardingCompleted] = useState(true);
+  const [showCefrOnboarding, setShowCefrOnboarding] = useState(false);
+  const [placementLaunchNonce, setPlacementLaunchNonce] = useState(0);
+  const [celebrationToast, setCelebrationToast] =
+    useState<CelebrationToastState | null>(null);
   const [dailyPack, setDailyPack] = useState<DailyPackRecord | null>(null);
   const [isDailyPackLoading, setIsDailyPackLoading] = useState(false);
   const [dailyPackError, setDailyPackError] = useState<string | null>(null);
@@ -336,6 +375,7 @@ export function LexiVaultProvider({
   );
 
   const launchNonceRef = useRef(0);
+  const celebrationNonceRef = useRef(0);
   const batchRefreshAbortRef = useRef<AbortController | null>(null);
   const batchRefreshRunningRef = useRef(false);
   const wordsRef = useRef<WordEntry[]>([]);
@@ -346,9 +386,12 @@ export function LexiVaultProvider({
   dailyQuotaRef.current = dailyQuota;
   const placementCefrRef = useRef<CefrLevel | null>(placementCefr);
   placementCefrRef.current = placementCefr;
+  const userCefrRef = useRef<CefrLevel | null>(userCefr);
+  userCefrRef.current = userCefr;
   const resolvedDailyPackTier = useMemo(
-    () => resolveDailyPackTier(dailyQuota.targetLevel, placementCefr),
-    [dailyQuota.targetLevel, placementCefr]
+    () =>
+      resolveDailyPackTier(dailyQuota.targetLevel, userCefr ?? placementCefr),
+    [dailyQuota.targetLevel, placementCefr, userCefr]
   );
   const resolvedDailyPackTierRef = useRef<DailyPackTargetTier>(
     resolvedDailyPackTier
@@ -477,6 +520,11 @@ export function LexiVaultProvider({
       setDailyPackModalOpen(false);
       setDailyPackError(null);
       setSelectedWord(null);
+      setPlacementCefr(null);
+      setUserCefr(null);
+      setCefrOnboardingCompleted(true);
+      setShowCefrOnboarding(false);
+      setCelebrationToast(null);
       setSyncMode("local");
       setSyncStatus("local");
       setSyncError(null);
@@ -509,6 +557,10 @@ export function LexiVaultProvider({
         setDailyQuota(res.dailyQuota);
         setRingTargets(res.ringTargets);
         setDailyPack(res.dailyPack);
+        setUserCefr(res.cefrLevel);
+        setPlacementCefr(res.placementCompleted ? res.cefrLevel : null);
+        setCefrOnboardingCompleted(res.cefrOnboardingCompleted);
+        setShowCefrOnboarding(!res.cefrOnboardingCompleted);
         setSyncMode(res.syncMode);
         setSyncError(res.syncError);
         setSyncStatus(
@@ -530,8 +582,9 @@ export function LexiVaultProvider({
             if (!active) return;
             if (ieltsRes.profile.placement_completed) {
               setPlacementCefr(ieltsRes.profile.cefr_level);
-            } else {
-              setPlacementCefr(null);
+              setUserCefr((prev) => prev ?? ieltsRes.profile.cefr_level);
+              setCefrOnboardingCompleted(true);
+              setShowCefrOnboarding(false);
             }
           })
           .catch(() => {
@@ -550,6 +603,15 @@ export function LexiVaultProvider({
             }
             if (profile.ringTargets) {
               setRingTargets(profile.ringTargets);
+            }
+            if (profile.cefrLevel) {
+              setUserCefr(profile.cefrLevel);
+            }
+            if (typeof profile.cefrOnboardingCompleted === "boolean") {
+              setCefrOnboardingCompleted(profile.cefrOnboardingCompleted);
+              if (profile.cefrOnboardingCompleted) {
+                setShowCefrOnboarding(false);
+              }
             }
           },
           onDailyPackRefresh: (freshPack) => {
@@ -907,6 +969,7 @@ export function LexiVaultProvider({
   // Auto-open Daily Pack modal once per session on new day if incomplete & autoShowPopup ON
   useEffect(() => {
     if (!isHydrated || !user || activeTab !== "vault") return;
+    if (!cefrOnboardingCompleted || showCefrOnboarding) return;
 
     const checkKey = `${user.id}_${todayStr}`;
     if (autoPopupCheckedKeyRef.current === checkKey) return;
@@ -938,7 +1001,15 @@ export function LexiVaultProvider({
 
     setDailyPackModalOpen(true);
     void ensureDailyPackLoaded(false);
-  }, [activeTab, ensureDailyPackLoaded, isHydrated, todayStr, user]);
+  }, [
+    activeTab,
+    cefrOnboardingCompleted,
+    ensureDailyPackLoaded,
+    isHydrated,
+    showCefrOnboarding,
+    todayStr,
+    user,
+  ]);
 
   const completeDailyPackItem = useCallback(
     async (item: DailyPackItem): Promise<WordEntry | null> => {
@@ -1119,13 +1190,26 @@ export function LexiVaultProvider({
 
   const applyPlacementLevel = useCallback(
     async (cefr: CefrLevel): Promise<void> => {
+      const activeUser = userRef.current;
       setPlacementCefr(cefr);
       placementCefrRef.current = cefr;
+      setUserCefr(cefr);
+      userCefrRef.current = cefr;
+      setCefrOnboardingCompleted(true);
       const nextTier = resolveDailyPackTier(
         dailyQuotaRef.current.targetLevel,
         cefr
       );
       resolvedDailyPackTierRef.current = nextTier;
+
+      if (activeUser) {
+        void runCloudMutation(() =>
+          saveCloudUserSettings(activeUser.id, {
+            cefrLevel: cefr,
+            cefrOnboardingCompleted: true,
+          })
+        );
+      }
 
       const existing = dailyPackRef.current;
       if (
@@ -1138,8 +1222,168 @@ export function LexiVaultProvider({
         await ensureDailyPackLoaded(true);
       }
     },
-    [ensureDailyPackLoaded, todayStr]
+    [ensureDailyPackLoaded, runCloudMutation, todayStr]
   );
+
+  const completeCefrOnboarding = useCallback(
+    async (
+      cefr: CefrLevel,
+      options?: { fromPlacement?: boolean; keepModalOpen?: boolean }
+    ): Promise<void> => {
+      const activeUser = userRef.current;
+      if (!activeUser) return;
+
+      setUserCefr(cefr);
+      userCefrRef.current = cefr;
+      if (options?.fromPlacement) {
+        setPlacementCefr(cefr);
+        placementCefrRef.current = cefr;
+      }
+      setCefrOnboardingCompleted(true);
+      if (!options?.keepModalOpen) {
+        setShowCefrOnboarding(false);
+      }
+
+      const nextQuota = normalizeDailyQuota({
+        ...dailyQuotaRef.current,
+        targetLevel: "auto",
+      });
+      setDailyQuota(nextQuota);
+      dailyQuotaRef.current = nextQuota;
+
+      const nextTier = resolveDailyPackTier("auto", cefr);
+      resolvedDailyPackTierRef.current = nextTier;
+
+      await runCloudMutation(() =>
+        saveCloudUserSettings(activeUser.id, {
+          dailyQuota: nextQuota,
+          cefrLevel: cefr,
+          cefrOnboardingCompleted: true,
+          syncIeltsProfile: true,
+        })
+      );
+
+      const existing = dailyPackRef.current;
+      if (
+        existing &&
+        existing.pack_date === todayStr &&
+        existing.completed_terms.length === 0 &&
+        existing.target_tier !== nextTier
+      ) {
+        await ensureDailyPackLoaded(true);
+      }
+    },
+    [ensureDailyPackLoaded, runCloudMutation, todayStr]
+  );
+
+  const dismissCefrOnboarding = useCallback(async (): Promise<void> => {
+    const activeUser = userRef.current;
+    setCefrOnboardingCompleted(true);
+    setShowCefrOnboarding(false);
+    if (!activeUser) return;
+    const fallbackCefr = userCefrRef.current ?? placementCefrRef.current ?? "B1";
+    setUserCefr((prev) => prev ?? fallbackCefr);
+    await runCloudMutation(() =>
+      saveCloudUserSettings(activeUser.id, {
+        cefrLevel: fallbackCefr,
+        cefrOnboardingCompleted: true,
+      })
+    );
+  }, [runCloudMutation]);
+
+  const clearCelebrationToast = useCallback(() => {
+    setCelebrationToast(null);
+  }, []);
+
+  const levelUpCefr = useCallback(
+    async (
+      nextCefr: CefrLevel,
+      options?: {
+        celebrate?: boolean;
+        silent?: boolean;
+        forceAutoTier?: boolean;
+      }
+    ): Promise<void> => {
+      const activeUser = userRef.current;
+      if (!activeUser) return;
+
+      setUserCefr(nextCefr);
+      userCefrRef.current = nextCefr;
+      if (placementCefrRef.current) {
+        setPlacementCefr(nextCefr);
+        placementCefrRef.current = nextCefr;
+      }
+      setCefrOnboardingCompleted(true);
+      setShowCefrOnboarding(false);
+
+      const shouldUpdateToAuto =
+        options?.forceAutoTier !== false &&
+        dailyQuotaRef.current.targetLevel !== "auto";
+      const nextQuota = shouldUpdateToAuto
+        ? normalizeDailyQuota({
+            ...dailyQuotaRef.current,
+            targetLevel: "auto",
+          })
+        : dailyQuotaRef.current;
+      if (shouldUpdateToAuto) {
+        setDailyQuota(nextQuota);
+        dailyQuotaRef.current = nextQuota;
+      }
+
+      const nextTier = resolveDailyPackTier(nextQuota.targetLevel, nextCefr);
+      resolvedDailyPackTierRef.current = nextTier;
+
+      if (options?.celebrate !== false) {
+        playRingCompleteChord();
+      }
+      if (!options?.silent) {
+        const tierLabel = getDailyPackTierMeta(nextTier).displayLabel;
+        celebrationNonceRef.current += 1;
+        setCelebrationToast({
+          id: celebrationNonceRef.current,
+          cefr: nextCefr,
+          title:
+            lang === "en"
+              ? `Leveled Up to ${nextCefr}!`
+              : `Naik ke Level ${nextCefr}!`,
+          message:
+            lang === "en"
+              ? `Your CEFR profile is now ${nextCefr} · Daily Pack target synced to ${tierLabel}.`
+              : `Profil CEFR kamu sekarang ${nextCefr} · Target Harian disesuaikan ke ${tierLabel}.`,
+        });
+      }
+
+      await runCloudMutation(() =>
+        saveCloudUserSettings(activeUser.id, {
+          dailyQuota: nextQuota,
+          cefrLevel: nextCefr,
+          cefrOnboardingCompleted: true,
+          syncIeltsProfile: true,
+        })
+      );
+
+      const existing = dailyPackRef.current;
+      if (
+        nextQuota.targetLevel === "auto" &&
+        existing &&
+        existing.pack_date === todayStr &&
+        existing.completed_terms.length === 0 &&
+        existing.target_tier !== nextTier
+      ) {
+        await ensureDailyPackLoaded(true);
+      }
+    },
+    [ensureDailyPackLoaded, lang, runCloudMutation, todayStr]
+  );
+
+  const launchPlacementTest = useCallback(() => {
+    setPlacementLaunchNonce((n) => n + 1);
+    setActiveTab("ielts");
+  }, [setActiveTab]);
+
+  const clearPlacementLaunch = useCallback(() => {
+    setPlacementLaunchNonce(0);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Vault Mutations
@@ -2035,6 +2279,26 @@ export function LexiVaultProvider({
     [isHydrated, studyLogs, todayStr]
   );
 
+  const effectiveCefr = useMemo<CefrLevel>(() => {
+    if (userCefr) return userCefr;
+    if (placementCefr) return placementCefr;
+    if (dailyQuota.targetLevel !== "auto") {
+      return getDailyPackTierMeta(dailyQuota.targetLevel).cefrPair[0];
+    }
+    return "B1";
+  }, [dailyQuota.targetLevel, placementCefr, userCefr]);
+
+  const cefrPromotion = useMemo(
+    () =>
+      computeCefrPromotionStatus({
+        currentLevel: effectiveCefr,
+        words,
+        studyLogs,
+        streak,
+      }),
+    [effectiveCefr, streak, studyLogs, words]
+  );
+
   const masteryRankInfo = useMemo(() => getMasteryRankInfo(xp), [xp]);
 
   const dueWordsCount = useMemo(
@@ -2349,6 +2613,19 @@ export function LexiVaultProvider({
     dailyQuota,
     updateDailyQuota,
     placementCefr,
+    userCefr,
+    effectiveCefr,
+    cefrOnboardingCompleted,
+    showCefrOnboarding,
+    cefrPromotion,
+    completeCefrOnboarding,
+    dismissCefrOnboarding,
+    levelUpCefr,
+    placementLaunchNonce,
+    launchPlacementTest,
+    clearPlacementLaunch,
+    celebrationToast,
+    clearCelebrationToast,
     resolvedDailyPackTier,
     applyPlacementLevel,
     dailyPack,
