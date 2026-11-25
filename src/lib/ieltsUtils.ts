@@ -117,25 +117,92 @@ export function gradeWritingHeuristic(
       .filter((w) => w.length > 3)
   );
 
-  const lengthRatio = Math.min(1.15, words / task.minWords);
-  const taskScore = roundToHalfBand(3.5 + Math.min(4.5, lengthRatio * 4.0));
+  const lengthRatio = Math.min(1.05, words / Math.max(1, task.minWords));
+  const rawTask =
+    words < task.minWords * 0.45
+      ? 3.5
+      : words < task.minWords * 0.75
+        ? 4.5
+        : 4.0 + Math.min(2.5, lengthRatio * 2.5);
+  const taskScore = roundToHalfBand(Math.max(3.0, Math.min(7.5, rawTask)));
+
   const coherenceScore = roundToHalfBand(
-    3.5 + (sentences.length >= 5 ? 2.5 : sentences.length * 0.5) + (words >= task.minWords ? 1.5 : 0.5)
+    Math.max(
+      3.0,
+      Math.min(
+        7.5,
+        3.5 +
+          (sentences.length >= 6 ? 2.0 : sentences.length * 0.35) +
+          (words >= task.minWords ? 1.0 : 0)
+      )
+    )
   );
   const lexicalScore = roundToHalfBand(
-    3.5 + Math.min(4.0, uniqueTokens.size / 22)
+    Math.max(3.0, Math.min(7.5, 3.5 + Math.min(3.0, uniqueTokens.size / 26)))
   );
   const grammarScore = roundToHalfBand(
-    3.5 + (sentences.length >= 4 ? 2.5 : 1.5) + (words >= task.minWords * 0.8 ? 1.0 : 0)
+    Math.max(
+      3.0,
+      Math.min(
+        7.5,
+        3.5 +
+          (sentences.length >= 5 ? 1.8 : 0.8) +
+          (words >= task.minWords * 0.85 ? 0.8 : 0)
+      )
+    )
   );
 
   const overall = roundToHalfBand(
     (taskScore + coherenceScore + lexicalScore + grammarScore) / 4
   );
+  const targetUpgradeBand = roundToHalfBand(Math.min(9.0, overall + 1.0));
 
   const firstSentence =
     sentences[0] ||
     "The presented information shows noticeable variations across categories.";
+
+  const upgradedVocab =
+    task.taskType === "task1"
+      ? [
+          {
+            term: "pronounced divergence",
+            note: "Clear, sharp difference between trends",
+            cefr: "C1" as const,
+            category: "collocation" as const,
+          },
+          {
+            term: "accounted for",
+            note: "Represented a specific share/percentage",
+            cefr: "B2" as const,
+            category: "collocation" as const,
+          },
+          {
+            term: "contracted markedly",
+            note: "Decreased significantly over time",
+            cefr: "C1" as const,
+            category: "collocation" as const,
+          },
+        ]
+      : [
+          {
+            term: "long-term societal trade-offs",
+            note: "Lasting compromises affecting society",
+            cefr: "C1" as const,
+            category: "collocation" as const,
+          },
+          {
+            term: "warrant careful regulation",
+            note: "Justify thoughtful government oversight",
+            cefr: "C1" as const,
+            category: "collocation" as const,
+          },
+          {
+            term: "compelling argument",
+            note: "Strong, persuasive line of reasoning",
+            cefr: "B2" as const,
+            category: "collocation" as const,
+          },
+        ];
 
   return {
     overall_band: overall,
@@ -145,10 +212,37 @@ export function gradeWritingHeuristic(
       lexical_resource: lexicalScore,
       grammatical_range: grammarScore,
     },
+    criteria_feedback: {
+      task_response:
+        words < task.minWords
+          ? `Under the ${task.minWords}-word minimum (${words} words), which caps Task ${task.taskType === "task1" ? "Achievement" : "Response"}. Develop all parts of the prompt with specific support.`
+          : `Meets the ${task.minWords}-word minimum (${words} words) and addresses the core prompt; deepen analytical precision to reach higher bands.`,
+      coherence_cohesion:
+        sentences.length < 5
+          ? "Limited paragraph progression and linking devices. Organize ideas into distinct introduction, body, and overview/conclusion paragraphs."
+          : "Basic progression is visible; strengthen topic sentences and varied cohesive devices beyond repetitive connectors.",
+      lexical_resource:
+        uniqueTokens.size < 45
+          ? "Relies heavily on common, repetitive vocabulary. Introduce more precise academic collocations and synonyms."
+          : "Adequate range of topic vocabulary; refine collocation accuracy and avoid informal phrasing.",
+      grammatical_range:
+        "Mix complex structures (subordinate clauses, conditionals, passive voice) while maintaining accurate verb tense and subject-verb agreement.",
+    },
     summary_id:
       words < task.minWords
-        ? `Tulisanmu berjumlah ${words} kata (di bawah target minimal ${task.minWords} kata). Kembangkan argumen/rincian data dan sambungkan GEMINI_API_KEY untuk evaluasi Examiner Pro mendalam.`
-        : `Tulisanmu berjumlah ${words} kata dan sudah memenuhi panjang minimal ${task.minWords} kata. Struktur paragraf cukup jelas; sambungkan GEMINI_API_KEY untuk evaluasi mendalam menggunakan Gemini Pro.`,
+        ? `Tulisanmu berjumlah ${words} kata (di bawah target minimal ${task.minWords} kata), sehingga skor dibatasi secara ketat sesuai rubrik IELTS. Kembangkan argumen/rincian data dan coba evaluasi ulang saat koneksi AI aktif.`
+        : `Tulisanmu berjumlah ${words} kata dan sudah memenuhi panjang minimal ${task.minWords} kata. Perkuat presisi kolokasi akademik dan variasi struktur kalimat kompleks untuk naik ke Band ${targetUpgradeBand.toFixed(1)}.`,
+    inline_errors: [
+      {
+        original: firstSentence,
+        corrected:
+          task.taskType === "task1"
+            ? "Overall, the data reveals a pronounced divergence across the surveyed categories over the given period."
+            : "While rapid change brings undeniable convenience, its long-term societal trade-offs warrant careful regulation.",
+        reason:
+          "Elevates vague phrasing into concise, objective IELTS Academic register with precise collocations.",
+      },
+    ],
     sentence_upgrades: [
       {
         original: firstSentence,
@@ -160,6 +254,12 @@ export function gradeWritingHeuristic(
           "Menggunakan frasa akademik yang lebih ringkas, objektif, dan berstruktur klausa kompleks khas Band 8.0+.",
       },
     ],
+    plus_one_band_rewrite:
+      task.taskType === "task1"
+        ? `Overall, the chart highlights a **pronounced divergence** across the categories over the surveyed period. Whereas the leading category **accounted for** the largest share initially, traditional options **contracted markedly** as newer alternatives gained momentum.`
+        : `Although modern developments offer clear advantages, their **long-term societal trade-offs** **warrant careful regulation**. A **compelling argument** can be made for balanced policies that protect both innovation and public wellbeing.`,
+    target_upgrade_band: targetUpgradeBand,
+    upgraded_vocabulary: upgradedVocab,
     band_85_sample: task.fallbackBand85Sample,
     modelUsed: "heuristic-fallback",
   };

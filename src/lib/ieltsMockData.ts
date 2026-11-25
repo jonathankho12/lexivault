@@ -199,6 +199,7 @@ export const FALLBACK_READING_PACKS: ReadingPassagePack[] = [
     id: "read-pack-1",
     title: "The Cognitive Ecology of Urban Soundscapes",
     topic: "Acoustic Urbanism & Cognitive Psychology",
+    cefrLevel: "C1",
     recommendedMinutes: 12,
     paragraphs: [
       "For most of the twentieth century, municipal noise policies treated sound exclusively as an environmental pollutant to be measured in decibels and suppressed behind concrete barriers. Yet acoustic ecologists now contend that decibel meters capture only volume, overlooking how different auditory textures shape human attention and stress recovery. A busy fountain emitting 65 decibels of broadband water noise, for instance, is routinely perceived as restorative, whereas an intermittent 55-decibel delivery alarm triggers measurable spikes in salivary cortisol.",
@@ -214,8 +215,10 @@ export const FALLBACK_READING_PACKS: ReadingPassagePack[] = [
           "Decibel level alone reliably predicts whether an urban sound causes psychological stress.",
         options: ["TRUE", "FALSE", "NOT GIVEN"],
         answer: "FALSE",
+        explanation_en:
+          "FALSE (direct contradiction) — Paragraph A explicitly states that decibel meters capture only volume and overlook how auditory textures shape stress (a 65 dB fountain is restorative while a 55 dB alarm spikes cortisol).",
         explanation_id:
-          "FALSE — Paragraf 1 menegaskan decibel meter hanya mengukur volume dan melewatkan bagaimana tekstur suara memengaruhi stres (air mancur 65 dB terasa memulihkan dibanding alarm 55 dB).",
+          "FALSE (kontradiksi langsung) — Paragraf A menegaskan decibel meter hanya mengukur volume dan melewatkan bagaimana tekstur suara memengaruhi stres (air mancur 65 dB terasa memulihkan dibanding alarm 55 dB).",
         evidence_quote:
           "decibel meters capture only volume, overlooking how different auditory textures shape human attention and stress recovery.",
       },
@@ -223,67 +226,111 @@ export const FALLBACK_READING_PACKS: ReadingPassagePack[] = [
         id: "rq-2",
         type: "tfng",
         prompt:
-          "Hospital rooms overlooking courtyard water features reported lower patient anxiety than silent rooms facing brick walls.",
-        options: ["TRUE", "FALSE", "NOT GIVEN"],
-        answer: "TRUE",
-        explanation_id:
-          "TRUE — Paragraf 2 menyebutkan penurunan kecemasan pasca-operasi sebesar 19 persen dibanding bangsal tenang yang menghadap tembok bata.",
-        evidence_quote:
-          "wards facing courtyard water features recorded a 19 percent reduction in self-reported post-operative anxiety compared with equally quiet wards facing sealed brick walls.",
-      },
-      {
-        id: "rq-3",
-        type: "tfng",
-        prompt:
           "Zurich spent more municipal funding on concealed speakers than on tree-planting initiatives in 2024.",
         options: ["TRUE", "FALSE", "NOT GIVEN"],
         answer: "NOT GIVEN",
+        explanation_en:
+          "NOT GIVEN (absent information, not a contradiction) — Paragraph C mentions field interviews in Zurich about concealed speakers, but never compares municipal budgets or mentions 2024 spending.",
         explanation_id:
-          "NOT GIVEN — Paragraf 3 hanya membahas wawancara pejalan kaki di Zurich soal speaker tersembunyi, tanpa menyebutkan perbandingan anggaran tahun 2024.",
+          "NOT GIVEN (informasi tidak disebutkan, bukan kontradiksi) — Paragraf C hanya membahas wawancara pejalan kaki di Zurich soal speaker tersembunyi, tanpa menyebutkan perbandingan anggaran tahun 2024.",
         evidence_quote:
           "Field interviews conducted in Zurich showed that pedestrians became irritated by concealed speakers once they noticed the absence of actual trees",
+      },
+      {
+        id: "rq-3",
+        type: "matching_headings",
+        paragraphRef: "Paragraph C",
+        prompt: "Choose the most suitable heading for Paragraph C:",
+        options: [
+          "i. Why synthetic audio masking can backfire when visuals disagree",
+          "ii. Hospital trials proving courtyard water lowers anxiety",
+          "iii. How porous asphalt reduces maintenance costs in winter",
+          "iv. Historical origins of twentieth-century decibel regulations",
+        ],
+        answer:
+          "i. Why synthetic audio masking can backfire when visuals disagree",
+        explanation_en:
+          "Paragraph C focuses on cognitive dissonance and pedestrian irritation when artificial birdsong speakers lack real trees.",
+        explanation_id:
+          "Paragraf C membahas 'cognitive dissonance' dan ketidaknyamanan pejalan kaki ketika speaker burung buatan tidak sesuai dengan lingkungan visual.",
+        evidence_quote:
+          "listeners frequently report cognitive dissonance when visual cues contradict what they hear.",
       },
       {
         id: "rq-4",
         type: "mcq",
         prompt:
-          "Why did pedestrians in Zurich react negatively to artificial birdsong speakers?",
+          "What does the passage imply about bio-integrated sound design compared with electronic masking?",
         options: [
-          "The broadcast volume exceeded safe decibel limits.",
-          "Visual surroundings did not match the natural sounds they heard.",
-          "The speakers disrupted local migratory bird patterns.",
-          "They preferred hearing heavy freight traffic instead.",
+          "It delivers longer-lasting health benefits despite extra street-cleaning needs.",
+          "It completely eliminates the need for porous road surfaces.",
+          "It relies on concealed speakers installed inside hospital courtyards.",
+          "It raises decibel levels above 65 dB across residential corridors.",
         ],
         answer:
-          "Visual surroundings did not match the natural sounds they heard.",
+          "It delivers longer-lasting health benefits despite extra street-cleaning needs.",
+        explanation_en:
+          "Paragraph D notes that although porous asphalt needs slightly more frequent vacuum cleaning, bio-integrated design extends cardiovascular benefits more durably than electronic masking.",
         explanation_id:
-          "Paragraf 3 menjelaskan munculnya 'cognitive dissonance' ketika petunjuk visual (tidak adanya pepohonan) bertentangan dengan suara burung buatan.",
+          "Paragraf D menjelaskan meski aspal berpori perlu pembersihan vakum lebih rutin, desain bio-terintegrasi memberi manfaat kesehatan kardiovaskular lebih tahan lama.",
         evidence_quote:
-          "listeners frequently report cognitive dissonance when visual cues contradict what they hear.",
+          "combining vegetative buffers with quiet road surfaces extends cardiovascular health benefits across high-density residential corridors far more durably than electronic masking alone.",
       },
       {
         id: "rq-5",
         type: "fill_blank",
+        wordLimit: "NO MORE THAN TWO WORDS",
         prompt:
-          "Complete the summary (ONE OR TWO WORDS from the passage): Natural sounds such as wind and water induce _____ , enabling the brain's prefrontal cortex to recover.",
+          "Complete the summary: Natural sounds such as wind and water induce _____, enabling the brain's prefrontal cortex to recover.",
         answer: "soft fascination",
         acceptedAnswers: ["soft fascination"],
+        explanation_en:
+          "Paragraph B explicitly names 'soft fascination' as the state that lets the prefrontal cortex replenish cognitive resources.",
         explanation_id:
-          "Paragraf 2 secara eksplisit menyebut istilah 'soft fascination' sebagai mekanisme pemulihan korteks prefrontal.",
+          "Paragraf B secara eksplisit menyebut istilah 'soft fascination' sebagai mekanisme pemulihan korteks prefrontal.",
         evidence_quote:
-          "engage what psychologists term 'soft fascination.' ... soft fascination allows the prefrontal cortex to replenish depleted cognitive resources.",
+          "engage what psychologists term 'soft fascination.'",
       },
       {
         id: "rq-6",
         type: "fill_blank",
+        wordLimit: "NO MORE THAN TWO WORDS",
         prompt:
-          "Complete the note (ONE OR TWO WORDS from the passage): One maintenance drawback of porous asphalt is the need for more regular _____ to keep dust from blocking pores.",
+          "Complete the note: One maintenance drawback of porous asphalt is the need for more regular _____ to keep dust from blocking pores.",
         answer: "vacuum cleaning",
         acceptedAnswers: ["vacuum cleaning", "cleaning"],
+        explanation_en:
+          "Paragraph D states that porous asphalt requires slightly more frequent 'vacuum cleaning' to prevent dust clogging.",
         explanation_id:
-          "Paragraf 4 menyatakan porous asphalt membutuhkan 'vacuum cleaning' yang lebih rutin agar tidak tersumbat debu.",
+          "Paragraf D menyatakan porous asphalt membutuhkan 'vacuum cleaning' yang lebih rutin agar tidak tersumbat debu.",
         evidence_quote:
           "Although porous asphalt requires slightly more frequent vacuum cleaning to prevent dust clogging",
+      },
+    ],
+    keyVocabulary: [
+      {
+        term: "cognitive dissonance",
+        note: "Mental discomfort when two perceptions or beliefs conflict",
+        cefr: "C1",
+        category: "collocation",
+      },
+      {
+        term: "noise abatement",
+        note: "Official reduction or control of environmental noise",
+        cefr: "C1",
+        category: "collocation",
+      },
+      {
+        term: "replenish",
+        note: "Restore or refill depleted energy or resources",
+        cefr: "C1",
+        category: "vocab",
+      },
+      {
+        term: "attenuate",
+        note: "Weaken or reduce the force/intensity of something",
+        cefr: "C2",
+        category: "vocab",
       },
     ],
   },
@@ -371,8 +418,153 @@ export const FALLBACK_READING_PACKS: ReadingPassagePack[] = [
 
 export const FALLBACK_LISTENING_PACKS: ListeningSectionPack[] = [
   {
+    id: "list-pack-s1-1",
+    sectionLabel: "Section 1 · Everyday Dialogue",
+    sectionType: "section1",
+    cefrLevel: "B1",
+    title: "Riverside Sports Centre Membership Booking",
+    context:
+      "Everyday phone dialogue between a receptionist and a new resident booking a swimming & gym membership.",
+    accentsLabel: "British (UK) & American (US)",
+    segments: [
+      {
+        speaker: "Receptionist (UK)",
+        accent: "GB_F",
+        text: "Good morning, Riverside Sports Centre, Claire speaking. How can I help you today?",
+      },
+      {
+        speaker: "Daniel (US)",
+        accent: "US_M",
+        text: "Hi Claire. I just moved to the neighbourhood and I'd like to book an induction session for the swimming pool and gym.",
+      },
+      {
+        speaker: "Receptionist (UK)",
+        accent: "GB_F",
+        text: "Certainly! Let me take a few details. Can I start with your surname and postcode?",
+      },
+      {
+        speaker: "Daniel (US)",
+        accent: "US_M",
+        text: "Sure, it's Daniel Mercer, M-E-R-C-E-R, and my postcode is CB4 2RT.",
+      },
+      {
+        speaker: "Receptionist (UK)",
+        accent: "GB_F",
+        text: "Great. Our next induction is on Tuesday the 14th at 6:30 p.m., or we have a morning slot on Thursday the 16th at 9:15 a.m.",
+      },
+      {
+        speaker: "Daniel (US)",
+        accent: "US_M",
+        text: "Tuesday evening is tricky because of work. Let's go with Thursday at 9:15, please. How much is the monthly pass?",
+      },
+      {
+        speaker: "Receptionist (UK)",
+        accent: "GB_F",
+        text: "The standard off-peak pass is 38 pounds a month, but full access including weekends is 45 pounds. Just bring a padlock for the lockers and arrive ten minutes early at Desk Two.",
+      },
+    ],
+    questions: [
+      {
+        id: "lqs1-1",
+        type: "form_completion",
+        wordLimit: "ONE WORD ONLY",
+        prompt: "Caller's surname: Daniel _____",
+        answer: "Mercer",
+        acceptedAnswers: ["mercer"],
+        explanation_en:
+          "Daniel spells his surname directly: 'Daniel Mercer, M-E-R-C-E-R'.",
+        explanation_id:
+          "Daniel mengeja nama belakangnya langsung: 'Daniel Mercer, M-E-R-C-E-R'.",
+      },
+      {
+        id: "lqs1-2",
+        type: "form_completion",
+        wordLimit: "ONE WORD AND/OR A NUMBER",
+        prompt: "Booked induction day & date: Thursday the _____",
+        answer: "16th",
+        acceptedAnswers: ["16th", "16", "sixteenth"],
+        explanation_en:
+          "Daniel declines Tuesday the 14th because of work and chooses Thursday the 16th at 9:15 a.m.",
+        explanation_id:
+          "Daniel menolak Selasa tanggal 14 karena pekerjaan dan memilih Kamis tanggal 16 pukul 9:15.",
+      },
+      {
+        id: "lqs1-3",
+        type: "form_completion",
+        wordLimit: "A NUMBER",
+        prompt: "Monthly fee for full access including weekends: £ _____",
+        answer: "45",
+        acceptedAnswers: ["45", "forty-five", "forty five"],
+        explanation_en:
+          "The off-peak pass is £38, whereas full access including weekends is £45.",
+        explanation_id:
+          "Paket off-peak £38, sedangkan akses penuh termasuk akhir pekan adalah £45.",
+      },
+      {
+        id: "lqs1-4",
+        type: "mcq",
+        prompt: "Why does Daniel choose the Thursday morning session?",
+        options: [
+          "The Tuesday evening session is already fully booked.",
+          "His work schedule makes Tuesday evening difficult.",
+          "Thursday morning is cheaper than Tuesday evening.",
+          "The swimming pool is closed on Tuesdays.",
+        ],
+        answer: "His work schedule makes Tuesday evening difficult.",
+        explanation_en:
+          "Daniel explains: 'Tuesday evening is tricky because of work.'",
+        explanation_id:
+          "Daniel menjelaskan: 'Tuesday evening is tricky because of work.'",
+      },
+      {
+        id: "lqs1-5",
+        type: "mcq",
+        prompt: "What must Daniel bring to his induction?",
+        options: [
+          "A padlock for the lockers",
+          "Proof of his postcode",
+          "A printed membership card",
+          "His own swimming goggles",
+        ],
+        answer: "A padlock for the lockers",
+        explanation_en:
+          "Claire instructs him: 'Just bring a padlock for the lockers and arrive ten minutes early at Desk Two.'",
+        explanation_id:
+          "Claire berpesan agar ia membawa gembok ('a padlock') untuk loker.",
+      },
+    ],
+    keyVocabulary: [
+      {
+        term: "induction session",
+        note: "Introductory orientation for new members",
+        cefr: "B1",
+        category: "collocation",
+      },
+      {
+        term: "off-peak",
+        note: "Less busy times with lower prices",
+        cefr: "B1",
+        category: "vocab",
+      },
+      {
+        term: "tricky",
+        note: "Difficult or inconvenient to arrange",
+        cefr: "B1",
+        category: "vocab",
+      },
+      {
+        term: "book a slot",
+        note: "Reserve a specific time appointment",
+        cefr: "B1",
+        category: "collocation",
+      },
+    ],
+  },
+  {
     id: "list-pack-1",
     sectionLabel: "Section 3 · Academic Tutorial",
+    sectionType: "section3",
+    cefrLevel: "C1",
     title: "Evaluating Campus Microgrid Battery Trials",
     context:
       "Percakapan antara seorang mahasiswa Australia dan dosen pembimbing Inggris mengenai riset baterai kampus.",
@@ -469,18 +661,43 @@ export const FALLBACK_LISTENING_PACKS: ListeningSectionPack[] = [
       {
         id: "lq-5",
         type: "form_completion",
+        wordLimit: "NO MORE THAN THREE WORDS",
         prompt:
-          "Complete the archive label (THREE WORDS): The shared folder is named '_____'.",
+          "Complete the archive label: The shared folder is named '_____'.",
         answer: "Grid Phase Two",
         acceptedAnswers: ["grid phase two", "grid phase 2"],
+        explanation_en:
+          "Dr. Carter specifies the folder title as 'Grid Phase Two'.",
         explanation_id:
           "Dr. Carter menyebut folder tersebut berjudul 'Grid Phase Two'.",
+      },
+    ],
+    keyVocabulary: [
+      {
+        term: "skew the trend",
+        note: "Distort the overall pattern of data",
+        cefr: "C1",
+        category: "collocation",
+      },
+      {
+        term: "peak demand",
+        note: "Period of highest electricity or resource usage",
+        cefr: "B2",
+        category: "collocation",
+      },
+      {
+        term: "outlier",
+        note: "An unusual data point far from the average",
+        cefr: "C1",
+        category: "vocab",
       },
     ],
   },
   {
     id: "list-pack-2",
     sectionLabel: "Section 4 · University Lecture",
+    sectionType: "section4",
+    cefrLevel: "C1",
     title: "Deep-Sea Hydrothermal Vents & Early Biochemistry",
     context:
       "Monolog kuliah biologi kelautan dengan aksen Australia dan komentar penutup dari moderator Amerika.",

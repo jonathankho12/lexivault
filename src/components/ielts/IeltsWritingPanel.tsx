@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  AlertCircle,
   ArrowRight,
   Award,
   BarChart2,
@@ -15,7 +16,9 @@ import {
   Play,
   RotateCcw,
   Sparkles,
+  TrendingUp,
 } from "lucide-react";
+import { IeltsVocabStrip } from "@/components/ielts/SaveToVaultButton";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { FALLBACK_WRITING_PACKS } from "@/lib/ieltsMockData";
@@ -24,12 +27,34 @@ import { countWords } from "@/lib/ieltsUtils";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type {
+  CefrLevel,
   IeltsAttempt,
   IeltsProfile,
   WritingChartData,
   WritingGradeResult,
   WritingTaskPack,
 } from "@/types/ielts";
+
+function HighlightedRewriteText({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <p className="text-xs sm:text-sm leading-relaxed text-[#F5F5F7] whitespace-pre-line">
+      {parts.map((part, idx) => {
+        if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+          return (
+            <span
+              key={idx}
+              className="mx-0.5 inline-block rounded-md bg-[#30D158]/20 border border-[#30D158]/40 px-1.5 py-0.5 font-semibold text-[#7CF099]"
+            >
+              {part.slice(2, -2)}
+            </span>
+          );
+        }
+        return <span key={idx}>{part}</span>;
+      })}
+    </p>
+  );
+}
 
 function Task1ChartBlock({
   data,
@@ -145,8 +170,10 @@ function Task1ChartBlock({
 }
 
 export function IeltsWritingPanel({
+  cefrLevel = "B2",
   onProfileUpdated,
 }: {
+  cefrLevel?: CefrLevel;
   onProfileUpdated: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
 }) {
   const { user, todayStr, syncExternalStudyLog } = useLexiVault();
@@ -182,6 +209,7 @@ export function IeltsWritingPanel({
 
   const wordCount = useMemo(() => countWords(essay), [essay]);
   const targetMet = wordCount >= pack.minWords;
+  const wordPct = Math.min(100, Math.round((wordCount / Math.max(1, pack.minWords)) * 100));
 
   const switchTaskType = (nextType: "task1" | "task2") => {
     setTaskType(nextType);
@@ -208,6 +236,7 @@ export function IeltsWritingPanel({
         body: JSON.stringify({
           skill: "writing",
           taskType,
+          cefrLevel,
           excludeIds: seenIds,
         }),
       });
@@ -241,6 +270,8 @@ export function IeltsWritingPanel({
         body: JSON.stringify({
           prompt: pack,
           essay: essay.trim(),
+          lang,
+          cefrLevel,
         }),
       });
       if (!res.ok) throw new Error("Grading failed");
@@ -426,18 +457,35 @@ export function IeltsWritingPanel({
               : "Tulis jawaban akademikmu di bawah:"}
           </span>
 
-          <span
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border tabular-nums",
+                targetMet
+                  ? "bg-[#30D158]/20 border-[#30D158]/40 text-[#7CF099]"
+                  : wordCount > 0
+                    ? "bg-[#FF9F0A]/15 border-[#FF9F0A]/35 text-[#FFD18C]"
+                    : "bg-white/[0.06] border-white/[0.1] text-[#F5F5F7]"
+              )}
+            >
+              {targetMet && <CheckCircle2 className="h-3.5 w-3.5" />}
+              {wordCount} / {pack.minWords}{" "}
+              {isEn ? "words min" : "kata minimal"}
+            </span>
+          </div>
+        </div>
+
+        {/* Word Target Progress Bar */}
+        <div className="h-1.5 w-full rounded-full bg-white/[0.07] overflow-hidden">
+          <div
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border",
+              "h-full rounded-full transition-all duration-300",
               targetMet
-                ? "bg-[#30D158]/20 border-[#30D158]/40 text-[#7CF099]"
-                : "bg-white/[0.06] border-white/[0.1] text-[#F5F5F7]"
+                ? "bg-[#30D158]"
+                : "bg-gradient-to-r from-[#0A84FF] to-[#FF9F0A]"
             )}
-          >
-            {targetMet && <CheckCircle2 className="h-3.5 w-3.5" />}
-            {wordCount} / {pack.minWords}{" "}
-            {isEn ? "words minimum" : "kata minimal"}
-          </span>
+            style={{ width: `${wordPct}%` }}
+          />
         </div>
 
         <textarea
@@ -522,7 +570,7 @@ export function IeltsWritingPanel({
             </span>
           </div>
 
-          {/* 4 Official Criteria */}
+          {/* 4 Official Criteria with Concrete Examiner Reasons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {(
               [
@@ -532,18 +580,22 @@ export function IeltsWritingPanel({
                       ? "Task Achievement"
                       : "Task Response",
                   score: grade.criteria.task_response,
+                  reason: grade.criteria_feedback?.task_response,
                 },
                 {
                   label: "Coherence & Cohesion",
                   score: grade.criteria.coherence_cohesion,
+                  reason: grade.criteria_feedback?.coherence_cohesion,
                 },
                 {
                   label: "Lexical Resource",
                   score: grade.criteria.lexical_resource,
+                  reason: grade.criteria_feedback?.lexical_resource,
                 },
                 {
                   label: "Grammatical Range & Accuracy",
                   score: grade.criteria.grammatical_range,
+                  reason: grade.criteria_feedback?.grammatical_range,
                 },
               ] as const
             ).map((item) => (
@@ -552,9 +604,11 @@ export function IeltsWritingPanel({
                 className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3.5 space-y-2"
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-[#D1D1D6]">{item.label}</span>
-                  <span className="font-bold text-[#70BCFF]">
-                    {item.score.toFixed(1)}
+                  <span className="font-semibold text-[#F5F5F7]">
+                    {item.label}
+                  </span>
+                  <span className="font-bold text-[#70BCFF] tabular-nums">
+                    Band {item.score.toFixed(1)}
                   </span>
                 </div>
                 <div className="h-2 w-full rounded-full bg-white/[0.08] overflow-hidden">
@@ -563,6 +617,11 @@ export function IeltsWritingPanel({
                     style={{ width: `${Math.round((item.score / 9) * 100)}%` }}
                   />
                 </div>
+                {item.reason && (
+                  <p className="text-[11px] leading-relaxed text-[#AEAEB2]">
+                    {item.reason}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -570,12 +629,90 @@ export function IeltsWritingPanel({
           {/* Examiner Summary */}
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-4 space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-              {isEn ? "Examiner Evaluation" : "Evaluasi Examiner"}
+              {isEn
+                ? "Strict IDP / British Council Evaluation"
+                : "Evaluasi Examiner Ketat (IDP / British Council)"}
             </p>
             <p className="text-sm leading-relaxed text-[#F5F5F7]">
               {grade.summary_id}
             </p>
           </div>
+
+          {/* Inline Error Corrections */}
+          {grade.inline_errors && grade.inline_errors.length > 0 && (
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 text-[#FF8982]" />
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#D1D1D6]">
+                  {isEn
+                    ? "Inline Error Corrections"
+                    : "Koreksi Kesalahan Langsung"}
+                </p>
+              </div>
+              <div className="space-y-2">
+                {grade.inline_errors.map((err, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-2xl bg-[#FF453A]/[0.06] border border-[#FF453A]/20 p-3.5 space-y-1.5 text-xs sm:text-sm"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-[#FF453A]/15 px-2 py-0.5 text-[#FF8982] line-through">
+                        {err.original}
+                      </span>
+                      <ArrowRight className="h-3.5 w-3.5 text-[#8E8E93] shrink-0" />
+                      <span className="rounded-md bg-[#30D158]/15 px-2 py-0.5 font-semibold text-[#7CF099]">
+                        {err.corrected}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#AEAEB2] leading-snug">
+                      {err.reason}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* +1.0 Band Upgrade Rewrite */}
+          {grade.plus_one_band_rewrite && (
+            <div className="rounded-2xl bg-[#30D158]/[0.07] border border-[#30D158]/25 p-4 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <TrendingUp className="h-4 w-4 text-[#7CF099]" />
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#7CF099]">
+                    {isEn
+                      ? `+1.0 Band Upgrade Rewrite (Target Band ${(
+                          grade.target_upgrade_band ??
+                          Math.min(9.0, grade.overall_band + 1.0)
+                        ).toFixed(1)})`
+                      : `Revisi Upgrade +1.0 Band (Target Band ${(
+                          grade.target_upgrade_band ??
+                          Math.min(9.0, grade.overall_band + 1.0)
+                        ).toFixed(1)})`}
+                  </p>
+                </div>
+                <span className="text-[11px] text-[#AEAEB2]">
+                  {isEn
+                    ? "Highlighted = upgraded vocab & collocations"
+                    : "Disorot = kosakata & kolokasi upgrade"}
+                </span>
+              </div>
+              <HighlightedRewriteText text={grade.plus_one_band_rewrite} />
+            </div>
+          )}
+
+          {/* 1-Click Save to Vault Vocabulary Strip */}
+          {grade.upgraded_vocabulary && grade.upgraded_vocabulary.length > 0 && (
+            <IeltsVocabStrip
+              items={grade.upgraded_vocabulary}
+              title={
+                isEn
+                  ? "Upgraded Vocabulary & Collocations (Save to Vault)"
+                  : "Kosakata & Kolokasi Upgrade (Simpan ke Vault)"
+              }
+              sourceTag="ielts"
+            />
+          )}
 
           {/* Specific Sentence Upgrades */}
           {grade.sentence_upgrades.length > 0 && (

@@ -15,6 +15,10 @@ import {
   Square,
 } from "lucide-react";
 import { AudioButton } from "@/components/ui/AudioButton";
+import {
+  IeltsVocabStrip,
+  SaveToVaultButton,
+} from "@/components/ielts/SaveToVaultButton";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { FALLBACK_SPEAKING_PACKS } from "@/lib/ieltsMockData";
@@ -26,10 +30,21 @@ import { cn } from "@/lib/utils";
 import type {
   IeltsAttempt,
   IeltsProfile,
+  IeltsVocabItem,
   SpeakingGradeResult,
   SpeakingPart,
   SpeakingPromptPack,
 } from "@/types/ielts";
+
+type SpeakingCriterionKey =
+  | "fluency_coherence"
+  | "lexical_resource"
+  | "grammatical_range";
+
+type SpeakingGradeExtended = SpeakingGradeResult & {
+  criteria_feedback?: Partial<Record<SpeakingCriterionKey, string>>;
+  vocab_items?: IeltsVocabItem[];
+};
 
 interface BrowserSpeechResultEvent {
   resultIndex: number;
@@ -62,8 +77,10 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
 }
 
 export function IeltsSpeakingPanel({
+  cefrLevel,
   onProfileUpdated,
 }: {
+  cefrLevel?: string;
   onProfileUpdated: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
 }) {
   const { user, todayStr, syncExternalStudyLog } = useLexiVault();
@@ -84,6 +101,10 @@ export function IeltsSpeakingPanel({
   const [prepActive, setPrepActive] = useState(false);
   const [notes, setNotes] = useState("");
   const [speakElapsed, setSpeakElapsed] = useState(0);
+  const [speakTimerActive, setSpeakTimerActive] = useState(false);
+
+  const speakTargetSeconds = pack.speakSeconds > 0 ? pack.speakSeconds : 120;
+  const speakRemaining = Math.max(0, speakTargetSeconds - speakElapsed);
 
   // Voice Recognition & Transcript
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -121,14 +142,20 @@ export function IeltsSpeakingPanel({
     return () => clearInterval(id);
   }, [prepActive, prepLeft]);
 
-  // Speaking timer while recording
+  // Speaking countdown timer (runs while recording or manually toggled)
   useEffect(() => {
-    if (!isRecording) return;
+    if (!isRecording && !speakTimerActive) return;
     const id = setInterval(() => {
-      setSpeakElapsed((s) => s + 1);
+      setSpeakElapsed((s) => {
+        const next = s + 1;
+        if (next >= speakTargetSeconds) {
+          setSpeakTimerActive(false);
+        }
+        return next;
+      });
     }, 1000);
     return () => clearInterval(id);
-  }, [isRecording]);
+  }, [isRecording, speakTimerActive, speakTargetSeconds]);
 
   const wordCount = useMemo(
     () => countWords(`${transcript} ${interimText}`),
@@ -143,6 +170,7 @@ export function IeltsSpeakingPanel({
     }
     recognitionRef.current = null;
     setIsRecording(false);
+    setSpeakTimerActive(false);
     setInterimText("");
   };
 
@@ -209,6 +237,7 @@ export function IeltsSpeakingPanel({
       recognitionRef.current = rec;
       rec.start();
       setIsRecording(true);
+      setSpeakTimerActive(true);
     } catch {
       setMicError(
         isEn
@@ -230,6 +259,7 @@ export function IeltsSpeakingPanel({
     setPrepActive(false);
     setNotes("");
     setSpeakElapsed(0);
+    setSpeakTimerActive(false);
     setTranscript("");
     setGrade(null);
     setShowSample(false);
@@ -247,6 +277,7 @@ export function IeltsSpeakingPanel({
         body: JSON.stringify({
           skill: "speaking",
           speakingPart: part,
+          cefrLevel,
           excludeIds: seenIds,
         }),
       });
@@ -259,6 +290,7 @@ export function IeltsSpeakingPanel({
           setPrepActive(false);
           setNotes("");
           setSpeakElapsed(0);
+          setSpeakTimerActive(false);
           setTranscript("");
           setGrade(null);
           setShowSample(false);
@@ -284,6 +316,7 @@ export function IeltsSpeakingPanel({
           prompt: pack,
           transcript: combined,
           durationSec: speakElapsed,
+          cefrLevel,
         }),
       });
       if (!res.ok) throw new Error("Speaking grade failed");
@@ -469,12 +502,19 @@ export function IeltsSpeakingPanel({
             </p>
             <div className="flex flex-wrap gap-1.5">
               {pack.targetPhrases.map((phr) => (
-                <span
+                <div
                   key={phr}
-                  className="rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/30 px-2.5 py-0.5 text-[11px] font-medium text-[#70BCFF]"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/30 pl-2.5 pr-1 py-0.5"
                 >
-                  {phr}
-                </span>
+                  <span className="text-[11px] font-medium text-[#70BCFF]">
+                    {phr}
+                  </span>
+                  <SaveToVaultButton
+                    term={phr}
+                    sourceTag="ielts-speaking"
+                    compact
+                  />
+                </div>
               ))}
             </div>
           </div>
@@ -529,15 +569,51 @@ export function IeltsSpeakingPanel({
                         : "Mode Teks (Speech API tidak tersedia)"}
                 </p>
                 <p className="text-xs text-[#8E8E93] tabular-nums">
-                  {isEn ? "Duration: " : "Durasi: "}
-                  {formatSec(speakElapsed)} / target{" "}
-                  {formatSec(pack.speakSeconds)} · {wordCount}{" "}
+                  {isEn ? "Time left: " : "Sisa waktu: "}
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      speakRemaining === 0
+                        ? "text-[#FF453A]"
+                        : speakRemaining <= 15
+                          ? "text-[#FF9F0A]"
+                          : "text-[#F5F5F7]"
+                    )}
+                  >
+                    {formatSec(speakRemaining)}
+                  </span>{" "}
+                  / {formatSec(speakTargetSeconds)} · {wordCount}{" "}
                   {isEn ? "words" : "kata"}
                 </p>
               </div>
             </div>
 
-            {/* 60 FPS GPU Transform-Only Wave Visualizer */}
+            <div className="flex items-center gap-2.5">
+              {/* Manual 2-min Speaking Countdown Toggle (useful in text mode) */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (speakRemaining === 0) setSpeakElapsed(0);
+                  setSpeakTimerActive((v) => !v);
+                }}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold tabular-nums cursor-pointer transition-colors",
+                  speakTimerActive || isRecording
+                    ? "bg-[#FF9F0A]/15 border-[#FF9F0A]/35 text-[#FFD18C]"
+                    : "bg-white/[0.06] border-white/[0.12] text-[#D1D1D6] hover:text-white"
+                )}
+              >
+                <Clock className="h-3 w-3" />
+                <span>
+                  {speakTimerActive || isRecording
+                    ? formatSec(speakRemaining)
+                    : isEn
+                      ? `Start ${Math.round(speakTargetSeconds / 60)}m Timer`
+                      : `Mulai Timer ${Math.round(speakTargetSeconds / 60)}m`}
+                </span>
+              </button>
+
+              {/* 60 FPS GPU Transform-Only Wave Visualizer */}
             <div
               className="flex items-center gap-1 h-7 px-2"
               aria-hidden="true"
@@ -566,6 +642,7 @@ export function IeltsSpeakingPanel({
                   }
                 />
               ))}
+            </div>
             </div>
           </div>
 
@@ -613,6 +690,7 @@ export function IeltsSpeakingPanel({
                 stopRecording();
                 setTranscript("");
                 setSpeakElapsed(0);
+                setSpeakTimerActive(false);
                 setGrade(null);
               }}
               className="text-xs font-medium text-[#8E8E93] hover:text-white cursor-pointer"
@@ -650,7 +728,35 @@ export function IeltsSpeakingPanel({
       </div>
 
       {/* Examiner Grade Output */}
-      {grade && (
+      {grade && (() => {
+        const extendedGrade = grade as SpeakingGradeExtended;
+        const criteriaRows: Array<{
+          key: SpeakingCriterionKey;
+          label: string;
+          score: number;
+          feedback?: string;
+        }> = [
+          {
+            key: "fluency_coherence",
+            label: "Fluency & Coherence",
+            score: grade.criteria.fluency_coherence,
+            feedback: extendedGrade.criteria_feedback?.fluency_coherence,
+          },
+          {
+            key: "lexical_resource",
+            label: "Lexical Resource",
+            score: grade.criteria.lexical_resource,
+            feedback: extendedGrade.criteria_feedback?.lexical_resource,
+          },
+          {
+            key: "grammatical_range",
+            label: "Grammatical Range & Accuracy",
+            score: grade.criteria.grammatical_range,
+            feedback: extendedGrade.criteria_feedback?.grammatical_range,
+          },
+        ];
+
+        return (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -664,7 +770,7 @@ export function IeltsSpeakingPanel({
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
-                  IELTS Speaking Band Score
+                  IELTS Speaking Band Score · Strict 3-Criterion
                 </p>
                 <h4 className="text-2xl font-bold text-white">
                   Band {grade.overall_band.toFixed(1)}
@@ -678,40 +784,43 @@ export function IeltsSpeakingPanel({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {(
-              [
-                {
-                  label: "Fluency & Coherence",
-                  score: grade.criteria.fluency_coherence,
-                },
-                {
-                  label: "Lexical Resource",
-                  score: grade.criteria.lexical_resource,
-                },
-                {
-                  label: "Grammatical Range",
-                  score: grade.criteria.grammatical_range,
-                },
-              ] as const
-            ).map((item) => (
-              <div
-                key={item.label}
-                className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3.5 space-y-2"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-[#D1D1D6]">{item.label}</span>
-                  <span className="font-bold text-[#70BCFF]">
-                    {item.score.toFixed(1)}
-                  </span>
+            {criteriaRows.map((item) => {
+              const barColor =
+                item.score >= 7.5
+                  ? "from-[#30D158] to-[#64D2FF]"
+                  : item.score >= 6.0
+                    ? "from-[#0A84FF] to-[#30D158]"
+                    : "from-[#FF9F0A] to-[#FF453A]";
+              return (
+                <div
+                  key={item.key}
+                  className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3.5 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-medium text-[#D1D1D6]">
+                      {item.label}
+                    </span>
+                    <span className="font-bold text-[#70BCFF] shrink-0">
+                      {item.score.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-white/[0.08] overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full bg-gradient-to-r",
+                        barColor
+                      )}
+                      style={{ width: `${Math.round((item.score / 9) * 100)}%` }}
+                    />
+                  </div>
+                  {item.feedback && (
+                    <p className="text-[11px] leading-relaxed text-[#AEAEB2] pt-0.5">
+                      {item.feedback}
+                    </p>
+                  )}
                 </div>
-                <div className="h-2 w-full rounded-full bg-white/[0.08] overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#0A84FF] to-[#30D158]"
-                    style={{ width: `${Math.round((item.score / 9) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-4 space-y-1">
@@ -735,17 +844,33 @@ export function IeltsSpeakingPanel({
                   key={idx}
                   className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3.5 space-y-1.5 text-xs sm:text-sm"
                 >
-                  <p className="text-[#FF8982] line-through opacity-85">
-                    {up.awkward}
-                  </p>
-                  <p className="flex items-start gap-1.5 font-medium text-[#7CF099]">
-                    <ArrowRight className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>{up.natural}</span>
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-[#FF8982] line-through opacity-85">
+                        {up.awkward}
+                      </p>
+                      <p className="flex items-start gap-1.5 font-medium text-[#7CF099]">
+                        <ArrowRight className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>{up.natural}</span>
+                      </p>
+                    </div>
+                    <SaveToVaultButton
+                      term={up.natural}
+                      sourceTag="ielts-speaking"
+                      compact
+                    />
+                  </div>
                   <p className="text-xs text-[#8E8E93]">{up.reason_id}</p>
                 </div>
               ))}
             </div>
+          )}
+
+          {extendedGrade.vocab_items && extendedGrade.vocab_items.length > 0 && (
+            <IeltsVocabStrip
+              items={extendedGrade.vocab_items}
+              sourceTag="ielts-speaking"
+            />
           )}
 
           <div>
@@ -786,7 +911,8 @@ export function IeltsSpeakingPanel({
             )}
           </div>
         </motion.div>
-      )}
+        );
+      })()}
     </div>
   );
 }

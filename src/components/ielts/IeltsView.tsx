@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { motion } from "framer-motion";
 import { BookOpen, Headphones, Mic, PenTool } from "lucide-react";
 import { CefrProgressBanner } from "@/components/ielts/CefrProgressBanner";
@@ -15,6 +15,17 @@ import { loadIeltsState } from "@/lib/ieltsStorage";
 import { IOS_SPRING, TAB_TRANSITION } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { IeltsAttempt, IeltsProfile, IeltsSubTab } from "@/types/ielts";
+
+const VALID_SUB_TABS: readonly IeltsSubTab[] = [
+  "reading",
+  "listening",
+  "writing",
+  "speaking",
+];
+
+function isValidSubTab(value: string | null | undefined): value is IeltsSubTab {
+  return Boolean(value && VALID_SUB_TABS.includes(value as IeltsSubTab));
+}
 
 export function IeltsView() {
   const { user, isHydrated } = useLexiVault();
@@ -36,6 +47,122 @@ export function IeltsView() {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [showPlacement, setShowPlacement] = useState(false);
   const [subTab, setSubTab] = useState<IeltsSubTab>("reading");
+  const pushedPlacementRef = useRef(false);
+
+  // Sync initial subTab from URL / history and listen to browser Back/Forward
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const paramSkill = params.get("skill");
+    const historyState = window.history.state as {
+      ieltsTab?: IeltsSubTab;
+      ieltsPlacement?: boolean;
+    } | null;
+
+    const initialTab = isValidSubTab(historyState?.ieltsTab)
+      ? historyState.ieltsTab
+      : isValidSubTab(paramSkill)
+        ? paramSkill
+        : "reading";
+
+    setSubTab(initialTab);
+    window.history.replaceState(
+      {
+        ...(historyState ?? {}),
+        ieltsTab: initialTab,
+        ieltsPlacement: Boolean(historyState?.ieltsPlacement),
+      },
+      "",
+      window.location.href
+    );
+
+    const handlePopState = (event: PopStateEvent) => {
+      const st = event.state as {
+        ieltsTab?: IeltsSubTab;
+        ieltsPlacement?: boolean;
+      } | null;
+      const nextParams = new URLSearchParams(window.location.search);
+      const urlSkill = nextParams.get("skill");
+
+      if (isValidSubTab(st?.ieltsTab)) {
+        setSubTab(st.ieltsTab);
+      } else if (isValidSubTab(urlSkill)) {
+        setSubTab(urlSkill);
+      }
+
+      if (st && typeof st.ieltsPlacement === "boolean") {
+        setShowPlacement(st.ieltsPlacement);
+        pushedPlacementRef.current = st.ieltsPlacement;
+      } else {
+        const hasPlacementParam = nextParams.get("placement") === "1";
+        setShowPlacement(hasPlacementParam);
+        pushedPlacementRef.current = hasPlacementParam;
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigateSubTab = useCallback(
+    (nextTab: IeltsSubTab) => {
+      if (nextTab === subTab) return;
+      setSubTab(nextTab);
+      if (typeof window === "undefined") return;
+      const url = new URL(window.location.href);
+      url.searchParams.set("skill", nextTab);
+      url.searchParams.delete("placement");
+      window.history.pushState(
+        {
+          ...(window.history.state ?? {}),
+          ieltsTab: nextTab,
+          ieltsPlacement: false,
+        },
+        "",
+        url.toString()
+      );
+    },
+    [subTab]
+  );
+
+  const openPlacement = useCallback(() => {
+    setShowPlacement(true);
+    if (typeof window === "undefined") return;
+    pushedPlacementRef.current = true;
+    const url = new URL(window.location.href);
+    url.searchParams.set("placement", "1");
+    window.history.pushState(
+      {
+        ...(window.history.state ?? {}),
+        ieltsTab: subTab,
+        ieltsPlacement: true,
+      },
+      "",
+      url.toString()
+    );
+  }, [subTab]);
+
+  const closePlacement = useCallback(() => {
+    if (typeof window !== "undefined" && pushedPlacementRef.current) {
+      pushedPlacementRef.current = false;
+      window.history.back();
+      return;
+    }
+    setShowPlacement(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("placement");
+      window.history.replaceState(
+        {
+          ...(window.history.state ?? {}),
+          ieltsTab: subTab,
+          ieltsPlacement: false,
+        },
+        "",
+        url.toString()
+      );
+    }
+  }, [subTab]);
 
   useEffect(() => {
     if (!isHydrated || !user) return;
@@ -77,16 +204,16 @@ export function IeltsView() {
       {/* Global CEFR & Band Progress Bar */}
       <CefrProgressBanner
         profile={profile}
-        onRetakePlacement={() => setShowPlacement(true)}
+        onRetakePlacement={openPlacement}
       />
 
       {showPlacement ? (
         <PlacementTestFlow
           onFinished={(nextProfile, nextAttempts) => {
             handleProfileUpdated(nextProfile, nextAttempts);
-            setShowPlacement(false);
+            closePlacement();
           }}
-          onCancel={() => setShowPlacement(false)}
+          onCancel={closePlacement}
         />
       ) : (
         <div className="space-y-4">
@@ -100,7 +227,7 @@ export function IeltsView() {
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setSubTab(tab.id)}
+                    onClick={() => navigateSubTab(tab.id)}
                     className={cn(
                       "relative z-10 inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition-colors cursor-pointer",
                       active ? "text-white" : "text-[#8E8E93] hover:text-white"
@@ -139,16 +266,28 @@ export function IeltsView() {
             className="transform-gpu will-change-transform"
           >
             {subTab === "reading" && (
-              <IeltsReadingPanel onProfileUpdated={handleProfileUpdated} />
+              <IeltsReadingPanel
+                cefrLevel={profile.cefr_level}
+                onProfileUpdated={handleProfileUpdated}
+              />
             )}
             {subTab === "listening" && (
-              <IeltsListeningPanel onProfileUpdated={handleProfileUpdated} />
+              <IeltsListeningPanel
+                cefrLevel={profile.cefr_level}
+                onProfileUpdated={handleProfileUpdated}
+              />
             )}
             {subTab === "writing" && (
-              <IeltsWritingPanel onProfileUpdated={handleProfileUpdated} />
+              <IeltsWritingPanel
+                cefrLevel={profile.cefr_level}
+                onProfileUpdated={handleProfileUpdated}
+              />
             )}
             {subTab === "speaking" && (
-              <IeltsSpeakingPanel onProfileUpdated={handleProfileUpdated} />
+              <IeltsSpeakingPanel
+                cefrLevel={profile.cefr_level}
+                onProfileUpdated={handleProfileUpdated}
+              />
             )}
           </motion.div>
         </div>

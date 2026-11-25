@@ -116,7 +116,18 @@ export interface PlacementDiagnosticSummary {
   writingSummaryId: string;
 }
 
-export type ReadingQuestionType = "tfng" | "mcq" | "fill_blank";
+export interface IeltsVocabItem {
+  term: string;
+  note?: string;
+  cefr?: CefrLevel;
+  category?: "vocab" | "idiom" | "collocation";
+}
+
+export type ReadingQuestionType =
+  | "tfng"
+  | "mcq"
+  | "fill_blank"
+  | "matching_headings";
 
 export interface ReadingQuestion {
   id: string;
@@ -125,7 +136,10 @@ export interface ReadingQuestion {
   options?: string[];
   answer: string;
   acceptedAnswers?: string[];
+  wordLimit?: string;
+  paragraphRef?: string;
   explanation_id: string;
+  explanation_en?: string;
   evidence_quote: string;
 }
 
@@ -133,9 +147,11 @@ export interface ReadingPassagePack {
   id: string;
   title: string;
   topic: string;
+  cefrLevel?: CefrLevel;
   recommendedMinutes: number;
   paragraphs: string[];
   questions: ReadingQuestion[];
+  keyVocabulary?: IeltsVocabItem[];
 }
 
 export interface ListeningDialogueSegment {
@@ -153,17 +169,22 @@ export interface ListeningQuestion {
   options?: string[];
   answer: string;
   acceptedAnswers?: string[];
+  wordLimit?: string;
   explanation_id: string;
+  explanation_en?: string;
 }
 
 export interface ListeningSectionPack {
   id: string;
   sectionLabel: string;
+  sectionType?: "section1" | "section3" | "section4";
+  cefrLevel?: CefrLevel;
   title: string;
   context: string;
   accentsLabel: string;
   segments: ListeningDialogueSegment[];
   questions: ListeningQuestion[];
+  keyVocabulary?: IeltsVocabItem[];
 }
 
 export interface WritingChartRow {
@@ -181,6 +202,7 @@ export interface WritingChartData {
 export interface WritingTaskPack {
   id: string;
   taskType: "task1" | "task2";
+  cefrLevel?: CefrLevel;
   title: string;
   prompt: string;
   minWords: number;
@@ -196,6 +218,12 @@ export interface SentenceUpgradeItem {
   reason_id: string;
 }
 
+export interface WritingInlineError {
+  original: string;
+  corrected: string;
+  reason: string;
+}
+
 export interface WritingGradeResult {
   overall_band: number;
   criteria: {
@@ -204,8 +232,18 @@ export interface WritingGradeResult {
     lexical_resource: number;
     grammatical_range: number;
   };
+  criteria_feedback?: {
+    task_response: string;
+    coherence_cohesion: string;
+    lexical_resource: string;
+    grammatical_range: string;
+  };
   summary_id: string;
+  inline_errors?: WritingInlineError[];
   sentence_upgrades: SentenceUpgradeItem[];
+  plus_one_band_rewrite?: string;
+  target_upgrade_band?: number;
+  upgraded_vocabulary?: IeltsVocabItem[];
   band_85_sample: string;
   modelUsed: string;
 }
@@ -215,6 +253,7 @@ export type SpeakingPart = "part1" | "part2" | "part3";
 export interface SpeakingPromptPack {
   id: string;
   part: SpeakingPart;
+  cefrLevel?: CefrLevel;
   topic: string;
   question: string;
   cueBullets?: string[];
@@ -238,8 +277,14 @@ export interface SpeakingGradeResult {
     lexical_resource: number;
     grammatical_range: number;
   };
+  criteria_feedback?: {
+    fluency_coherence: string;
+    lexical_resource: string;
+    grammatical_range: string;
+  };
   summary_id: string;
   phrase_upgrades: SpeakingPhraseUpgrade[];
+  upgraded_vocabulary?: IeltsVocabItem[];
   band_85_sample: string;
   modelUsed: string;
 }

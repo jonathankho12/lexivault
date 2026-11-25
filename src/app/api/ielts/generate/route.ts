@@ -9,6 +9,7 @@ import {
   FALLBACK_WRITING_PACKS,
 } from "@/lib/ieltsMockData";
 import type {
+  CefrLevel,
   IeltsSubTab,
   ListeningSectionPack,
   ReadingPassagePack,
@@ -16,6 +17,13 @@ import type {
   SpeakingPromptPack,
   WritingTaskPack,
 } from "@/types/ielts";
+
+const VALID_CEFR = new Set<CefrLevel>(["A1", "A2", "B1", "B2", "C1", "C2"]);
+
+function normalizeCefr(raw?: string): CefrLevel {
+  const upper = (raw ?? "").trim().toUpperCase() as CefrLevel;
+  return VALID_CEFR.has(upper) ? upper : "B2";
+}
 
 function pickFallback<T extends { id: string }>(
   items: T[],
@@ -39,6 +47,7 @@ export async function POST(request: Request) {
       skill?: IeltsSubTab;
       taskType?: "task1" | "task2";
       speakingPart?: SpeakingPart;
+      cefrLevel?: CefrLevel;
       excludeIds?: string[];
     };
 
@@ -48,29 +57,50 @@ export async function POST(request: Request) {
       body.skill === "speaking"
         ? body.skill
         : "reading";
+    const cefrLevel = normalizeCefr(body.cefrLevel);
     const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds : [];
 
     if (skill === "reading") {
-      const prompt = `Generate a brand-new, authentic IELTS Academic Reading passage with 6 questions.
+      const readingTargetLevel: CefrLevel =
+        cefrLevel === "A1" ? "A2" : cefrLevel;
+
+      const prompt = `Generate a brand-new, authentic IELTS Reading passage adapted to CEFR ${readingTargetLevel} level with 6 exam-style questions.
+Adapt passage vocabulary, sentence complexity, and concept density realistically for CEFR ${readingTargetLevel}:
+- A2/B1: Clear, accessible general-interest / semi-academic topic (~75-95 words per paragraph).
+- B2: Upper-intermediate academic topic (~85-110 words per paragraph).
+- C1/C2: Dense scholarly IELTS Academic passage (~95-125 words per paragraph).
+
 Return strictly valid JSON matching the schema:
 - "id": unique string id like "read-ai-..."
-- "title": scholarly article title
-- "topic": academic field (e.g., Environmental Engineering, Cognitive Neuroscience, Economic History)
-- "recommendedMinutes": integer (12)
-- "paragraphs": 4 rich, cohesive academic paragraphs (~90-120 words each, C1/C2 vocabulary)
-- "questions": 6 questions mixing "tfng" (3 questions with options ["TRUE","FALSE","NOT GIVEN"]), "mcq" (1 question with 4 options), and "fill_blank" (2 summary/note completion questions using _____ for ONE OR TWO WORDS directly from the passage).
-Each question MUST include "answer", "acceptedAnswers" (lowercase variants), "explanation_id" (Indonesian explanation citing which paragraph), and "evidence_quote" (exact short quote from the passage).`;
+- "title": engaging article title
+- "topic": subject field
+- "cefrLevel": "${readingTargetLevel}"
+- "recommendedMinutes": integer (10 for A2/B1, 12 for B2/C1/C2)
+- "paragraphs": exactly 4 cohesive paragraphs (corresponding to Paragraph A, B, C, D — do NOT prefix the text with "Paragraph A:").
+- "questions": exactly 6 questions mixing:
+  1. 2 "tfng" questions with options ["TRUE", "FALSE", "NOT GIVEN"] — include at least ONE FALSE and ONE NOT GIVEN. In both "explanation_en" and "explanation_id", explicitly explain the IELTS distinction between FALSE (directly contradicted by the passage) vs NOT GIVEN (information not mentioned / unverifiable in the passage).
+  2. 2 "fill_blank" (Summary Completion) questions using _____ with "wordLimit" set to "ONE WORD ONLY" or "NO MORE THAN TWO WORDS", exact "answer", and lowercase variants in "acceptedAnswers".
+  3. 1 "matching_headings" question asking which heading best summarizes a specific paragraph (e.g. "Choose the best heading for Paragraph B"), with 4 concise Roman-numeral options ("i. ...", "ii. ...", "iii. ...", "iv. ...") and "paragraphRef": "Paragraph B".
+  4. 1 "mcq" nuanced inference question with 4 options.
+  Every question MUST include "evidence_quote" (an EXACT verbatim substring sentence or clause copied from the passage so the UI can highlight it inside the passage).
+- "keyVocabulary": array of 4-5 level-appropriate academic words/collocations from the passage: { "term", "note" (brief English definition), "cefr": "${readingTargetLevel}", "category": "vocab"|"collocation"|"idiom" }.`;
 
       const aiRes = await generateStructuredWithHybridModel<ReadingPassagePack>({
         tier: "flash",
         routeName: "api/ielts/generate:reading",
         contents: prompt,
+        maxOutputTokens: 2400,
+        fallbackMaxTokens: 2048,
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             id: { type: Type.STRING },
             title: { type: Type.STRING },
             topic: { type: Type.STRING },
+            cefrLevel: {
+              type: Type.STRING,
+              enum: ["A2", "B1", "B2", "C1", "C2"],
+            },
             recommendedMinutes: { type: Type.INTEGER },
             paragraphs: { type: Type.ARRAY, items: { type: Type.STRING } },
             questions: {
@@ -81,7 +111,7 @@ Each question MUST include "answer", "acceptedAnswers" (lowercase variants), "ex
                   id: { type: Type.STRING },
                   type: {
                     type: Type.STRING,
-                    enum: ["tfng", "mcq", "fill_blank"],
+                    enum: ["tfng", "mcq", "fill_blank", "matching_headings"],
                   },
                   prompt: { type: Type.STRING },
                   options: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -90,7 +120,10 @@ Each question MUST include "answer", "acceptedAnswers" (lowercase variants), "ex
                     type: Type.ARRAY,
                     items: { type: Type.STRING },
                   },
+                  wordLimit: { type: Type.STRING },
+                  paragraphRef: { type: Type.STRING },
                   explanation_id: { type: Type.STRING },
+                  explanation_en: { type: Type.STRING },
                   evidence_quote: { type: Type.STRING },
                 },
                 required: [
@@ -101,6 +134,25 @@ Each question MUST include "answer", "acceptedAnswers" (lowercase variants), "ex
                   "explanation_id",
                   "evidence_quote",
                 ],
+              },
+            },
+            keyVocabulary: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  term: { type: Type.STRING },
+                  note: { type: Type.STRING },
+                  cefr: {
+                    type: Type.STRING,
+                    enum: ["A2", "B1", "B2", "C1", "C2"],
+                  },
+                  category: {
+                    type: Type.STRING,
+                    enum: ["vocab", "idiom", "collocation"],
+                  },
+                },
+                required: ["term", "note"],
               },
             },
           },
@@ -125,9 +177,10 @@ Each question MUST include "answer", "acceptedAnswers" (lowercase variants), "ex
         return NextResponse.json({
           pack: {
             ...aiRes.data,
+            cefrLevel: aiRes.data.cefrLevel || readingTargetLevel,
             id: aiRes.data.id || `read-ai-${Date.now()}`,
           },
-          source: "gemini-flash",
+          source: aiRes.providerUsed,
           modelUsed: aiRes.modelUsed,
         });
       }
@@ -139,26 +192,58 @@ Each question MUST include "answer", "acceptedAnswers" (lowercase variants), "ex
     }
 
     if (skill === "listening") {
-      const prompt = `Generate a brand-new, authentic IELTS Listening Section 3 (academic tutorial dialogue between 2 speakers) or Section 4 (academic lecture + moderator) pack.
+      const isFoundation =
+        cefrLevel === "A1" || cefrLevel === "A2" || cefrLevel === "B1";
+      const sectionType = isFoundation ? "section1" : "section4";
+
+      const prompt = isFoundation
+        ? `Generate a brand-new, realistic IELTS Listening Section 1 (Everyday Dialogue / Form Completion) adapted for CEFR ${cefrLevel}.
+Scenario: An everyday booking, registration, library card, clinic appointment, hotel reservation, or sports club inquiry with clear dates, places, numbers, prices, or spelling details.
 Return strictly valid JSON:
 - "id": unique id
-- "sectionLabel": e.g., "Section 3 · Academic Discussion"
-- "title": concise title
-- "context": 1-sentence Indonesian context description
-- "accentsLabel": e.g., "British (UK) & Australian (AU)"
-- "segments": 6-8 natural spoken turns, each with "speaker", "accent" (one of "GB_M","GB_F","AU_F","AU_M","US_M" — mix at least 2 accents), and "text" (natural spoken English containing clear specific facts, numbers, names, or reasons).
-- "questions": 5 questions mixing "mcq" (2 questions with 4 options) and "form_completion" (3 questions with _____ where answer is 1-2 words or a number heard directly in the script). Include "answer", "acceptedAnswers", and Indonesian "explanation_id".`;
+- "sectionLabel": "Section 1 · Everyday Dialogue"
+- "sectionType": "section1"
+- "cefrLevel": "${cefrLevel}"
+- "title": concise realistic title
+- "context": 1-sentence concise context description
+- "accentsLabel": "British (UK) & American (US)"
+- "segments": 6-7 natural short spoken turns (each under 220 characters so TTS is crisp), alternating 2 speakers using accents "GB_F", "GB_M", or "US_M". Include clear dates, times, numbers, and booking details (plus 1 realistic self-correction like IELTS exams!).
+- "questions": 5 questions: 3 "form_completion" (with _____ and "wordLimit" like "ONE WORD AND/OR A NUMBER", exact "answer", "acceptedAnswers") + 2 "mcq" (4 options). Include both "explanation_en" and "explanation_id".
+- "keyVocabulary": 4 useful everyday/booking phrases or collocations from the script: { "term", "note", "cefr": "${cefrLevel}", "category": "vocab"|"collocation"|"idiom" }.`
+        : `Generate a brand-new, realistic IELTS Listening Section 4 (Academic Mini-Lecture) adapted for CEFR ${cefrLevel}.
+Scenario: A university mini-lecture on science, history, urban design, psychology, or ecology, optionally followed by a brief moderator announcement.
+Return strictly valid JSON:
+- "id": unique id
+- "sectionLabel": "Section 4 · Academic Mini-Lecture"
+- "sectionType": "section4"
+- "cefrLevel": "${cefrLevel}"
+- "title": concise lecture title
+- "context": 1-sentence concise context description
+- "accentsLabel": "British (UK) & American (US)"
+- "segments": 5-6 clear spoken lecture segments (each under 240 characters so TTS is crisp), using accents "GB_F", "GB_M", or "US_M".
+- "questions": 5 questions: 3 "form_completion" (Note Completion with _____ and "wordLimit" like "ONE WORD ONLY" or "NO MORE THAN TWO WORDS", exact "answer", "acceptedAnswers") + 2 nuanced inference "mcq" (4 options). Include both "explanation_en" and "explanation_id".
+- "keyVocabulary": 4-5 academic words or collocations from the lecture: { "term", "note", "cefr": "${cefrLevel}", "category": "vocab"|"collocation"|"idiom" }.`;
 
       const aiRes = await generateStructuredWithHybridModel<ListeningSectionPack>(
         {
           tier: "flash",
           routeName: "api/ielts/generate:listening",
           contents: prompt,
+          maxOutputTokens: 2200,
+          fallbackMaxTokens: 2048,
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               id: { type: Type.STRING },
               sectionLabel: { type: Type.STRING },
+              sectionType: {
+                type: Type.STRING,
+                enum: ["section1", "section3", "section4"],
+              },
+              cefrLevel: {
+                type: Type.STRING,
+                enum: ["A1", "A2", "B1", "B2", "C1", "C2"],
+              },
               title: { type: Type.STRING },
               context: { type: Type.STRING },
               accentsLabel: { type: Type.STRING },
@@ -194,9 +279,30 @@ Return strictly valid JSON:
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
                     },
+                    wordLimit: { type: Type.STRING },
                     explanation_id: { type: Type.STRING },
+                    explanation_en: { type: Type.STRING },
                   },
                   required: ["id", "type", "prompt", "answer", "explanation_id"],
+                },
+              },
+              keyVocabulary: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    term: { type: Type.STRING },
+                    note: { type: Type.STRING },
+                    cefr: {
+                      type: Type.STRING,
+                      enum: ["A1", "A2", "B1", "B2", "C1", "C2"],
+                    },
+                    category: {
+                      type: Type.STRING,
+                      enum: ["vocab", "idiom", "collocation"],
+                    },
+                  },
+                  required: ["term", "note"],
                 },
               },
             },
@@ -223,15 +329,24 @@ Return strictly valid JSON:
         return NextResponse.json({
           pack: {
             ...aiRes.data,
+            sectionType: aiRes.data.sectionType || sectionType,
+            cefrLevel: aiRes.data.cefrLevel || cefrLevel,
             id: aiRes.data.id || `list-ai-${Date.now()}`,
           },
-          source: "gemini-flash",
+          source: aiRes.providerUsed,
           modelUsed: aiRes.modelUsed,
         });
       }
 
+      const levelMatched = FALLBACK_LISTENING_PACKS.filter((p) =>
+        isFoundation
+          ? p.sectionType === "section1"
+          : p.sectionType !== "section1"
+      );
+      const pool =
+        levelMatched.length > 0 ? levelMatched : FALLBACK_LISTENING_PACKS;
       return NextResponse.json({
-        pack: pickFallback(FALLBACK_LISTENING_PACKS, excludeIds),
+        pack: pickFallback(pool, excludeIds),
         source: "fallback",
       });
     }
@@ -242,25 +357,31 @@ Return strictly valid JSON:
           ? body.speakingPart
           : "part1";
 
-      const prompt = `Generate a brand-new, authentic IELTS Speaking ${part.toUpperCase()} prompt.
+      const prompt = `Generate a brand-new, authentic IELTS Speaking ${part.toUpperCase()} prompt calibrated for a CEFR ${cefrLevel} learner.
 ${
   part === "part1"
     ? "Part 1: Everyday personal interview question + 2 concise follow-up questions. prepSeconds: 0, speakSeconds: 60."
     : part === "part2"
-      ? "Part 2: Cue Card topic with 4 'cueBullets' ('You should say:' points). prepSeconds: 60, speakSeconds: 120."
+      ? "Part 2: Official Cue Card topic with 4 'cueBullets' ('You should say:' points). prepSeconds: 60, speakSeconds: 120."
       : "Part 3: Abstract analytical discussion question + 2 deeper follow-up questions. prepSeconds: 0, speakSeconds: 90."
 }
-Return strictly valid JSON with "id", "part": "${part}", "topic", "question", "cueBullets" (if part2), "followUpQuestions" (if part1/part3), "prepSeconds", "speakSeconds", "targetPhrases" (3 C1/C2 phrases), and "fallbackBand85Sample" (natural spoken Band 8.5 answer).`;
+Return strictly valid JSON with "id", "part": "${part}", "cefrLevel": "${cefrLevel}", "topic", "question", "cueBullets" (if part2), "followUpQuestions" (if part1/part3), "prepSeconds", "speakSeconds", "targetPhrases" (3-4 natural idiomatic/collocational phrases), and "fallbackBand85Sample" (natural spoken Band 8.5 answer).`;
 
       const aiRes = await generateStructuredWithHybridModel<SpeakingPromptPack>({
         tier: "flash",
         routeName: "api/ielts/generate:speaking",
         contents: prompt,
+        maxOutputTokens: 1600,
+        fallbackMaxTokens: 1400,
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             id: { type: Type.STRING },
             part: { type: Type.STRING, enum: ["part1", "part2", "part3"] },
+            cefrLevel: {
+              type: Type.STRING,
+              enum: ["A1", "A2", "B1", "B2", "C1", "C2"],
+            },
             topic: { type: Type.STRING },
             question: { type: Type.STRING },
             cueBullets: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -291,9 +412,10 @@ Return strictly valid JSON with "id", "part": "${part}", "topic", "question", "c
           pack: {
             ...aiRes.data,
             part,
+            cefrLevel: aiRes.data.cefrLevel || cefrLevel,
             id: aiRes.data.id || `speak-ai-${Date.now()}`,
           },
-          source: "gemini-flash",
+          source: aiRes.providerUsed,
           modelUsed: aiRes.modelUsed,
         });
       }
@@ -309,20 +431,26 @@ Return strictly valid JSON with "id", "part": "${part}", "topic", "question", "c
     const taskType = body.taskType === "task1" ? "task1" : "task2";
     const prompt =
       taskType === "task1"
-        ? `Generate a brand-new IELTS Academic Writing Task 1 prompt with realistic comparative numeric table/chart data across 4 categories and 2 years/groups.
-Return strictly valid JSON with "id", "taskType": "task1", "title", "prompt", "minWords": 150, "recommendedMinutes": 20, "chartData" ({ "title", "unit", "columns" (4 strings), "rows" (2 objects with "label" and 4 numbers in "values") }), "outlineTips" (3 short Indonesian structural tips), and "fallbackBand85Sample" (170-190 word Band 8.5 academic report).`
-        : `Generate a brand-new IELTS Academic Writing Task 2 essay prompt on technology, society, environment, or education.
-Return strictly valid JSON with "id", "taskType": "task2", "title", "prompt", "minWords": 250, "recommendedMinutes": 40, "outlineTips" (4 short Indonesian essay structure tips), and "fallbackBand85Sample" (270-300 word Band 8.5 academic essay).`;
+        ? `Generate a brand-new IELTS Academic Writing Task 1 prompt (calibrated for CEFR ${cefrLevel}) with realistic comparative numeric table/chart data across 4 categories and 2 years/groups.
+Return strictly valid JSON with "id", "taskType": "task1", "cefrLevel": "${cefrLevel}", "title", "prompt", "minWords": 150, "recommendedMinutes": 20, "chartData" ({ "title", "unit", "columns" (4 strings), "rows" (2 objects with "label" and 4 numbers in "values") }), "outlineTips" (3 short structural tips), and "fallbackBand85Sample" (170-190 word Band 8.5 academic report).`
+        : `Generate a brand-new IELTS Academic Writing Task 2 essay prompt (calibrated for CEFR ${cefrLevel}) on technology, society, environment, or education.
+Return strictly valid JSON with "id", "taskType": "task2", "cefrLevel": "${cefrLevel}", "title", "prompt", "minWords": 250, "recommendedMinutes": 40, "outlineTips" (4 short essay structure tips), and "fallbackBand85Sample" (270-300 word Band 8.5 academic essay).`;
 
     const aiRes = await generateStructuredWithHybridModel<WritingTaskPack>({
       tier: "flash",
       routeName: "api/ielts/generate:writing",
       contents: prompt,
+      maxOutputTokens: 1800,
+      fallbackMaxTokens: 1600,
       responseSchema: {
         type: Type.OBJECT,
         properties: {
           id: { type: Type.STRING },
           taskType: { type: Type.STRING, enum: ["task1", "task2"] },
+          cefrLevel: {
+            type: Type.STRING,
+            enum: ["A1", "A2", "B1", "B2", "C1", "C2"],
+          },
           title: { type: Type.STRING },
           prompt: { type: Type.STRING },
           minWords: { type: Type.INTEGER },
@@ -367,9 +495,10 @@ Return strictly valid JSON with "id", "taskType": "task2", "title", "prompt", "m
         pack: {
           ...aiRes.data,
           taskType,
+          cefrLevel: aiRes.data.cefrLevel || cefrLevel,
           id: aiRes.data.id || `write-ai-${Date.now()}`,
         },
-        source: "gemini-flash",
+        source: aiRes.providerUsed,
         modelUsed: aiRes.modelUsed,
       });
     }

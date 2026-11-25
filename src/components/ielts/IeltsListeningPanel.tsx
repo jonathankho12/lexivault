@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -14,6 +14,11 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
+import {
+  IeltsVocabStrip,
+  SaveToVaultButton,
+} from "@/components/ielts/SaveToVaultButton";
+import { AudioButton } from "@/components/ui/AudioButton";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { FALLBACK_LISTENING_PACKS } from "@/lib/ieltsMockData";
@@ -25,11 +30,47 @@ import {
 import { TAP_SCALE } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type {
+  CefrLevel,
   IeltsAttempt,
   IeltsProfile,
+  IeltsVoiceAccent,
   ListeningQuestion,
   ListeningSectionPack,
 } from "@/types/ielts";
+
+type ListeningFormatMode = "section1" | "section4";
+type TtsAccentMode = "pack" | "US" | "UK";
+
+function isA1ToB1(level?: CefrLevel): boolean {
+  return level === "A1" || level === "A2" || level === "B1";
+}
+
+function inferFormatMode(pack: ListeningSectionPack): ListeningFormatMode {
+  if (pack.sectionType === "section4") return "section4";
+  if (pack.sectionType === "section1") return "section1";
+  if (pack.cefrLevel && !isA1ToB1(pack.cefrLevel)) return "section4";
+  return "section1";
+}
+
+function mapSegmentsForAccent(
+  segments: ListeningSectionPack["segments"],
+  accentMode: TtsAccentMode
+): ListeningSectionPack["segments"] {
+  if (accentMode === "pack") return segments;
+  const speakerMap = new Map<string, IeltsVoiceAccent>();
+  return segments.map((seg) => {
+    let accent = speakerMap.get(seg.speaker);
+    if (!accent) {
+      if (accentMode === "US") {
+        accent = "US_M";
+      } else {
+        accent = speakerMap.size % 2 === 0 ? "GB_F" : "GB_M";
+      }
+      speakerMap.set(seg.speaker, accent);
+    }
+    return { ...seg, accent };
+  });
+}
 
 function formatAudioTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return "0:00";
@@ -52,19 +93,32 @@ function isListeningCorrect(q: ListeningQuestion, userAns: string): boolean {
 
 export function IeltsListeningPanel({
   onProfileUpdated,
+  cefrLevel,
 }: {
   onProfileUpdated: (profile: IeltsProfile, attempts: IeltsAttempt[]) => void;
+  cefrLevel?: CefrLevel;
 }) {
   const { user, todayStr, syncExternalStudyLog } = useLexiVault();
   const { lang } = useLanguage();
   const isEn = lang === "en";
 
-  const [pack, setPack] = useState<ListeningSectionPack>(
-    FALLBACK_LISTENING_PACKS[0]
-  );
-  const [seenIds, setSeenIds] = useState<string[]>([
-    FALLBACK_LISTENING_PACKS[0].id,
-  ]);
+  const initialFormat: ListeningFormatMode =
+    cefrLevel && !isA1ToB1(cefrLevel) ? "section4" : "section1";
+
+  const initialPack = useMemo(() => {
+    return (
+      FALLBACK_LISTENING_PACKS.find(
+        (p) => inferFormatMode(p) === initialFormat
+      ) ?? FALLBACK_LISTENING_PACKS[0]
+    );
+  }, [initialFormat]);
+
+  const [formatMode, setFormatMode] =
+    useState<ListeningFormatMode>(initialFormat);
+  const [accentMode, setAccentMode] = useState<TtsAccentMode>("pack");
+
+  const [pack, setPack] = useState<ListeningSectionPack>(initialPack);
+  const [seenIds, setSeenIds] = useState<string[]>([initialPack.id]);
   const [generating, setGenerating] = useState(false);
 
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -108,20 +162,22 @@ export function IeltsListeningPanel({
       return audioRef.current;
     }
 
-    let blobUrl = urlCacheRef.current.get(pack.id);
+    const cacheKey = `${pack.id}:${accentMode}`;
+    let blobUrl = urlCacheRef.current.get(cacheKey);
     if (!blobUrl) {
       setAudioLoading(true);
       setAudioError(null);
       try {
+        const segments = mapSegmentsForAccent(pack.segments, accentMode);
         const res = await fetch("/api/ielts/audio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ segments: pack.segments }),
+          body: JSON.stringify({ segments }),
         });
         if (!res.ok) throw new Error("Audio synthesis failed");
         const blob = await res.blob();
         blobUrl = URL.createObjectURL(blob);
-        urlCacheRef.current.set(pack.id, blobUrl);
+        urlCacheRef.current.set(cacheKey, blobUrl);
       } catch {
         setAudioError(
           isEn
@@ -188,10 +244,41 @@ export function IeltsListeningPanel({
     }
   };
 
-  const handleGenerateNew = async () => {
+  const handleAccentChange = (nextAccent: TtsAccentMode) => {
+    if (nextAccent === accentMode) return;
+    teardownAudio();
+    setAudioError(null);
+    setAccentMode(nextAccent);
+  };
+
+  const applyPack = useCallback(
+    (nextPack: ListeningSectionPack) => {
+      teardownAudio();
+      setPack(nextPack);
+      setSeenIds((prev) =>
+        prev.includes(nextPack.id) ? prev : [...prev, nextPack.id]
+      );
+      setAnswers({});
+      setSubmitted(false);
+      setResultBand(null);
+      setShowTranscript(false);
+      setAudioError(null);
+    },
+    [teardownAudio]
+  );
+
+  const handleGenerateNew = async (targetFormat: ListeningFormatMode = formatMode) => {
     if (generating) return;
     setGenerating(true);
     teardownAudio();
+    const targetCefr: CefrLevel =
+      targetFormat === "section1"
+        ? cefrLevel && isA1ToB1(cefrLevel)
+          ? cefrLevel
+          : "B1"
+        : cefrLevel && !isA1ToB1(cefrLevel)
+          ? cefrLevel
+          : "C1";
     try {
       const res = await fetch("/api/ielts/generate", {
         method: "POST",
@@ -199,22 +286,32 @@ export function IeltsListeningPanel({
         body: JSON.stringify({
           skill: "listening",
           excludeIds: seenIds,
+          cefrLevel: targetCefr,
+          sectionType: targetFormat,
         }),
       });
       if (res.ok) {
         const json = (await res.json()) as { pack: ListeningSectionPack };
         if (json.pack) {
-          setPack(json.pack);
-          setSeenIds((prev) => [...prev, json.pack.id]);
-          setAnswers({});
-          setSubmitted(false);
-          setResultBand(null);
-          setShowTranscript(false);
-          setAudioError(null);
+          applyPack(json.pack);
         }
       }
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleFormatChange = (nextFormat: ListeningFormatMode) => {
+    if (nextFormat === formatMode) return;
+    setFormatMode(nextFormat);
+    if (inferFormatMode(pack) === nextFormat) return;
+    const matchingFallback = FALLBACK_LISTENING_PACKS.find(
+      (p) => inferFormatMode(p) === nextFormat && p.id !== pack.id
+    );
+    if (matchingFallback) {
+      applyPack(matchingFallback);
+    } else {
+      void handleGenerateNew(nextFormat);
     }
   };
 
@@ -255,44 +352,99 @@ export function IeltsListeningPanel({
   return (
     <div className="space-y-4">
       {/* Header Toolbar */}
-      <div className="liquid-glass rounded-3xl p-4 sm:p-5 flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#C4C2FF]">
-              {pack.sectionLabel}
-            </span>
-            <span className="rounded-full bg-white/[0.06] border border-white/[0.1] px-2.5 py-0.5 text-[10px] text-[#8E8E93]">
-              {pack.accentsLabel}
-            </span>
+      <div className="liquid-glass rounded-3xl p-4 sm:p-5 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#C4C2FF]">
+                {pack.sectionLabel}
+              </span>
+              <span className="rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/30 px-2.5 py-0.5 text-[10px] font-semibold text-[#70BCFF]">
+                {pack.cefrLevel
+                  ? `${pack.cefrLevel} · ${
+                      inferFormatMode(pack) === "section4"
+                        ? isEn
+                          ? "Section 4 (Academic)"
+                          : "Section 4 (Akademik)"
+                        : isEn
+                          ? "Section 1 (Everyday)"
+                          : "Section 1 (Sehari-hari)"
+                    }`
+                  : formatMode === "section4"
+                    ? "B2–C2 · Section 4"
+                    : "A1–B1 · Section 1"}
+              </span>
+              <span className="rounded-full bg-white/[0.06] border border-white/[0.1] px-2.5 py-0.5 text-[10px] text-[#8E8E93]">
+                {pack.accentsLabel}
+              </span>
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold text-white">
+              {pack.title}
+            </h3>
+            <p className="text-xs text-[#8E8E93]">{pack.context}</p>
           </div>
-          <h3 className="text-lg sm:text-xl font-bold text-white">
-            {pack.title}
-          </h3>
-          <p className="text-xs text-[#8E8E93]">{pack.context}</p>
+
+          <motion.button
+            type="button"
+            whileTap={TAP_SCALE}
+            disabled={generating}
+            onClick={() => void handleGenerateNew()}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/20 border border-[#0A84FF]/40 px-3.5 py-1.5 text-xs font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/30 cursor-pointer disabled:opacity-50"
+          >
+            {generating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            <span>
+              {generating
+                ? isEn
+                  ? "Generating..."
+                  : "Membuat..."
+                : isEn
+                  ? "Generate New Section (AI)"
+                  : "Generate Soal Baru (AI)"}
+            </span>
+          </motion.button>
         </div>
 
-        <motion.button
-          type="button"
-          whileTap={TAP_SCALE}
-          disabled={generating}
-          onClick={() => void handleGenerateNew()}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/20 border border-[#0A84FF]/40 px-3.5 py-1.5 text-xs font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/30 cursor-pointer disabled:opacity-50"
-        >
-          {generating ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" />
-          )}
-          <span>
-            {generating
-              ? isEn
-                ? "Generating..."
-                : "Membuat..."
-              : isEn
-                ? "Generate New Section (AI)"
-                : "Generate Soal Baru (AI)"}
+        {/* Exam Format Selector: A1-B1 Section 1 / B2-C2 Section 4 */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/[0.08]">
+          <span className="text-[11px] font-medium text-[#8E8E93]">
+            {isEn ? "Exam Format:" : "Format Ujian:"}
           </span>
-        </motion.button>
+          {(
+            [
+              {
+                id: "section1" as const,
+                label: isEn
+                  ? "A1–B1 · Section 1 (Dialogue)"
+                  : "A1–B1 · Section 1 (Dialog)",
+              },
+              {
+                id: "section4" as const,
+                label: isEn
+                  ? "B2–C2 · Section 4 (Academic Lecture)"
+                  : "B2–C2 · Section 4 (Kuliah Akademik)",
+              },
+            ] as const
+          ).map((fmt) => (
+            <button
+              key={fmt.id}
+              type="button"
+              disabled={generating}
+              onClick={() => handleFormatChange(fmt.id)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50",
+                formatMode === fmt.id
+                  ? "bg-[#5E5CE6]/25 border-[#5E5CE6]/55 text-[#E5E5FF]"
+                  : "bg-white/[0.04] border-white/[0.09] text-[#8E8E93] hover:text-white"
+              )}
+            >
+              {fmt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* iOS Liquid Glass Multi-Speaker Audio Player */}
@@ -369,23 +521,50 @@ export function IeltsListeningPanel({
             </div>
           </div>
 
-          {/* Playback Speed */}
-          <div className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/[0.1] p-1">
-            {([0.85, 1, 1.15] as const).map((sp) => (
-              <button
-                key={sp}
-                type="button"
-                onClick={() => handleSpeedChange(sp)}
-                className={cn(
-                  "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer",
-                  speed === sp
-                    ? "bg-[#0A84FF] text-white"
-                    : "text-[#8E8E93] hover:text-white"
-                )}
-              >
-                {sp}x
-              </button>
-            ))}
+          {/* Accent & Playback Speed */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/[0.1] p-1">
+              {(
+                [
+                  { id: "pack" as const, label: isEn ? "Multi" : "Multi" },
+                  { id: "US" as const, label: "US" },
+                  { id: "UK" as const, label: "UK" },
+                ] as const
+              ).map((acc) => (
+                <button
+                  key={acc.id}
+                  type="button"
+                  disabled={audioLoading}
+                  onClick={() => handleAccentChange(acc.id)}
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50",
+                    accentMode === acc.id
+                      ? "bg-[#5E5CE6] text-white"
+                      : "text-[#8E8E93] hover:text-white"
+                  )}
+                >
+                  {acc.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/[0.1] p-1">
+              {([0.85, 1, 1.15] as const).map((sp) => (
+                <button
+                  key={sp}
+                  type="button"
+                  onClick={() => handleSpeedChange(sp)}
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer",
+                    speed === sp
+                      ? "bg-[#0A84FF] text-white"
+                      : "text-[#8E8E93] hover:text-white"
+                  )}
+                >
+                  {sp}x
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -442,11 +621,17 @@ export function IeltsListeningPanel({
         {submitted && showTranscript && (
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-4 space-y-2.5 max-h-60 overflow-y-auto no-scrollbar">
             {pack.segments.map((seg, idx) => (
-              <div key={idx} className="text-xs sm:text-sm leading-relaxed">
-                <span className="font-semibold text-[#70BCFF]">
-                  {seg.speaker}:{" "}
-                </span>
-                <span className="text-[#E5E5EA]">{seg.text}</span>
+              <div
+                key={idx}
+                className="flex items-start justify-between gap-2 text-xs sm:text-sm leading-relaxed"
+              >
+                <div>
+                  <span className="font-semibold text-[#70BCFF]">
+                    {seg.speaker}:{" "}
+                  </span>
+                  <span className="text-[#E5E5EA]">{seg.text}</span>
+                </div>
+                <AudioButton text={seg.text} size="sm" />
               </div>
             ))}
           </div>
@@ -469,6 +654,14 @@ export function IeltsListeningPanel({
         </div>
       )}
 
+      {/* Key Vocabulary 1-Click Save to Vault */}
+      {submitted && pack.keyVocabulary && pack.keyVocabulary.length > 0 && (
+        <IeltsVocabStrip
+          items={pack.keyVocabulary}
+          sourceTag="ielts-listening"
+        />
+      )}
+
       {/* Questions */}
       <div className="space-y-3.5">
         {pack.questions.map((q, qIdx) => {
@@ -478,10 +671,19 @@ export function IeltsListeningPanel({
           return (
             <div key={q.id} className="liquid-glass rounded-3xl p-4 sm:p-5 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="rounded-full bg-white/[0.08] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#A7A5FF]">
-                  Q{qIdx + 1} ·{" "}
-                  {q.type === "mcq" ? "Multiple Choice" : "Form / Note Completion"}
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-white/[0.08] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#A7A5FF]">
+                    Q{qIdx + 1} ·{" "}
+                    {q.type === "mcq"
+                      ? "Multiple Choice"
+                      : "Form / Note Completion"}
+                  </span>
+                  {q.wordLimit && (
+                    <span className="rounded-full bg-[#FF9F0A]/15 border border-[#FF9F0A]/30 px-2 py-0.5 text-[10px] font-semibold text-[#FFD60A]">
+                      {q.wordLimit}
+                    </span>
+                  )}
+                </div>
 
                 {submitted &&
                   (correct ? (
@@ -547,14 +749,24 @@ export function IeltsListeningPanel({
               )}
 
               {submitted && (
-                <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-1 text-xs">
-                  <p className="font-semibold text-[#7CF099]">
-                    {isEn ? "Answer: " : "Jawaban: "}
-                    {q.answer}
-                  </p>
-                  {!isEn && q.explanation_id && (
+                <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-1.5 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-[#7CF099]">
+                      {isEn ? "Answer: " : "Jawaban: "}
+                      {q.answer}
+                    </p>
+                    {!/^\d+([.,:/-]\d+)*$/.test(q.answer.trim()) &&
+                      q.answer.trim().split(/\s+/).length <= 4 && (
+                        <SaveToVaultButton
+                          term={q.answer}
+                          sourceTag="ielts-listening"
+                          compact
+                        />
+                      )}
+                  </div>
+                  {(isEn ? q.explanation_en : q.explanation_id) && (
                     <p className="text-[#D1D1D6] leading-relaxed">
-                      {q.explanation_id}
+                      {isEn ? q.explanation_en : q.explanation_id}
                     </p>
                   )}
                 </div>

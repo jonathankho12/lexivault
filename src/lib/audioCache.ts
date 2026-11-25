@@ -240,6 +240,17 @@ async function fetchAudioOnDemand(options: {
   return task;
 }
 
+/**
+ * Fetches (or retrieves from memory / IndexedDB cache) a playable Blob URL
+ * via LexiVault's on-demand US/UK TTS endpoint (`/api/tts`).
+ */
+export async function fetchTtsAudioUrl(
+  text: string,
+  accent: AccentType
+): Promise<string | null> {
+  return fetchAudioOnDemand({ text, accent });
+}
+
 export function stopPronunciation(): void {
   activePlayRequestId += 1;
   if (currentAudio) {
