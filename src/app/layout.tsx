@@ -22,9 +22,11 @@ export const viewport: Viewport = {
 
 const SITE_URL = "https://lexivault.my.id";
 const SITE_TITLE =
-  "LexiVault — AI-Powered English Vocabulary, Idioms & IELTS (A1–C2)";
+  "LexiVault — Master English & IELTS Fluency from A1 to C2";
 const SITE_DESCRIPTION =
-  "Master English vocabulary, idioms, collocations, and IELTS from A1 to C2 with adaptive daily learning packs, AI-powered definitions, SM-2 spaced repetition flashcards, US/UK pronunciation audio, and real-time cloud sync.";
+  "Elevate your English from A1 to C2 with targeted vocabulary drills, real-time grammar feedback, and 4-skill IELTS prep.";
+const OG_IMAGE_ALT =
+  "LexiVault — Master English & IELTS Fluency from A1 to C2 with adaptive A1–C2 vocabulary, 4-skill IELTS training, and real-time grammar feedback";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -36,15 +38,15 @@ export const metadata: Metadata = {
   applicationName: "LexiVault",
   keywords: [
     "LexiVault",
-    "English vocabulary",
-    "English idioms",
-    "English collocations",
+    "English fluency",
     "CEFR A1-C2",
-    "SM-2 spaced repetition",
-    "AI flashcards",
     "IELTS preparation",
-    "pronunciation audio",
-    "vocabulary builder",
+    "IELTS band score",
+    "4-skill IELTS training",
+    "English vocabulary drills",
+    "grammar feedback",
+    "SM-2 spaced repetition",
+    "English idioms and collocations",
   ],
   authors: [{ name: "LexiVault", url: SITE_URL }],
   creator: "LexiVault",
@@ -59,10 +61,10 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [
       {
-        url: "/og-image.png",
+        url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "LexiVault — AI-Powered English Vocabulary, Idioms & IELTS (A1–C2)",
+        alt: OG_IMAGE_ALT,
       },
     ],
   },
@@ -70,7 +72,14 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
-    images: ["/og-image.png"],
+    images: [
+      {
+        url: "/twitter-image",
+        width: 1200,
+        height: 630,
+        alt: OG_IMAGE_ALT,
+      },
+    ],
   },
   robots: {
     index: true,

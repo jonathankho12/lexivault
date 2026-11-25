@@ -520,7 +520,7 @@ export interface TranslationDictionary {
 export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
   id: {
     auth: {
-      subtitle: "Pelatih Kosakata, Idiom & IELTS Adaptif (A1–C2)",
+      subtitle: "Penguasaan Bahasa Inggris & IELTS Adaptif (A1–C2)",
       lexiInspiration: "Inspirasi dari anjing setia Abel, Lexi",
       loginTab: "Masuk",
       registerTab: "Daftar Akun",
@@ -547,7 +547,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       hidePassword: "Sembunyikan password",
     },
     nav: {
-      brandSubtitle: "Adaptive English Vault (A1–C2)",
+      brandSubtitle: "Adaptive English & IELTS Mastery (A1–C2)",
       vault: "Vault",
       flashcards: "Flashcards",
       cardsMobile: "Cards",
@@ -1066,7 +1066,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
   },
   en: {
     auth: {
-      subtitle: "Adaptive English Vocabulary, Idioms & IELTS Trainer (A1–C2)",
+      subtitle: "Adaptive English & IELTS Mastery (A1–C2)",
       lexiInspiration: "Inspired by Abel's loyal Rottweiler, Lexi",
       loginTab: "Sign In",
       registerTab: "Create Account",
@@ -1093,7 +1093,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       hidePassword: "Hide password",
     },
     nav: {
-      brandSubtitle: "Adaptive English Vault (A1–C2)",
+      brandSubtitle: "Adaptive English & IELTS Mastery (A1–C2)",
       vault: "Vault",
       flashcards: "Flashcards",
       cardsMobile: "Cards",
