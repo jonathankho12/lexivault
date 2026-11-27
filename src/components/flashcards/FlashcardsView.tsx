@@ -53,6 +53,7 @@ import {
   formatSourceTagLabel,
   formatTypeLabel,
   getLocalizedMeaning,
+  WEAKEST_CLEAR_STREAK,
 } from "@/lib/utils";
 import type { Sm2Rating, WordEntry } from "@/types/lexivault";
 
@@ -141,7 +142,9 @@ function buildDeckByFilter(
     // Weakest among cards not yet completed today
     const unreviewed = words.filter((w) => !isReviewedToday(w, todayStr));
     const candidates = unreviewed.filter(
-      (w) => w.wrong_count > 0 || w.correct_count < 2
+      (w) =>
+        (w.wrong_count > 0 && (w.repetitions ?? 0) < WEAKEST_CLEAR_STREAK) ||
+        w.correct_count < 2
     );
     base = [...candidates].sort((a, b) => {
       const rateA = a.wrong_count / Math.max(1, a.correct_count + a.wrong_count);
@@ -460,23 +463,37 @@ function SwipeableFlashcard({
 
               {/* Synonyms & Antonyms */}
               {(word.synonyms.length > 0 || word.antonyms.length > 0) && (
-                <div className="flex flex-wrap gap-1.5">
-                  {word.synonyms.slice(0, 3).map((syn, idx) => (
-                    <span
-                      key={`syn-${idx}`}
-                      className="rounded-full bg-[#30D158]/12 border border-[#30D158]/30 px-2.5 py-0.5 text-[11px] text-[#A5F2B8]"
-                    >
-                      ≈ {syn}
-                    </span>
-                  ))}
-                  {word.antonyms.slice(0, 2).map((ant, idx) => (
-                    <span
-                      key={`ant-${idx}`}
-                      className="rounded-full bg-[#FF9F0A]/12 border border-[#FF9F0A]/30 px-2.5 py-0.5 text-[11px] text-[#FFD18C]"
-                    >
-                      ≠ {ant}
-                    </span>
-                  ))}
+                <div className="space-y-2">
+                  {word.synonyms.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#7CF099] opacity-80 mr-0.5">
+                        {t.flashcards.synonymsLabel}
+                      </span>
+                      {word.synonyms.slice(0, 3).map((syn, idx) => (
+                        <span
+                          key={`syn-${idx}`}
+                          className="rounded-full bg-[#30D158]/12 border border-[#30D158]/30 px-2.5 py-0.5 text-[11px] text-[#A5F2B8]"
+                        >
+                          ≈ {syn}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {word.antonyms.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#FFD18C] opacity-80 mr-0.5">
+                        {t.flashcards.antonymsLabel}
+                      </span>
+                      {word.antonyms.slice(0, 2).map((ant, idx) => (
+                        <span
+                          key={`ant-${idx}`}
+                          className="rounded-full bg-[#FF9F0A]/12 border border-[#FF9F0A]/30 px-2.5 py-0.5 text-[11px] text-[#FFD18C]"
+                        >
+                          ≠ {ant}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -2816,6 +2816,11 @@ export async function recordPracticeAttempt(
   const nowIso = new Date().toISOString();
   const xpDelta = isCorrect ? 15 : 0;
   const nextReviewCount = getEffectiveReviewCount(word) + 1;
+  const prevRepetitions =
+    typeof word.repetitions === "number" && Number.isFinite(word.repetitions)
+      ? Math.max(0, Math.floor(word.repetitions))
+      : 0;
+  const nextRepetitions = isCorrect ? prevRepetitions + 1 : 0;
   const updatedWord: WordEntry = {
     ...word,
     user_id: userId,
@@ -2824,6 +2829,7 @@ export async function recordPracticeAttempt(
     last_practiced_at: nowIso,
     review_count: nextReviewCount,
     last_reviewed_date: isCorrect ? todayStr : word.last_reviewed_date ?? null,
+    repetitions: nextRepetitions,
   };
   writeReviewMeta(userId, updatedWord);
 

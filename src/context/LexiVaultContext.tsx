@@ -2533,10 +2533,45 @@ export function LexiVaultProvider({
         return;
       }
 
+      const nowIso = new Date().toISOString();
+      const prevReps =
+        typeof target.repetitions === "number" &&
+        Number.isFinite(target.repetitions)
+          ? Math.max(0, Math.floor(target.repetitions))
+          : 0;
+      const optimisticWord: WordEntry = {
+        ...target,
+        correct_count: target.correct_count + (isCorrect ? 1 : 0),
+        wrong_count: target.wrong_count + (isCorrect ? 0 : 1),
+        last_practiced_at: nowIso,
+        review_count:
+          Math.max(
+            target.review_count ?? 0,
+            (target.correct_count || 0) + (target.wrong_count || 0)
+          ) + 1,
+        last_reviewed_date: isCorrect
+          ? todayStr
+          : target.last_reviewed_date ?? null,
+        repetitions: isCorrect ? prevReps + 1 : 0,
+      };
+
+      wordsRef.current = wordsRef.current.map((w) =>
+        w.id === wordId ? optimisticWord : w
+      );
+      setWords((prev) =>
+        prev.map((w) => (w.id === wordId ? optimisticWord : w))
+      );
+      setSelectedWord((prev) =>
+        prev && prev.id === wordId ? optimisticWord : prev
+      );
+
       const { updatedWord, updatedLog, newXp } = await runCloudMutation(() =>
         recordPracticeAttempt(target, isCorrect, todayStr, user.id)
       );
 
+      wordsRef.current = wordsRef.current.map((w) =>
+        w.id === wordId ? updatedWord : w
+      );
       setWords((prev) =>
         prev.map((w) => (w.id === wordId ? updatedWord : w))
       );

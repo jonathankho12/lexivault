@@ -234,6 +234,8 @@ export interface TranslationDictionary {
     tapFlipHint: string;
     meaningTitle: string;
     exampleTitle: string;
+    synonymsLabel: string;
+    antonymsLabel: string;
     swipeGood: string;
     swipeAgain: string;
     filterUnreviewed: string;
@@ -369,6 +371,7 @@ export interface TranslationDictionary {
     attemptsLabel: string;
     weeklyTitle: string;
     weakestSectionTitle: string;
+    weakestClearHint: string;
     drillWeakestBtn: string;
   };
   rings: {
@@ -762,6 +765,8 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       tapFlipHint: "Tap kartu untuk melihat arti & contoh",
       meaningTitle: "Arti Bahasa Indonesia",
       exampleTitle: "Contoh Kalimat",
+      synonymsLabel: "Sinonim",
+      antonymsLabel: "Antonim",
       swipeGood: "Good",
       swipeAgain: "Again",
       filterUnreviewed: "Belum Diulas Hari Ini",
@@ -905,6 +910,8 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       attemptsLabel: "percobaan",
       weeklyTitle: "Aktivitas 7 Hari Terakhir",
       weakestSectionTitle: "Top Weakest Words",
+      weakestClearHint:
+        "Jawab benar 2× berturut-turut untuk menghapus kata dari daftar ini.",
       drillWeakestBtn: "Latih Semua",
     },
     rings: {
@@ -1306,6 +1313,8 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       tapFlipHint: "Tap card to reveal meaning & example",
       meaningTitle: "Definition",
       exampleTitle: "Example Sentence",
+      synonymsLabel: "Synonyms",
+      antonymsLabel: "Antonyms",
       swipeGood: "Good",
       swipeAgain: "Again",
       filterUnreviewed: "Unreviewed Today",
@@ -1448,6 +1457,8 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       attemptsLabel: "attempts",
       weeklyTitle: "Last 7 Days Activity",
       weakestSectionTitle: "Top Weakest Words",
+      weakestClearHint:
+        "Get a word right 2× in a row to clear it from this list.",
       drillWeakestBtn: "Drill Weakest",
     },
     rings: {

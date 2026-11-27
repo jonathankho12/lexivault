@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { Type } from "@google/genai";
 import {
+  buildSentenceGradingPrompt,
   classifyGeminiError,
   generateStructuredWithHybridModel,
   logGeminiRouteError,
+  SENTENCE_GRADING_SYSTEM_INSTRUCTION,
 } from "@/lib/gemini";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import type {
@@ -131,8 +133,113 @@ const INDONESIAN_COMMON_WORDS = new Set([
   "kita",
 ]);
 
+const ENGLISH_FUNCTION_WORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "to",
+  "of",
+  "in",
+  "on",
+  "at",
+  "by",
+  "for",
+  "with",
+  "from",
+  "up",
+  "out",
+  "off",
+  "it",
+  "one",
+  "one's",
+  "ones",
+  "someone",
+  "something",
+  "somebody",
+  "my",
+  "your",
+  "his",
+  "her",
+  "its",
+  "our",
+  "their",
+  "be",
+]);
+
 function stripEdgePunctuation(token: string): string {
   return token.replace(/^[^a-zA-Z0-9']+|[^a-zA-Z0-9']+$/g, "");
+}
+
+function getInflectionStem(word: string): string {
+  const clean = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (clean.length <= 3) return clean;
+  if (clean.endsWith("ie")) return clean.slice(0, -2);
+  if (clean.endsWith("e") && clean.length >= 4) return clean.slice(0, -1);
+  if (clean.endsWith("y") && clean.length >= 4) return clean.slice(0, -1);
+  return clean;
+}
+
+function matchesTargetExpression(
+  lowerSentence: string,
+  term: string,
+  wordFamilies: WordFamilyItem[]
+): boolean {
+  const candidateForms = [
+    term.trim().toLowerCase(),
+    ...wordFamilies.map((wf) => wf.word.trim().toLowerCase()),
+  ].filter(Boolean);
+
+  if (candidateForms.some((form) => lowerSentence.includes(form))) {
+    return true;
+  }
+
+  const sentenceWords = lowerSentence
+    .split(/\s+/)
+    .map((w) => stripEdgePunctuation(w).toLowerCase())
+    .filter(Boolean);
+
+  const tokenMatches = (targetWord: string): boolean => {
+    const stem = getInflectionStem(targetWord);
+    if (stem.length < 3) {
+      return sentenceWords.includes(targetWord);
+    }
+    return sentenceWords.some(
+      (sw) => sw === targetWord || (sw.startsWith(stem) && sw.length <= stem.length + 5)
+    );
+  };
+
+  for (const form of candidateForms) {
+    const formWords = form
+      .split(/\s+/)
+      .map((w) => stripEdgePunctuation(w).toLowerCase())
+      .filter(Boolean);
+
+    if (formWords.length === 1) {
+      if (tokenMatches(formWords[0])) return true;
+      continue;
+    }
+
+    const contentWords = formWords.filter(
+      (w) => w.length >= 3 && !ENGLISH_FUNCTION_WORDS.has(w)
+    );
+    if (contentWords.length === 0) continue;
+
+    // Match all content words by inflectional stem (e.g. "burn" -> "burnt"/"burned")
+    if (contentWords.every(tokenMatches)) {
+      return true;
+    }
+
+    // Allow irregular first-verb inflection in multi-word idioms with >= 2 distinctive tail words
+    // (e.g. "burn the midnight oil" -> "burnt the midnight oil", "take with a grain of salt" -> "took ... grain of salt")
+    if (contentWords.length >= 3) {
+      const tailWords = contentWords.slice(1);
+      if (tailWords.every(tokenMatches)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function buildSampleNativeRewrite(
@@ -213,13 +320,7 @@ function detectInvalidOrNonAttempt(
   const uniqueAlpha = new Set(alphaWords.map((w) => w.toLowerCase()));
 
   const lowerSentence = trimmed.toLowerCase();
-  const candidateForms = [
-    term.trim().toLowerCase(),
-    ...wordFamilies.map((wf) => wf.word.trim().toLowerCase()),
-  ].filter(Boolean);
-  const usesTarget = candidateForms.some((form) =>
-    lowerSentence.includes(form)
-  );
+  const usesTarget = matchesTargetExpression(lowerSentence, term, wordFamilies);
 
   const hasCharSmash = cleanedTokens.some((w) => /(.)\1{3,}/i.test(w));
   const hasKeyboardMash = cleanedTokens.some((w) =>
@@ -290,17 +391,9 @@ function buildFallbackGrade(
   const trimmed = sentence.trim();
   const words = trimmed.split(/\s+/).filter(Boolean);
   const lowerSentence = trimmed.toLowerCase();
-  const lowerTerm = term.trim().toLowerCase();
   const sampleRewrite = buildSampleNativeRewrite(term, exampleSentence);
 
-  const candidateForms = [
-    lowerTerm,
-    ...wordFamilies.map((wf) => wf.word.trim().toLowerCase()),
-  ].filter(Boolean);
-
-  const usesTarget = candidateForms.some((form) =>
-    lowerSentence.includes(form)
-  );
+  const usesTarget = matchesTargetExpression(lowerSentence, term, wordFamilies);
 
   const indonesianHits = words
     .map((w) => stripEdgePunctuation(w).toLowerCase())
@@ -440,59 +533,22 @@ export async function POST(request: Request) {
           "Belum Menjawab / Tidak Valid",
         ];
 
-    const prompt = isEn
-      ? `You are a strict yet constructive native English writing coach for an advanced C1–C2 learner.
-Target expression: "${term}"
-Definition: "${meaning}"
-Expected register: "${register}"
-Allowed word-family forms: ${wordFamilies.map((w) => `${w.word} (${w.pos})`).join(", ") || term}
-Learner's sentence: "${sentence}"
-
-Evaluate whether the learner used "${term}" (or a valid inflection/word-family form) accurately, grammatically, and naturally in context.
-
-STRICT SCORING RUBRIC (MUST FOLLOW):
-- 0 to 10 ("No Valid Attempt", is_correct=false): Empty, < 3 words, random gibberish/keyboard mash, non-English refusal, or non-attempts like "idunno", "idk", "skip", "test". NEVER give 35 for non-attempts!
-- 20 to 45 ("Needs Work", is_correct=false): Learner wrote a real, complete English sentence, BUT either did not use the target expression at all OR used it with the wrong meaning/context.
-- 46 to 69 ("Needs Work", is_correct=false): Uses the target expression with partial understanding, but has significant grammar issues, unnatural collocation, or incomplete context.
-- 70 to 84 ("Good", is_correct=true): Clear, understandable, mostly natural English sentence using the target expression accurately with only minor phrasing/grammar tweaks.
-- 85 to 100 ("Natural", is_correct=true): Idiomatic, accurate meaning, proper grammar, and matching register.
-
-Return strictly valid JSON (ALL feedback and tips MUST be in natural English — ZERO Indonesian):
-- "is_correct": boolean (true ONLY if "Natural" or "Good", false otherwise)
-- "verdict": exactly one of "Natural", "Good", "Needs Work", or "No Valid Attempt"
-- "score": integer 0-100 following the strict rubric above
-- "feedback_id": specific, natural feedback in ENGLISH (2 sentences max) addressing the exact sentence written.
-- "native_rewrite": a polished, natural native-speaker English sentence using "${term}".
-- "tip": 1 short actionable tip in ENGLISH on register, collocation, or phrasing.`
-      : `You are a strict yet constructive native English writing coach for an Indonesian learner.
-Target expression: "${term}"
-Indonesian meaning: "${meaning}"
-Expected register: "${register}"
-Allowed word-family forms: ${wordFamilies.map((w) => `${w.word} (${w.pos})`).join(", ") || term}
-Learner's sentence: "${sentence}"
-
-Evaluate whether the learner used "${term}" (or a valid inflection/word-family form) accurately, grammatically, and naturally in context.
-
-STRICT SCORING RUBRIC (MUST FOLLOW):
-- 0 to 10 ("Belum Menjawab / Tidak Valid", is_correct=false): Empty, < 3 words, random gibberish/keyboard mash, non-English/Indonesian-only refusal, or non-attempts like "idunno", "idk", "skip", "ga tau", "test". NEVER give 35 for non-attempts!
-- 20 to 45 ("Kurang Tepat", is_correct=false): Learner wrote a real, complete English sentence, BUT either did not use the target expression at all OR used it with the wrong meaning/context.
-- 46 to 69 ("Kurang Tepat", is_correct=false): Uses the target expression with partial understanding, but has significant grammar issues, unnatural collocation, or incomplete context.
-- 70 to 84 ("Cukup Baik", is_correct=true): Clear, understandable, mostly natural English sentence using the target expression accurately with only minor phrasing/grammar tweaks.
-- 85 to 100 ("Natural", is_correct=true): Idiomatic, accurate meaning, proper grammar, and matching register.
-
-Return strictly valid JSON:
-- "is_correct": boolean (true ONLY if Natural or Cukup Baik, false otherwise)
-- "verdict": exactly one of "Natural", "Cukup Baik", "Kurang Tepat", or "Belum Menjawab / Tidak Valid"
-- "score": integer 0-100 following the strict rubric above
-- "feedback_id": specific, natural feedback in Indonesian (2 sentences max) addressing the exact sentence written.
-- "native_rewrite": a polished, natural native-speaker English sentence using "${term}" (if the learner didn't write a real idea, provide a clean everyday example sentence using "${term}").
-- "tip": 1 short actionable tip in Indonesian on register, collocation, or phrasing.`;
+    const prompt = buildSentenceGradingPrompt({
+      term,
+      meaning,
+      register,
+      wordFamiliesText:
+        wordFamilies.map((w) => `${w.word} (${w.pos})`).join(", ") || term,
+      sentence,
+      lang,
+    });
 
     const aiRes = await generateStructuredWithHybridModel<
       Partial<SentenceGradeResult>
     >({
       tier: "flash",
       routeName: "api/grade-sentence",
+      systemInstruction: SENTENCE_GRADING_SYSTEM_INSTRUCTION,
       contents: prompt,
       responseSchema: {
         type: Type.OBJECT,

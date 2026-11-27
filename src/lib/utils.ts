@@ -217,9 +217,14 @@ export function getWordAccuracy(word: WordEntry): number | null {
   return Math.round((word.correct_count / total) * 100);
 }
 
+export const WEAKEST_CLEAR_STREAK = 2;
+
 export function getWeakestWords(words: WordEntry[], limit?: number): WordEntry[] {
   const weak = words
-    .filter((w) => w.wrong_count > 0)
+    .filter(
+      (w) =>
+        w.wrong_count > 0 && (w.repetitions ?? 0) < WEAKEST_CLEAR_STREAK
+    )
     .sort((a, b) => {
       const rateA = a.wrong_count / Math.max(1, a.correct_count + a.wrong_count);
       const rateB = b.wrong_count / Math.max(1, b.correct_count + b.wrong_count);

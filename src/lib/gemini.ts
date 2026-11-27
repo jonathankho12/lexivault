@@ -992,6 +992,81 @@ export const CEFR_CALIBRATION_RULE =
 export const IDIOM_WORD_FAMILY_RULE =
   'Idiom word_families rule: When type is "idiom", ALWAYS return an empty array [] for word_families (or word_families_json). NEVER output literal root-word derivatives (e.g., do NOT return play (verb) or player (noun) for "play it by ear") and do NOT repeat the idiom itself.';
 
+export const SENTENCE_GRADING_SYSTEM_INSTRUCTION =
+  'Fair, constructive, and encouraging native English writing coach grading practice sentences. Follow these core rules strictly: (1) Accept natural grammatical adaptations: NEVER penalize the user for conjugating verbs, changing tenses (e.g. past tense "I burnt the midnight oil..." or "I burned the midnight oil..." for "burn the midnight oil"), changing pronouns or possessives, adjusting articles/plurals, or using valid UK/US spelling variants (burnt/burned, colour/color, realise/realize, etc.). As long as the word or idiom is used accurately in meaning and natural context, score it fairly (pass / high score). (2) Focus on real errors: only deduct significant points for wrong meaning, unnatural collocation, missing target expression, or clear grammar errors—NOT for adapting the base dictionary form. (3) Second-person tone (MANDATORY): ALWAYS address the user directly as "You" / "Your" in English (or "Kamu" in Indonesian) in feedback and tips. NEVER write "The learner", "The user", "The student", "Pelajar", "Pengguna", or "Siswa". Return strictly valid JSON matching the requested schema.';
+
+export function buildSentenceGradingPrompt(params: {
+  term: string;
+  meaning: string;
+  register: string;
+  wordFamiliesText: string;
+  sentence: string;
+  lang: "en" | "id";
+}): string {
+  const { term, meaning, register, wordFamiliesText, sentence, lang } = params;
+  const isEn = lang === "en";
+
+  if (isEn) {
+    return `You are a fair, constructive native English writing coach giving direct one-on-one feedback.
+Target expression: "${term}"
+Definition: "${meaning}"
+Expected register: "${register}"
+Allowed word-family / inflected forms: ${wordFamiliesText || term}
+Sentence to evaluate: "${sentence}"
+
+Evaluate whether "${term}" (or any natural grammatical adaptation, tense/verb conjugation, pronoun change, UK/US spelling variant, or valid word-family form) is used accurately in meaning, grammar, and natural context.
+
+CORE GRADING RULES (MUST FOLLOW):
+1. ACCEPT NATURAL GRAMMATICAL ADAPTATIONS: Do NOT penalize conjugating verbs, changing tenses (e.g. past tense "I burnt the midnight oil..." or "I burned the midnight oil..." for "burn the midnight oil"), changing pronouns/possessives ("my", "their", "his"), adjusting articles/plurals, or using valid UK/US spelling variants (burnt/burned, colour/color, realise/realize, etc.). If the meaning and context are accurate and natural, award a passing / high score (70–100).
+2. FOCUS ON REAL ERRORS: Only deduct significant points for wrong meaning, unnatural collocation, missing the target expression, or clear grammar mistakes—NEVER deduct points simply because the sentence adapted the base dictionary form to fit grammar or tense.
+3. SECOND-PERSON TONE ONLY: Always address the writer directly as "You" / "Your" in both "feedback_id" and "tip". NEVER use third-person labels like "The learner", "The user", or "The student".
+
+SCORING RUBRIC (MUST FOLLOW):
+- 0 to 10 ("No Valid Attempt", is_correct=false): Empty, < 3 words, random gibberish/keyboard mash, non-English refusal, or non-attempts like "idunno", "idk", "skip", "test". NEVER give 35 for non-attempts!
+- 20 to 45 ("Needs Work", is_correct=false): A real, complete English sentence, BUT either did not use the target expression (or any valid adaptation/inflection of it) OR used it with the wrong meaning/context.
+- 46 to 69 ("Needs Work", is_correct=false): Uses the target expression with partial understanding, but has clear grammar errors, unnatural collocation, or unclear context.
+- 70 to 84 ("Good", is_correct=true): Clear, understandable, mostly natural English sentence using the target expression (including natural tense/pronoun/UK-US adaptations) accurately, with only minor phrasing or grammar tweaks.
+- 85 to 100 ("Natural", is_correct=true): Idiomatic, accurate meaning, natural grammar (including conjugated/adapted forms and valid UK/US spellings), and fitting register.
+
+Return strictly valid JSON (ALL feedback and tips MUST be in natural English — ZERO Indonesian):
+- "is_correct": boolean (true ONLY if "Natural" or "Good", false otherwise)
+- "verdict": exactly one of "Natural", "Good", "Needs Work", or "No Valid Attempt"
+- "score": integer 0-100 following the rubric above
+- "feedback_id": specific, warm, constructive feedback in ENGLISH (2 sentences max) addressing the writer directly as "You" (NEVER "The learner", "The user", or "The student").
+- "native_rewrite": a polished, natural native-speaker English sentence using "${term}" (preserving the sentence's natural tense/meaning if it was already valid).
+- "tip": 1 short actionable tip in ENGLISH addressed directly to "You" on register, collocation, or phrasing.`;
+  }
+
+  return `You are a fair, constructive native English writing coach giving direct one-on-one feedback in Indonesian.
+Target expression: "${term}"
+Indonesian meaning: "${meaning}"
+Expected register: "${register}"
+Allowed word-family / inflected forms: ${wordFamiliesText || term}
+Sentence to evaluate: "${sentence}"
+
+Evaluate whether "${term}" (or any natural grammatical adaptation, tense/verb conjugation, pronoun change, UK/US spelling variant, or valid word-family form) is used accurately in meaning, grammar, and natural context.
+
+CORE GRADING RULES (MUST FOLLOW):
+1. ACCEPT NATURAL GRAMMATICAL ADAPTATIONS: Do NOT penalize conjugating verbs, changing tenses (e.g. past tense "I burnt the midnight oil..." or "I burned the midnight oil..." for "burn the midnight oil"), changing pronouns/possessives ("my", "their", "his"), adjusting articles/plurals, or using valid UK/US spelling variants (burnt/burned, colour/color, realise/realize, etc.). If the meaning and context are accurate and natural, award a passing / high score (70–100).
+2. FOCUS ON REAL ERRORS: Only deduct significant points for wrong meaning, unnatural collocation, missing the target expression, or clear grammar mistakes—NEVER deduct points simply because the sentence adapted the base dictionary form to fit grammar or tense.
+3. SECOND-PERSON TONE ONLY: Always address the writer directly as "Kamu" (second-person) in both "feedback_id" and "tip". NEVER use third-person labels like "Pelajar", "Pengguna", "Siswa", "The learner", "The user", or "The student".
+
+SCORING RUBRIC (MUST FOLLOW):
+- 0 to 10 ("Belum Menjawab / Tidak Valid", is_correct=false): Empty, < 3 words, random gibberish/keyboard mash, non-English/Indonesian-only refusal, or non-attempts like "idunno", "idk", "skip", "ga tau", "test". NEVER give 35 for non-attempts!
+- 20 to 45 ("Kurang Tepat", is_correct=false): A real, complete English sentence, BUT either did not use the target expression (or any valid adaptation/inflection of it) OR used it with the wrong meaning/context.
+- 46 to 69 ("Kurang Tepat", is_correct=false): Uses the target expression with partial understanding, but has clear grammar errors, unnatural collocation, or unclear context.
+- 70 to 84 ("Cukup Baik", is_correct=true): Clear, understandable, mostly natural English sentence using the target expression (including natural tense/pronoun/UK-US adaptations) accurately, with only minor phrasing or grammar tweaks.
+- 85 to 100 ("Natural", is_correct=true): Idiomatic, accurate meaning, natural grammar (including conjugated/adapted forms and valid UK/US spellings), and fitting register.
+
+Return strictly valid JSON:
+- "is_correct": boolean (true ONLY if Natural or Cukup Baik, false otherwise)
+- "verdict": exactly one of "Natural", "Cukup Baik", "Kurang Tepat", or "Belum Menjawab / Tidak Valid"
+- "score": integer 0-100 following the rubric above
+- "feedback_id": specific, warm, constructive feedback in Indonesian (2 sentences max) addressing the writer directly as "Kamu" (NEVER "Pelajar", "Pengguna", "Siswa", or "The learner").
+- "native_rewrite": a polished, natural native-speaker English sentence using "${term}" (preserving the sentence's natural tense/meaning if it was already valid; if there wasn't a real idea, provide a clean everyday example sentence using "${term}").
+- "tip": 1 short actionable tip in Indonesian addressed directly to "Kamu" on register, collocation, or phrasing.`;
+}
+
 export function buildAutofillPrompt(params: {
   term: string;
   sourceTag?: string;

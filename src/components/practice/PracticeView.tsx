@@ -608,6 +608,9 @@ export function PracticeView() {
                   .map((w) => w.term)
                   .join(", ")}
               </p>
+              <p className="mt-0.5 text-[11px] text-[#8E8E93] opacity-80">
+                {t.stats.weakestClearHint}
+              </p>
             </div>
           </div>
 

@@ -436,6 +436,9 @@ export function StatsView() {
               <p className="text-xs text-[#8E8E93]">
                 {t.practice.weakestSubtitlePrefix}
               </p>
+              <p className="mt-0.5 text-[11px] text-[#8E8E93] opacity-80">
+                {t.stats.weakestClearHint}
+              </p>
             </div>
           </div>
 
@@ -453,14 +456,19 @@ export function StatsView() {
 
         {weakestWords.length === 0 ? (
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-6 text-center text-sm text-[#8E8E93]">
-            {isEn
-              ? "No missed words yet — keep up your accuracy!"
-              : "Belum ada kata dengan catatan kesalahan — pertahankan akurasimu!"}
+            {words.some((w) => w.wrong_count > 0)
+              ? isEn
+                ? "All weak words cleared — keep up your momentum!"
+                : "Semua kata terlemah sudah dibersihkan — pertahankan ritmemu!"
+              : isEn
+                ? "No missed words yet — keep up your accuracy!"
+                : "Belum ada kata dengan catatan kesalahan — pertahankan akurasimu!"}
           </div>
         ) : (
           <div className="space-y-2.5">
             {weakestWords.map((word) => {
               const acc = getWordAccuracy(word) ?? 0;
+              const streakCount = Math.max(0, word.repetitions ?? 0);
               const remoteUrl =
                 accent === "UK" ? word.audio_uk_url : word.audio_us_url;
 
@@ -496,6 +504,11 @@ export function StatsView() {
                       >
                         {word.wrong_count} {isEn ? "missed" : "salah"} · {acc}%
                       </span>
+                      {streakCount === 1 && (
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[#30D158]/12 border border-[#30D158]/30 text-[#7CF099]">
+                          1/2 ✓
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 text-xs text-[#8E8E93] truncate">
                       {getLocalizedMeaning(word, lang)}
