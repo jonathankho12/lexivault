@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { LexiAvatar } from "@/components/LexiAvatar";
-import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { IOS_SHEET_SPRING, IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
@@ -13,8 +12,6 @@ import { cn } from "@/lib/utils";
 export function IntroducingLexiModal() {
   const { isLexiIntroOpen, completeLexiIntro, lexiEnabled, setLexiEnabled } =
     useLexiVault();
-  const { t } = useLanguage();
-  const intro = t.lexi.intro;
   const [submitting, setSubmitting] = useState<"check-level" | "skip" | null>(
     null
   );

@@ -25,11 +25,11 @@ export const viewport: Viewport = {
 
 const SITE_URL = "https://lexivault.my.id";
 const SITE_TITLE =
-  "LexiVault — Master English & IELTS Fluency from A1 to C2";
+  "LexiVault — Master English Vocabulary & IELTS (A1–C2)";
 const SITE_DESCRIPTION =
   "Elevate your English from A1 to C2 with targeted vocabulary drills, real-time grammar feedback, and 4-skill IELTS prep.";
 const OG_IMAGE_ALT =
-  "LexiVault — Master English & IELTS Fluency from A1 to C2 with adaptive A1–C2 vocabulary, 4-skill IELTS training, and real-time grammar feedback";
+  "LexiVault — Master English Vocabulary & IELTS (A1–C2) with adaptive vocabulary drills, real-time grammar feedback, and 4-skill IELTS prep";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -64,9 +64,10 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [
       {
-        url: "/opengraph-image",
+        url: "/og-image.jpg",
         width: 1200,
         height: 630,
+        type: "image/jpeg",
         alt: OG_IMAGE_ALT,
       },
     ],
@@ -77,9 +78,10 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [
       {
-        url: "/twitter-image",
+        url: "/og-image.jpg",
         width: 1200,
         height: 630,
+        type: "image/jpeg",
         alt: OG_IMAGE_ALT,
       },
     ],

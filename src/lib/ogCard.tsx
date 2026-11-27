@@ -313,8 +313,8 @@ export async function createSocialCardImage(): Promise<ImageResponse> {
                   color: "#FFFFFF",
                 }}
               >
-                <span>Master English & IELTS</span>
-                <span style={{ color: "#70BCFF" }}>Fluency from A1 to C2</span>
+                <span>Master English Vocabulary</span>
+                <span style={{ color: "#70BCFF" }}>&amp; IELTS (A1–C2)</span>
               </div>
               <span
                 style={{

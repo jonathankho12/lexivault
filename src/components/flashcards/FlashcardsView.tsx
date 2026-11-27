@@ -9,7 +9,6 @@ import {
   type PanInfo,
 } from "framer-motion";
 import {
-  ArrowRight,
   BookMarked,
   CheckCircle2,
   Flame,
@@ -23,10 +22,6 @@ import {
   Trophy,
   XCircle,
 } from "lucide-react";
-import {
-  QuickLockInTest,
-  type RoundConfidence,
-} from "@/components/flashcards/QuickLockInTest";
 import { ComboBadge } from "@/components/gamification/ComboBadge";
 import { AudioButton } from "@/components/ui/AudioButton";
 import { HighlightedText } from "@/components/ui/HighlightedText";
@@ -56,8 +51,6 @@ import {
   WEAKEST_CLEAR_STREAK,
 } from "@/lib/utils";
 import type { Sm2Rating, WordEntry } from "@/types/lexivault";
-
-const ROUND_SIZE = 6;
 
 type DeckFilter = "due" | "unreviewed" | "weakest";
 type MasteryStage = "new" | "learning" | "solid" | "mastered";

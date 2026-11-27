@@ -639,6 +639,25 @@ export interface TranslationDictionary {
       dismissAria: string;
     };
   };
+  whatsNew: {
+    closeAria: string;
+    lexiActivePill: string;
+    lexiSnoozingPill: string;
+    onLabel: string;
+    offLabel: string;
+    toggleAriaPrefix: string;
+    settingsHint: string;
+    confirmCta: string;
+    releases: Record<
+      string,
+      {
+        badge: string;
+        title: string;
+        description: string;
+        highlights: string[];
+      }
+    >;
+  };
 }
 
 export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
@@ -1344,6 +1363,41 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         dismissAria: "Tutup sorakan Lexi",
       },
     },
+    whatsNew: {
+      closeAria: "Tutup pengumuman",
+      lexiActivePill: "Lexi senang & aktif",
+      lexiSnoozingPill: "Lexi sedang tidur",
+      onLabel: "AKTIF",
+      offLabel: "MATI",
+      toggleAriaPrefix: "Ubah status",
+      settingsHint: "Kamu bisa menyalakan atau mematikan ini kapan saja di Settings.",
+      confirmCta: "Sip, ayo mulai!",
+      releases: {
+        "2026-11-28-community-polish": {
+          badge: "PEMBARUAN TERBARU",
+          title: "Upgrade Komunitas: Chunks, Lexi Interaktif & Grader Lebih Adil",
+          description:
+            "Empat peningkatan utama berdasarkan masukan pengguna—membuat setiap sesi latihan lebih alami, adil, dan seru.",
+          highlights: [
+            "Learning by Chunks: Frasa alami & kolokasi umum lengkap dengan audio sekali sentuh di Vault, Flashcards, dan Discover.",
+            "Lexi Companion Interaktif: Elus Lexi untuk reaksi, kumpulkan Camilan harian dari target belajar, naikkan Level Ikatan, dan dapatkan sorakan penyemangat.",
+            "Penilai AI Practice Lebih Adil & Weakest Words Cerdas: Menerima variasi tense & ejaan UK/US yang alami, menyapa langsung dengan \"You\" / kamu, dan otomatis menghapus Weakest Words setelah benar 2× beruntun.",
+            "Panduan Cepat & Flashcards Lebih Jelas: Tur interaktif 4 langkah untuk pengguna baru serta label Sinonim & Antonim yang lebih jelas.",
+          ],
+        },
+        "2026-11-lexi-companion": {
+          badge: "FITUR BARU",
+          title: "Kenalan dengan Lexi, Penjaga Kosakatamu",
+          description:
+            "Latihan harian kini menjaga Lexi tetap senang dan vault-mu tetap tajam—dengan animasi mood langsung (istirahat, siaga, senang, gelisah).",
+          highlights: [
+            "Pendamping Dashboard langsung yang merespons streak & latihan harianmu",
+            "Empat animasi mood real-time: istirahat, siaga, senang, dan gelisah",
+            "Pengalaman opsional — nyalakan atau matikan Lexi kapan saja di bawah atau di Settings",
+          ],
+        },
+      },
+    },
   },
   en: {
     auth: {
@@ -2042,6 +2096,41 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         weakestClearedBody: "\"{term}\" just graduated off your Weakest Words list!",
         treatEarnedTag: "+1 Lexi Treat",
         dismissAria: "Dismiss Lexi cheer",
+      },
+    },
+    whatsNew: {
+      closeAria: "Close announcement",
+      lexiActivePill: "Lexi is happy & active",
+      lexiSnoozingPill: "Lexi is snoozing",
+      onLabel: "ON",
+      offLabel: "OFF",
+      toggleAriaPrefix: "Toggle",
+      settingsHint: "You can turn this on or off anytime in Settings.",
+      confirmCta: "Got it, let's go",
+      releases: {
+        "2026-11-28-community-polish": {
+          badge: "WHAT'S NEW",
+          title: "Community Upgrade: Chunks, Interactive Lexi & Smarter Grading",
+          description:
+            "Four major improvements inspired by your feedback—making every practice session sharper, fairer, and more rewarding.",
+          highlights: [
+            "Learning by Chunks: Common native phrases & collocations with one-tap audio across Vault, Flashcards, and Discover.",
+            "Interactive Lexi Companion: Pet Lexi for reactions, earn daily Treats from study milestones, level up your Bond, and get study cheers.",
+            "Fairer AI Practice Grader & Smart Weakest Words: Accepts natural tense/UK-US variations, addresses you directly (\"You\"), and auto-clears Weakest Words after 2× correct in a row.",
+            "Quick App Guide & Clearer Flashcards: 4-step interactive tour for new users plus clearly labeled Synonym & Antonym rows.",
+          ],
+        },
+        "2026-11-lexi-companion": {
+          badge: "NEW FEATURE",
+          title: "Meet Lexi, Your Vocabulary Guardian",
+          description:
+            "Daily practice now keeps Lexi happy and your vault sharp—with live mood animations (sleepy, alert, happy, restless).",
+          highlights: [
+            "Live Dashboard companion reacting to your daily streak & practice",
+            "Four real-time mood animations: sleepy, alert, happy, and restless",
+            "Optional experience — toggle Lexi on or off anytime right below or in Settings",
+          ],
+        },
       },
     },
   },

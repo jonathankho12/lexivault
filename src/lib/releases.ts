@@ -11,6 +11,7 @@ export interface FeatureRelease {
   featureToggleKey?: FeatureToggleKey;
 }
 
+export const COMMUNITY_POLISH_RELEASE_ID = "2026-11-28-community-polish";
 export const LEXI_COMPANION_RELEASE_ID = "2026-11-lexi-companion";
 export const GUEST_SEEN_RELEASES_STORAGE_KEY = "lexivault_seen_releases_guest";
 
@@ -19,6 +20,22 @@ export const GUEST_SEEN_RELEASES_STORAGE_KEY = "lexivault_seen_releases_guest";
  * Ordered newest-first: add upcoming releases to the top of this array.
  */
 export const FEATURE_RELEASES: FeatureRelease[] = [
+  {
+    id: COMMUNITY_POLISH_RELEASE_ID,
+    version: "v2026.11.2",
+    date: "2026-11-28",
+    badge: "WHAT'S NEW",
+    title: "Community Upgrade: Chunks, Interactive Lexi & Smarter Grading",
+    description:
+      "Four major improvements inspired by your feedback—making every practice session sharper, fairer, and more rewarding.",
+    highlights: [
+      "Learning by Chunks: Common native phrases & collocations with one-tap audio across Vault, Flashcards, and Discover.",
+      "Interactive Lexi Companion: Pet Lexi for reactions, earn daily Treats from study milestones, level up your Bond, and get study cheers.",
+      "Fairer AI Practice Grader & Smart Weakest Words: Accepts natural tense/UK-US variations, addresses you directly (\"You\"), and auto-clears Weakest Words after 2× correct in a row.",
+      "Quick App Guide & Clearer Flashcards: 4-step interactive tour for new users plus clearly labeled Synonym & Antonym rows.",
+    ],
+    featureToggleKey: "lexiEnabled",
+  },
   {
     id: LEXI_COMPANION_RELEASE_ID,
     version: "v2026.11",

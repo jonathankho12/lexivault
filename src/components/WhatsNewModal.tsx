@@ -4,20 +4,34 @@ import React, { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Sparkles, X } from "lucide-react";
 import { LexiAvatar } from "@/components/LexiAvatar";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
+import type { AppLanguage } from "@/lib/i18n";
 import { IOS_SHEET_SPRING, IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import { LEXI_COMPANION_RELEASE_ID, type FeatureToggleKey } from "@/lib/releases";
 import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
 import { cn } from "@/lib/utils";
 
-function formatReleaseDate(isoDate: string): string {
+function formatReleaseDate(isoDate: string, lang: AppLanguage): string {
   const parsed = Date.parse(isoDate);
   if (!Number.isFinite(parsed)) return isoDate;
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(lang === "id" ? "id-ID" : "en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   }).format(new Date(parsed));
+}
+
+function renderHighlightText(text: string): React.ReactNode {
+  const splitIdx = text.indexOf(": ");
+  if (splitIdx <= 0) return text;
+  const lead = text.slice(0, splitIdx);
+  const rest = text.slice(splitIdx + 2);
+  return (
+    <>
+      <strong className="font-semibold text-white">{lead}:</strong> {rest}
+    </>
+  );
 }
 
 export function WhatsNewModal() {
@@ -28,6 +42,7 @@ export function WhatsNewModal() {
     lexiEnabled,
     setLexiEnabled,
   } = useLexiVault();
+  const { lang, t } = useLanguage();
 
   useOverlayBackGuard("whats_new", isWhatsNewOpen, acknowledgeWhatsNew);
 
@@ -54,9 +69,9 @@ export function WhatsNewModal() {
     }
   > = {
     lexiEnabled: {
-      label: "Lexi Companion",
-      onText: "Active on your Dashboard",
-      offText: "Paused — hidden on Dashboard",
+      label: t.lexi.intro.companionTitle,
+      onText: t.lexi.intro.companionActive,
+      offText: t.lexi.intro.companionPaused,
       enabled: lexiEnabled,
       onToggle: () => {
         playGlassClick();
@@ -72,6 +87,18 @@ export function WhatsNewModal() {
   const isLexiRelease =
     activeWhatsNewRelease?.id === LEXI_COMPANION_RELEASE_ID ||
     activeWhatsNewRelease?.featureToggleKey === "lexiEnabled";
+
+  const localizedRelease = activeWhatsNewRelease
+    ? t.whatsNew.releases[activeWhatsNewRelease.id]
+    : undefined;
+  const releaseBadge =
+    localizedRelease?.badge ?? activeWhatsNewRelease?.badge ?? "";
+  const releaseTitle =
+    localizedRelease?.title ?? activeWhatsNewRelease?.title ?? "";
+  const releaseDescription =
+    localizedRelease?.description ?? activeWhatsNewRelease?.description ?? "";
+  const releaseHighlights =
+    localizedRelease?.highlights ?? activeWhatsNewRelease?.highlights ?? [];
 
   const handleConfirm = () => {
     playCorrectChime(2);
@@ -121,7 +148,7 @@ export function WhatsNewModal() {
             <button
               type="button"
               onClick={handleClose}
-              aria-label="Close announcement"
+              aria-label={t.whatsNew.closeAria}
               className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.05] border border-white/[0.08] text-[#8E8E93] hover:text-white hover:bg-white/[0.1] transition-colors cursor-pointer"
             >
               <X className="h-4 w-4" />
@@ -132,11 +159,11 @@ export function WhatsNewModal() {
               <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF]">
                   <Sparkles className="h-3.5 w-3.5" />
-                  <span>{activeWhatsNewRelease.badge}</span>
+                  <span>{releaseBadge}</span>
                 </span>
                 <span className="text-[11px] font-medium text-[#8E8E93]">
                   {activeWhatsNewRelease.version} ·{" "}
-                  {formatReleaseDate(activeWhatsNewRelease.date)}
+                  {formatReleaseDate(activeWhatsNewRelease.date, lang)}
                 </span>
               </div>
 
@@ -185,7 +212,9 @@ export function WhatsNewModal() {
                         lexiEnabled ? "bg-[#30D158]" : "bg-[#70BCFF]"
                       )}
                     />
-                    {lexiEnabled ? "Lexi is happy & active" : "Lexi is snoozing"}
+                    {lexiEnabled
+                      ? t.whatsNew.lexiActivePill
+                      : t.whatsNew.lexiSnoozingPill}
                   </span>
                 </div>
               ) : (
@@ -200,23 +229,23 @@ export function WhatsNewModal() {
                   id="whats-new-headline"
                   className="text-xl sm:text-2xl font-bold tracking-tight text-white"
                 >
-                  {activeWhatsNewRelease.title}
+                  {releaseTitle}
                 </h2>
                 <p className="text-sm text-[#D1D1D6] leading-relaxed">
-                  {activeWhatsNewRelease.description}
+                  {releaseDescription}
                 </p>
               </div>
 
               {/* Release Highlights */}
-              {activeWhatsNewRelease.highlights.length > 0 && (
-                <ul className="w-full rounded-2xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 text-left space-y-2">
-                  {activeWhatsNewRelease.highlights.map((highlight) => (
+              {releaseHighlights.length > 0 && (
+                <ul className="w-full rounded-2xl bg-white/[0.04] border border-white/[0.08] px-4 py-3 text-left space-y-2.5">
+                  {releaseHighlights.map((highlight) => (
                     <li
                       key={highlight}
                       className="flex items-start gap-2.5 text-xs sm:text-[13px] text-[#D1D1D6] leading-snug"
                     >
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-[#30D158] mt-0.5" />
-                      <span>{highlight}</span>
+                      <span>{renderHighlightText(highlight)}</span>
                     </li>
                   ))}
                 </ul>
@@ -239,7 +268,9 @@ export function WhatsNewModal() {
                               : "bg-white/[0.08] text-[#8E8E93]"
                           )}
                         >
-                          {toggleConfig.enabled ? "ON" : "OFF"}
+                          {toggleConfig.enabled
+                            ? t.whatsNew.onLabel
+                            : t.whatsNew.offLabel}
                         </span>
                       </div>
                       <p className="text-[11px] font-medium text-[#70BCFF]">
@@ -252,7 +283,7 @@ export function WhatsNewModal() {
                     <button
                       type="button"
                       role="switch"
-                      aria-label={`Toggle ${toggleConfig.label}`}
+                      aria-label={`${t.whatsNew.toggleAriaPrefix} ${toggleConfig.label}`}
                       aria-checked={toggleConfig.enabled}
                       onClick={toggleConfig.onToggle}
                       className={cn(
@@ -274,7 +305,7 @@ export function WhatsNewModal() {
                   </div>
 
                   <p className="text-[11px] text-[#8E8E93] leading-snug">
-                    You can turn this on or off anytime in Settings.
+                    {t.whatsNew.settingsHint}
                   </p>
                 </div>
               )}
@@ -287,7 +318,7 @@ export function WhatsNewModal() {
                   onClick={handleConfirm}
                   className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(10,132,255,0.34)] hover:brightness-110 transition-all cursor-pointer"
                 >
-                  <span>Got it, let&apos;s go</span>
+                  <span>{t.whatsNew.confirmCta}</span>
                   <ArrowRight className="h-4 w-4" />
                 </motion.button>
               </div>
