@@ -184,6 +184,7 @@ export interface TranslationDictionary {
   wordDetail: {
     meaningTitle: string;
     examplesTitle: string;
+    chunksTitle: string;
     synonymsTitle: string;
     antonymsTitle: string;
     wordFamilyTitle: string;
@@ -235,6 +236,7 @@ export interface TranslationDictionary {
     tapFlipHint: string;
     meaningTitle: string;
     exampleTitle: string;
+    chunksLabel: string;
     synonymsLabel: string;
     antonymsLabel: string;
     swipeGood: string;
@@ -746,6 +748,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
     wordDetail: {
       meaningTitle: "Arti Bahasa Indonesia",
       examplesTitle: "Contoh Kalimat",
+      chunksTitle: "Frasa Umum",
       synonymsTitle: "Sinonim",
       antonymsTitle: "Antonim",
       wordFamilyTitle: "Word Family",
@@ -803,6 +806,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       tapFlipHint: "Tap kartu untuk melihat arti & contoh",
       meaningTitle: "Arti Bahasa Indonesia",
       exampleTitle: "Contoh Kalimat",
+      chunksLabel: "Frasa",
       synonymsLabel: "Sinonim",
       antonymsLabel: "Antonim",
       swipeGood: "Good",
@@ -1060,7 +1064,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         syncErrorTitle: "Error Sinkronisasi Supabase",
         refreshAllBtn: "Refresh All AI Details",
         refreshAllDesc:
-          "Perbarui ulang CEFR (A1–C2), register, fonetik, arti & contoh kalimat satu per satu (~400ms jeda aman).",
+          "Perbarui ulang CEFR (A1–C2), register, fonetik, arti, frasa umum & contoh kalimat satu per satu (~400ms jeda aman).",
         refreshAllEmpty: "Belum ada kata tersimpan di Vault.",
         refreshConfirmPromptPrefix:
           "Perbarui ulang detail AI (CEFR & register) untuk seluruh",
@@ -1336,6 +1340,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
     wordDetail: {
       meaningTitle: "Definition",
       examplesTitle: "Example Sentences",
+      chunksTitle: "Common Chunks",
       synonymsTitle: "Synonyms",
       antonymsTitle: "Antonyms",
       wordFamilyTitle: "Word Family",
@@ -1392,6 +1397,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       tapFlipHint: "Tap card to reveal meaning & example",
       meaningTitle: "Definition",
       exampleTitle: "Example Sentence",
+      chunksLabel: "Chunks",
       synonymsLabel: "Synonyms",
       antonymsLabel: "Antonyms",
       swipeGood: "Good",
@@ -1648,7 +1654,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         syncErrorTitle: "Supabase Sync Error",
         refreshAllBtn: "Refresh All AI Details",
         refreshAllDesc:
-          "Sequentially re-analyze CEFR (A1–C2), register, phonetics, definitions & examples (~400ms safe delay).",
+          "Sequentially re-analyze CEFR (A1–C2), register, phonetics, definitions, common chunks & examples (~400ms safe delay).",
         refreshAllEmpty: "No saved expressions in Vault yet.",
         refreshConfirmPromptPrefix:
           "Re-analyze AI details (CEFR & register) for all",

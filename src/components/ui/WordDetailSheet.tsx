@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Layers,
   Loader2,
+  MessageSquareQuote,
   Sparkles,
   Tag,
   Trash2,
@@ -289,6 +290,33 @@ export function WordDetailSheet() {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Common Chunks (Lexical Chunking) */}
+            {selectedWord.chunks && selectedWord.chunks.length > 0 && (
+              <div className="mt-5">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#8E8E93] mb-2.5">
+                  <MessageSquareQuote className="h-3.5 w-3.5 text-[#0A84FF]" />
+                  <span>{t.wordDetail.chunksTitle}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedWord.chunks.slice(0, 3).map((chunk, idx) => (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-[#0A84FF]/10 border border-[#0A84FF]/25 pl-3.5 pr-1.5 py-1.5"
+                    >
+                      <span className="text-xs sm:text-[13px] font-medium text-[#F5F5F7] leading-snug">
+                        {chunk}
+                      </span>
+                      <AudioButton
+                        text={chunk}
+                        size="sm"
+                        className="h-7 w-7 shrink-0"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

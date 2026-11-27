@@ -749,6 +749,30 @@ export function DiscoverView() {
                   </div>
                 )}
 
+                {/* Common Chunks */}
+                {item.chunks && item.chunks.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF] opacity-80">
+                      {t.wordDetail.chunksTitle}:
+                    </span>
+                    {item.chunks.slice(0, 3).map((chunk, chunkIdx) => (
+                      <div
+                        key={chunkIdx}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/10 border border-[#0A84FF]/25 pl-3 pr-1 py-0.5"
+                      >
+                        <span className="text-[11px] sm:text-xs font-medium text-[#F5F5F7]">
+                          {chunk}
+                        </span>
+                        <AudioButton
+                          text={chunk}
+                          size="sm"
+                          className="h-6 w-6 shrink-0"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Word Family */}
                 {item.word_families_json.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">

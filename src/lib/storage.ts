@@ -287,6 +287,30 @@ function normalizeIsoTimestamp(
   return new Date(parsed).toISOString();
 }
 
+function normalizeWordChunks(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const clean = item.replace(/\*\*/g, "").trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+function extractWordChunks(word: WordEntry): string[] {
+  const fromField = normalizeWordChunks(word.chunks);
+  if (fromField.length > 0) return fromField;
+  const rawRecord = word as unknown as { chunks_json?: unknown };
+  return normalizeWordChunks(rawRecord.chunks_json);
+}
+
 function sanitizeWordForCloud(
   word: WordEntry,
   activeUserId: string
@@ -318,6 +342,7 @@ function sanitizeWordForCloud(
       : Array.isArray(word.word_families_json)
         ? word.word_families_json
         : [];
+  const chunks = extractWordChunks(word);
   const correct_count = Math.max(
     0,
     Math.round(Number(word.correct_count ?? 0) || 0)
@@ -376,6 +401,7 @@ function sanitizeWordForCloud(
     synonyms,
     antonyms,
     word_families_json,
+    chunks,
     register,
     source_tag,
     audio_us_url,
@@ -397,6 +423,7 @@ function buildWordPayloadTiers(
   sanitized: WordEntry,
   activeUserId: string
 ): [
+  Record<string, unknown>,
   Record<string, unknown>,
   Record<string, unknown>,
   Record<string, unknown>,
@@ -444,7 +471,12 @@ function buildWordPayloadTiers(
     review_count: sanitized.review_count ?? 0,
   };
 
-  return [fullPayload, midPayload, sm2Payload, minimalPayload];
+  const extendedPayload: Record<string, unknown> = {
+    ...fullPayload,
+    chunks_json: sanitized.chunks ?? [],
+  };
+
+  return [extendedPayload, fullPayload, midPayload, sm2Payload, minimalPayload];
 }
 
 function mergeTwoWordEntries(
@@ -508,6 +540,11 @@ function mergeTwoWordEntries(
         ? localFamilies
         : cloudFamilies;
 
+  const cloudChunks = extractWordChunks(cloudWord);
+  const localChunks = extractWordChunks(localWord);
+  const chunks =
+    localChunks.length > cloudChunks.length ? localChunks : cloudChunks;
+
   const localHasNewerData =
     localPracticedMs > cloudPracticedMs ||
     (localWord.correct_count ?? 0) > (cloudWord.correct_count ?? 0) ||
@@ -516,7 +553,8 @@ function mergeTwoWordEntries(
     (!cloudWord.cefr && Boolean(localWord.cefr)) ||
     (!cloudWord.meaning_en && Boolean(localWord.meaning_en)) ||
     (!cloudWord.pronunciation && Boolean(localWord.pronunciation)) ||
-    localExamples.length > cloudExamples.length;
+    localExamples.length > cloudExamples.length ||
+    localChunks.length > cloudChunks.length;
 
   const rawMerged: WordEntry = {
     ...cloudWord,
@@ -533,6 +571,7 @@ function mergeTwoWordEntries(
     synonyms,
     antonyms,
     word_families_json,
+    chunks,
     register: cloudWord.register || localWord.register,
     source_tag: cloudWord.source_tag || localWord.source_tag,
     audio_us_url: cloudWord.audio_us_url ?? localWord.audio_us_url ?? null,
@@ -686,6 +725,7 @@ async function upsertWordToSupabase(
 
     if (!error && data) {
       const row = data as WordEntry;
+      const rowChunks = extractWordChunks(row);
       const hydrated = hydrateWordMetadata(
         {
           ...row,
@@ -693,6 +733,7 @@ async function upsertWordToSupabase(
           ipa: row.ipa || sanitized.ipa,
           meaning_en: row.meaning_en || sanitized.meaning_en,
           cefr: row.cefr || sanitized.cefr,
+          chunks: rowChunks.length > 0 ? rowChunks : sanitized.chunks,
           last_reviewed_date:
             row.last_reviewed_date ?? sanitized.last_reviewed_date ?? null,
           review_count: row.review_count ?? sanitized.review_count ?? 0,
@@ -795,7 +836,8 @@ async function upsertWordsBatchToSupabase(
     let chunkSaved = false;
     let chunkPrimaryError: unknown = null;
 
-    for (let tierIdx = 0; tierIdx < 4; tierIdx += 1) {
+    const totalTiers = 5;
+    for (let tierIdx = 0; tierIdx < totalTiers; tierIdx += 1) {
       const payloads = chunk.map(
         (w) => buildWordPayloadTiers(w, activeUserId)[tierIdx]
       );
@@ -817,6 +859,7 @@ async function upsertWordsBatchToSupabase(
         for (const row of data as WordEntry[]) {
           const pair = pairBySanitizedId.get(row.id);
           const orig = pair?.sanitized;
+          const rowChunks = extractWordChunks(row);
           const hydrated = hydrateWordMetadata(
             {
               ...row,
@@ -824,6 +867,7 @@ async function upsertWordsBatchToSupabase(
               ipa: row.ipa || orig?.ipa,
               meaning_en: row.meaning_en || orig?.meaning_en,
               cefr: row.cefr || orig?.cefr,
+              chunks: rowChunks.length > 0 ? rowChunks : orig?.chunks,
               last_reviewed_date:
                 row.last_reviewed_date ?? orig?.last_reviewed_date ?? null,
               review_count: row.review_count ?? orig?.review_count ?? 0,
@@ -846,7 +890,7 @@ async function upsertWordsBatchToSupabase(
         chunkPrimaryError = error;
       }
 
-      if (error && isMissingColumnError(error) && tierIdx < 3) {
+      if (error && isMissingColumnError(error) && tierIdx < totalTiers - 1) {
         console.error(
           `[LexiVault][SupabaseSync] ${operation} batch missing column on tier ${tierIdx}, retrying compatible schema tier:`,
           extractPostgrestFields(error)
@@ -1215,6 +1259,7 @@ interface ReviewMetaRecord {
   interval_days?: number;
   ease_factor?: number;
   repetitions?: number;
+  chunks?: string[];
 }
 
 function readReviewMetaMap(userId: string): Record<string, ReviewMetaRecord> {
@@ -1230,6 +1275,8 @@ function writeReviewMeta(userId: string, word: WordEntry): void {
   if (typeof window === "undefined") return;
   try {
     const map = readReviewMetaMap(userId);
+    const existing = map[word.id] ?? map[`term:${normalizeTermKey(word.term)}`];
+    const resolvedChunks = extractWordChunks(word);
     const meta: ReviewMetaRecord = {
       last_reviewed_date: word.last_reviewed_date ?? null,
       review_count: getEffectiveReviewCount(word),
@@ -1237,6 +1284,10 @@ function writeReviewMeta(userId: string, word: WordEntry): void {
       interval_days: word.interval_days,
       ease_factor: word.ease_factor,
       repetitions: word.repetitions,
+      chunks:
+        resolvedChunks.length > 0
+          ? resolvedChunks
+          : existing?.chunks,
     };
     map[word.id] = meta;
     map[`term:${normalizeTermKey(word.term)}`] = meta;
@@ -1282,6 +1333,12 @@ function hydrateWordMetadata(word: WordEntry, userId?: string): WordEntry {
     (word.correct_count || 0) + (word.wrong_count || 0)
   );
 
+  const directChunks = extractWordChunks(word);
+  const resolvedChunks =
+    directChunks.length > 0
+      ? directChunks
+      : normalizeWordChunks(reviewMeta?.chunks);
+
   return {
     ...word,
     pronunciation: resolvedPron.pronunciation ?? undefined,
@@ -1289,6 +1346,7 @@ function hydrateWordMetadata(word: WordEntry, userId?: string): WordEntry {
     meaning_id: resolvedMeanings.meaning_id,
     meaning_en: resolvedMeanings.meaning_en,
     cefr: resolvedMeanings.cefr,
+    chunks: resolvedChunks,
     source_tag: normalizeSourceTag(word.source_tag),
     last_reviewed_date: lastReviewedDate,
     review_count: reviewCount,
@@ -2623,6 +2681,7 @@ export async function updateWordEntry(
     sanitizeWordForCloud(word, userId),
     userId
   );
+  writeReviewMeta(userId, scoped);
   const current = readLocalWords(
     scoped.created_at.slice(0, 10),
     userId,

@@ -836,7 +836,14 @@ export function LexiVaultProvider({
       const missingEn = !entry.meaning_en?.trim();
       const missingId = !entry.meaning_id?.trim();
       const missingPron = !entry.pronunciation?.trim();
-      if (!missingExamples && !missingEn && !missingId && !missingPron) {
+      const missingChunks = !entry.chunks || entry.chunks.length === 0;
+      if (
+        !missingExamples &&
+        !missingEn &&
+        !missingId &&
+        !missingPron &&
+        !missingChunks
+      ) {
         return;
       }
 
@@ -879,6 +886,10 @@ export function LexiVaultProvider({
             latest.word_families_json.length > 0
               ? latest.word_families_json
               : aiData.word_families,
+          chunks:
+            latest.chunks && latest.chunks.length > 0
+              ? latest.chunks
+              : aiData.chunks ?? [],
         };
 
         const updated = await runCloudMutation(() =>
@@ -1218,6 +1229,7 @@ export function LexiVaultProvider({
             synonyms: item.synonyms,
             antonyms: item.antonyms,
             word_families_json: item.word_families,
+            chunks: item.chunks ?? [],
             register: item.register,
             source_tag: "daily_pack",
             audio_us_url: null,
@@ -1912,6 +1924,7 @@ export function LexiVaultProvider({
           synonyms: aiData.synonyms,
           antonyms: aiData.antonyms,
           word_families_json: aiData.word_families,
+          chunks: aiData.chunks ?? [],
           register: aiData.register,
           source_tag: canonicalSource,
           audio_us_url: null,
@@ -2008,6 +2021,7 @@ export function LexiVaultProvider({
           synonyms: item.synonyms,
           antonyms: item.antonyms,
           word_families_json: item.word_families,
+          chunks: item.chunks ?? [],
           register: item.register,
           source_tag: canonicalSource,
           audio_us_url: null,
@@ -2091,6 +2105,7 @@ export function LexiVaultProvider({
         synonyms: item.synonyms,
         antonyms: item.antonyms,
         word_families_json: item.word_families,
+        chunks: item.chunks ?? [],
         register: item.register,
         source_tag: normalizeSourceTag(item.source_tag || "article"),
         audio_us_url: null,
@@ -2257,6 +2272,10 @@ export function LexiVaultProvider({
           antonyms: aiData.antonyms,
           word_families_json:
             aiData.type === "idiom" ? [] : aiData.word_families,
+          chunks:
+            aiData.chunks && aiData.chunks.length > 0
+              ? aiData.chunks
+              : latestTarget.chunks ?? [],
           register: aiData.register,
         };
 
@@ -2435,6 +2454,7 @@ export function LexiVaultProvider({
         synonyms: item.synonyms,
         antonyms: item.antonyms,
         word_families_json: item.word_families_json,
+        chunks: item.chunks ?? [],
         register: item.register,
         source_tag: "discover",
         audio_us_url: null,

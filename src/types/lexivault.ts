@@ -62,6 +62,7 @@ export interface DailyPackItem {
   synonyms: string[];
   antonyms: string[];
   word_families: WordFamilyItem[];
+  chunks?: string[];
   register: RegisterType;
   source_tag: "daily_pack";
 }
@@ -120,6 +121,7 @@ export interface WordEntry {
   synonyms: string[];
   antonyms: string[];
   word_families_json: WordFamilyItem[];
+  chunks?: string[];
   register: RegisterType;
   source_tag: string;
   audio_us_url?: string | null;
@@ -149,6 +151,7 @@ export interface DiscoveryItem {
   synonyms: string[];
   antonyms: string[];
   word_families_json: WordFamilyItem[];
+  chunks?: string[];
   register: RegisterType;
   source_tag?: string;
 }
@@ -195,6 +198,7 @@ export interface ExtractedVocabItem {
   synonyms: string[];
   antonyms: string[];
   word_families: WordFamilyItem[];
+  chunks?: string[];
   register: RegisterType;
 }
 
@@ -210,6 +214,7 @@ export interface SuggestedWordItem {
   synonyms: string[];
   antonyms: string[];
   word_families: WordFamilyItem[];
+  chunks?: string[];
   register: RegisterType;
   source_tag: SourceTag;
 }
@@ -263,6 +268,7 @@ export interface AutofillPayload {
   synonyms: string[];
   antonyms: string[];
   word_families: WordFamilyItem[];
+  chunks?: string[];
   register: RegisterType;
 }
 

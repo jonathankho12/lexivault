@@ -461,6 +461,23 @@ function SwipeableFlashcard({
                 </div>
               )}
 
+              {/* Common Chunks */}
+              {word.chunks && word.chunks.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#70BCFF] opacity-80 mr-0.5">
+                    {t.flashcards.chunksLabel}
+                  </span>
+                  {word.chunks.slice(0, 3).map((chunk, idx) => (
+                    <span
+                      key={`chunk-${idx}`}
+                      className="rounded-full bg-[#0A84FF]/12 border border-[#0A84FF]/28 px-2.5 py-0.5 text-[11px] text-[#70BCFF]"
+                    >
+                      {chunk}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* Synonyms & Antonyms */}
               {(word.synonyms.length > 0 || word.antonyms.length > 0) && (
                 <div className="space-y-2">

@@ -136,6 +136,10 @@ const CORE_ENTRY_PROPERTIES: Record<string, Schema> = {
       required: ["word", "pos"],
     },
   },
+  chunks: {
+    type: Type.ARRAY,
+    items: { type: Type.STRING },
+  },
 };
 
 const CORE_REQUIRED_FIELDS = [
@@ -151,6 +155,7 @@ const CORE_REQUIRED_FIELDS = [
   "synonyms",
   "antonyms",
   "word_families",
+  "chunks",
 ];
 
 function validateAndNormalizeAutofillPayload(
@@ -217,6 +222,16 @@ function validateAndNormalizeAutofillPayload(
             }))
         : [];
 
+  const chunks: string[] = Array.isArray(raw.chunks)
+    ? Array.from(
+        new Set(
+          raw.chunks
+            .map((c) => String(c || "").replace(/\*\*/g, "").trim())
+            .filter(Boolean)
+        )
+      ).slice(0, 3)
+    : [];
+
   const cefr: CefrLevel =
     normalizeCefrLevel(raw.cefr) ?? builtInBilingual?.cefr ?? "B1";
 
@@ -238,6 +253,7 @@ function validateAndNormalizeAutofillPayload(
         ? raw.antonyms.map((s) => String(s).trim()).filter(Boolean).slice(0, 3)
         : [],
       word_families,
+      chunks,
       register,
     },
   };

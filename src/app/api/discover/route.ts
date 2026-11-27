@@ -3,6 +3,7 @@ import { Type } from "@google/genai";
 import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
 import {
   CEFR_CALIBRATION_RULE,
+  CHUNKS_GENERATION_RULE,
   classifyGeminiError,
   formatCompactExistingTerms,
   generateStructuredWithHybridModel,
@@ -114,6 +115,15 @@ function normalizeItems(
           : Array.isArray(item.word_families_json)
             ? item.word_families_json.slice(0, 4)
             : [],
+      chunks: Array.isArray(item.chunks)
+        ? Array.from(
+            new Set(
+              item.chunks
+                .map((c) => String(c || "").replace(/\*\*/g, "").trim())
+                .filter(Boolean)
+            )
+          ).slice(0, 3)
+        : [],
       register:
         item.register && validRegisters.has(item.register)
           ? item.register
@@ -198,9 +208,10 @@ EXCLUDE (no exact or variant matches): ${existingCsv}
 ${CEFR_CALIBRATION_RULE}
 ${REGISTER_CLASSIFICATION_RULE}
 ${IDIOM_WORD_FAMILY_RULE}
+${CHUNKS_GENERATION_RULE}
 
 Concise JSON per item:
-term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Casual|Slang), pronunciation ("·" syllable dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 crisp sentence), meaning_id (1 natural figurative Indonesian sentence), examples_json (2 concise sentences with **bold** target + translation_id + context Daily/Academic), synonyms (2-3), antonyms (1-2), word_families_json (1-3 {word,pos} for vocab/collocation ONLY; [] for idioms).`;
+term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Casual|Slang), pronunciation ("·" syllable dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 crisp sentence), meaning_id (1 natural figurative Indonesian sentence), examples_json (2 concise sentences with **bold** target + translation_id + context Daily/Academic), synonyms (2-3), antonyms (1-2), word_families_json (1-3 {word,pos} for vocab/collocation ONLY; [] for idioms), chunks (2-3 natural native collocations/phrases or idiom sentence frames).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items?: Partial<DiscoveryItem>[];
@@ -271,6 +282,10 @@ term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Ca
                     required: ["word", "pos"],
                   },
                 },
+                chunks: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
                 register: {
                   type: Type.STRING,
                   enum: ["Formal", "Academic", "Casual", "Slang"],
@@ -288,6 +303,7 @@ term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Ca
                 "synonyms",
                 "antonyms",
                 "word_families_json",
+                "chunks",
                 "register",
               ],
             },

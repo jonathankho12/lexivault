@@ -992,6 +992,9 @@ export const CEFR_CALIBRATION_RULE =
 export const IDIOM_WORD_FAMILY_RULE =
   'Idiom word_families rule: When type is "idiom", ALWAYS return an empty array [] for word_families (or word_families_json). NEVER output literal root-word derivatives (e.g., do NOT return play (verb) or player (noun) for "play it by ear") and do NOT repeat the idiom itself.';
 
+export const CHUNKS_GENERATION_RULE =
+  'Lexical chunks rule: Always return "chunks" with 2-3 natural, high-frequency native English phrases/collocations containing the target expression that learners can drop directly into speaking or writing (e.g. for "pivotal" -> ["play a pivotal role in", "at a pivotal moment", "a pivotal turning point"]). For idioms (type="idiom"), return 2-3 natural sentence frames or starters using the idiom naturally (e.g. for "burn the midnight oil" -> ["have been burning the midnight oil to...", "had to burn the midnight oil before...", "often burn the midnight oil when..."]). Keep each chunk concise (3-7 words, no markdown).';
+
 export const SENTENCE_GRADING_SYSTEM_INSTRUCTION =
   'Fair, constructive, and encouraging native English writing coach grading practice sentences. Follow these core rules strictly: (1) Accept natural grammatical adaptations: NEVER penalize the user for conjugating verbs, changing tenses (e.g. past tense "I burnt the midnight oil..." or "I burned the midnight oil..." for "burn the midnight oil"), changing pronouns or possessives, adjusting articles/plurals, or using valid UK/US spelling variants (burnt/burned, colour/color, realise/realize, etc.). As long as the word or idiom is used accurately in meaning and natural context, score it fairly (pass / high score). (2) Focus on real errors: only deduct significant points for wrong meaning, unnatural collocation, missing target expression, or clear grammar errors—NOT for adapting the base dictionary form. (3) Second-person tone (MANDATORY): ALWAYS address the user directly as "You" / "Your" in English (or "Kamu" in Indonesian) in feedback and tips. NEVER write "The learner", "The user", "The student", "Pelajar", "Pengguna", or "Siswa". Return strictly valid JSON matching the requested schema.';
 
@@ -1107,7 +1110,8 @@ Required fields (when is_valid_english=true and not a duplicate):
 - examples: 2 natural ENGLISH example sentences (1 Daily, 1 Academic) wrapping the target term in **bold**, each with natural Indonesian translation_id and context
 - synonyms: 2–4 register-matched English synonyms
 - antonyms: 1–3 contrasting English antonyms (or contextual opposites)
-- word_families: 1–4 real English {word, pos} morphological forms for vocab/collocation ONLY; ${IDIOM_WORD_FAMILY_RULE}`;
+- word_families: 1–4 real English {word, pos} morphological forms for vocab/collocation ONLY; ${IDIOM_WORD_FAMILY_RULE}
+- chunks: 2–3 natural, practical native English lexical chunks / collocations (or natural sentence frames/starters for idioms); ${CHUNKS_GENERATION_RULE}`;
 }
 
 function buildBackupSystemPrompt(
@@ -1129,7 +1133,10 @@ function buildBackupSystemPrompt(
     skeleton.includes('"word_families_json":')
       ? `\n${IDIOM_WORD_FAMILY_RULE}`
       : "";
-  return `${base}${registerHint}${cefrHint}${idiomHint}
+  const chunksHint = skeleton.includes('"chunks":')
+    ? `\n${CHUNKS_GENERATION_RULE}`
+    : "";
+  return `${base}${registerHint}${cefrHint}${idiomHint}${chunksHint}
 CRITICAL: Return ONLY a single valid raw JSON object matching this exact schema (no markdown fences, no commentary, no placeholders):
 ${skeleton}`;
 }
