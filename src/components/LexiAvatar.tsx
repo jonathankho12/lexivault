@@ -1,11 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { LexiMood } from "@/lib/lexi";
 import { cn } from "@/lib/utils";
 
 export type LexiAvatarSize = "xs" | "sm" | "md" | "lg" | "xl";
-export type LexiReactionType = "pet" | "treat";
+export type LexiReactionType = "pet" | "treat" | "super";
 
 export interface LexiAvatarProps {
   mood?: LexiMood;
@@ -15,8 +15,11 @@ export interface LexiAvatarProps {
   label?: string;
   interactive?: boolean;
   onInteract?: () => void;
+  onHoldPet?: () => void;
   reaction?: LexiReactionType | null;
   reactionNonce?: number;
+  bondLevel?: number;
+  streakGuard?: boolean;
 }
 
 const SIZE_CLASSES: Record<LexiAvatarSize, string> = {
@@ -65,25 +68,121 @@ export function LexiAvatar({
   label,
   interactive = false,
   onInteract,
+  onHoldPet,
   reaction = null,
   reactionNonce = 0,
+  bondLevel,
+  streakGuard = false,
 }: LexiAvatarProps) {
-  const palette = MOOD_BACKDROP[mood];
+  const [holdHappyGlow, setHoldHappyGlow] = useState(false);
+  const holdTimerRef = useRef<number | null>(null);
+  const holdReleaseTimerRef = useRef<number | null>(null);
+  const holdTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current !== null) {
+        window.clearTimeout(holdTimerRef.current);
+      }
+      if (holdReleaseTimerRef.current !== null) {
+        window.clearTimeout(holdReleaseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearHoldTimer = () => {
+    if (holdTimerRef.current !== null) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
+
+  const handlePointerDown = () => {
+    if (!interactive) return;
+    clearHoldTimer();
+    if (holdReleaseTimerRef.current !== null) {
+      window.clearTimeout(holdReleaseTimerRef.current);
+      holdReleaseTimerRef.current = null;
+    }
+    holdTriggeredRef.current = false;
+    holdTimerRef.current = window.setTimeout(() => {
+      holdTimerRef.current = null;
+      holdTriggeredRef.current = true;
+      setHoldHappyGlow(true);
+      onHoldPet?.();
+    }, 550);
+  };
+
+  const handlePointerEnd = () => {
+    if (!interactive) return;
+    clearHoldTimer();
+    if (holdTriggeredRef.current) {
+      if (holdReleaseTimerRef.current !== null) {
+        window.clearTimeout(holdReleaseTimerRef.current);
+      }
+      holdReleaseTimerRef.current = window.setTimeout(() => {
+        setHoldHappyGlow(false);
+        holdReleaseTimerRef.current = null;
+      }, 950);
+    }
+  };
+
+  const handleButtonClick = () => {
+    if (holdTriggeredRef.current) {
+      holdTriggeredRef.current = false;
+      return;
+    }
+    onInteract?.();
+  };
+
+  const basePalette = MOOD_BACKDROP[mood];
+  const palette = holdHappyGlow
+    ? {
+        ring: "border-[#FFD18C]/55 bg-[#FF9F0A]/[0.14]",
+        glow: "rgba(255, 190, 92, 0.34)",
+        tagAccent: basePalette.tagAccent,
+      }
+    : streakGuard
+      ? {
+          ring: "border-[#FF9F0A]/50 bg-[#FF9F0A]/[0.12]",
+          glow: "rgba(255, 159, 10, 0.28)",
+          tagAccent: "#FF9F0A",
+        }
+      : basePalette;
+
+  // Evolve collar & tag visuals by Bond Level (Lv.1 blue -> Lv.2 silver tag -> Lv.3 gold -> Lv.4+ gold + glasses)
+  const collarStroke =
+    typeof bondLevel === "number"
+      ? bondLevel >= 3
+        ? "#F59E0B"
+        : "#0A84FF"
+      : palette.tagAccent;
+  const tagFill =
+    typeof bondLevel === "number"
+      ? bondLevel >= 3
+        ? "#FCD34D"
+        : bondLevel === 2
+          ? "#E2E8F0"
+          : "#38BDF8"
+      : palette.tagAccent;
+  const showBondGlasses = typeof bondLevel === "number" && bondLevel >= 4;
 
   const rootAnimClass = animated
-    ? mood === "sleepy"
-      ? "lexi-avatar-sleepy"
-      : mood === "happy"
-        ? "lexi-avatar-happy"
-        : mood === "restless"
-          ? "lexi-avatar-restless"
-          : "lexi-avatar-alert"
+    ? holdHappyGlow
+      ? "lexi-hold-pet"
+      : mood === "sleepy"
+        ? "lexi-avatar-sleepy"
+        : mood === "happy"
+          ? "lexi-avatar-happy"
+          : mood === "restless"
+            ? "lexi-avatar-restless"
+            : "lexi-avatar-alert"
     : "";
 
   const leftEarAnimClass = animated
     ? mood === "alert"
       ? "lexi-ear-alert-left"
-      : mood === "happy"
+      : mood === "happy" || holdHappyGlow
         ? "lexi-ear-happy-left"
         : mood === "restless"
           ? "lexi-ear-restless-left"
@@ -93,7 +192,7 @@ export function LexiAvatar({
   const rightEarAnimClass = animated
     ? mood === "alert"
       ? "lexi-ear-alert-right"
-      : mood === "happy"
+      : mood === "happy" || holdHappyGlow
         ? "lexi-ear-happy-right"
         : mood === "restless"
           ? "lexi-ear-restless-right"
@@ -101,18 +200,20 @@ export function LexiAvatar({
     : "";
 
   const reactionAnimClass =
-    reaction === "treat"
-      ? "lexi-react-treat"
-      : reaction === "pet"
-        ? "lexi-react-pet"
-        : "";
+    reaction === "super"
+      ? "lexi-react-super"
+      : reaction === "treat"
+        ? "lexi-react-treat"
+        : reaction === "pet"
+          ? "lexi-react-pet"
+          : "";
 
   const containerClassName = cn(
     "group relative inline-flex shrink-0 items-center justify-center rounded-2xl border select-none transform-gpu overflow-visible transition-[transform,colors,border-color,background-color,box-shadow]",
     palette.ring,
     SIZE_CLASSES[size],
     interactive &&
-      "cursor-pointer hover:scale-[1.04] active:scale-[0.95] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A84FF] focus-visible:ring-offset-1 focus-visible:ring-offset-transparent",
+      "touch-manipulation cursor-pointer hover:scale-[1.04] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A84FF] focus-visible:ring-offset-1 focus-visible:ring-offset-transparent",
     className
   );
 
@@ -126,7 +227,7 @@ export function LexiAvatar({
         <span
           className={cn(
             "pointer-events-none absolute inset-1 rounded-full transform-gpu",
-            animated && mood === "happy" && "lexi-happy-aura"
+            animated && (mood === "happy" || holdHappyGlow) && "lexi-happy-aura"
           )}
           style={{
             background: `radial-gradient(circle, ${palette.glow} 0%, transparent 72%)`,
@@ -134,7 +235,7 @@ export function LexiAvatar({
         />
       </span>
 
-      {/* Floating Pet / Treat Particles */}
+      {/* Floating Pet / Treat / Super Particles */}
       {reaction && (
         <span
           key={`particles-${reaction}-${reactionNonce}`}
@@ -170,6 +271,39 @@ export function LexiAvatar({
               >
                 <path
                   d="M8 1.5L9.7 5.8L14 7.5L9.7 9.2L8 13.5L6.3 9.2L2 7.5L6.3 5.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </>
+          ) : reaction === "super" ? (
+            <>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-1 absolute -top-1.5 left-0 h-3.5 w-3.5 text-[#FF5E84]"
+              >
+                <path
+                  d="M8 13.8C8 13.8 2 9.9 2 5.6C2 3.7 3.5 2.2 5.3 2.2C6.5 2.2 7.5 2.8 8 3.8C8.5 2.8 9.5 2.2 10.7 2.2C12.5 2.2 14 3.7 14 5.6C14 9.9 8 13.8 8 13.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-2 absolute -top-2.5 left-1/2 -translate-x-1/2 h-3.5 w-3.5 text-[#FFD18C]"
+              >
+                <path
+                  d="M8 1.5L9.7 5.8L14 7.5L9.7 9.2L8 13.5L6.3 9.2L2 7.5L6.3 5.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-3 absolute -top-1 right-0 h-3 w-3 text-[#7CF099]"
+              >
+                <path
+                  d="M8 13.8C8 13.8 2 9.9 2 5.6C2 3.7 3.5 2.2 5.3 2.2C6.5 2.2 7.5 2.8 8 3.8C8.5 2.8 9.5 2.2 10.7 2.2C12.5 2.2 14 3.7 14 5.6C14 9.9 8 13.8 8 13.8Z"
                   fill="currentColor"
                 />
               </svg>
@@ -234,18 +368,25 @@ export function LexiAvatar({
         />
         <path
           d="M34 77 C44 82, 56 82, 66 77"
-          stroke={palette.tagAccent}
+          stroke={collarStroke}
           strokeWidth="3.6"
           strokeLinecap="round"
         />
         {/* Minimalist Vault Diamond Collar Tag */}
         <path
           d="M50 77 L54 81.5 L50 86 L46 81.5 Z"
-          fill={palette.tagAccent}
+          fill={tagFill}
           stroke="#111319"
           strokeWidth="1.2"
           strokeLinejoin="round"
         />
+        {typeof bondLevel === "number" && bondLevel >= 2 && (
+          <path
+            d="M50 78.6 L52 81.5 L50 84.4 L48 81.5 Z"
+            fill="#FFFFFF"
+            opacity={bondLevel >= 3 ? "0.45" : "0.65"}
+          />
+        )}
 
         {/* Head + Ears Wrapper (subtle tilt on hover) */}
         <g
@@ -427,39 +568,8 @@ export function LexiAvatar({
             </>
           )}
 
-          {/* Eyes (4 Distinct Expressions) */}
-          {mood === "sleepy" && (
-            <>
-              <path
-                d="M33.5 44 C35.5 47, 40.5 47, 42.5 44"
-                stroke="#E5E7EB"
-                strokeWidth="2.3"
-                strokeLinecap="round"
-              />
-              <path
-                d="M57.5 44 C59.5 47, 64.5 47, 66.5 44"
-                stroke="#E5E7EB"
-                strokeWidth="2.3"
-                strokeLinecap="round"
-              />
-            </>
-          )}
-
-          {mood === "alert" && (
-            <g
-              className={cn(animated && "lexi-eye-blink transform-gpu")}
-              style={{ transformOrigin: "50px 43.5px" }}
-            >
-              <circle cx="38" cy="43.5" r="4.1" fill="#0B0D12" />
-              <circle cx="62" cy="43.5" r="4.1" fill="#0B0D12" />
-              <circle cx="38" cy="43.5" r="3.4" fill="#1F2937" />
-              <circle cx="62" cy="43.5" r="3.4" fill="#1F2937" />
-              <circle cx="39.3" cy="42.1" r="1.4" fill="#FFFFFF" />
-              <circle cx="63.3" cy="42.1" r="1.4" fill="#FFFFFF" />
-            </g>
-          )}
-
-          {mood === "happy" && (
+          {/* Eyes (4 Distinct Expressions + Hold-to-Pet Cozy Close) */}
+          {holdHappyGlow || mood === "happy" ? (
             <>
               <path
                 d="M33.5 45 C35.5 40.5, 40.5 40.5, 42.5 45"
@@ -474,17 +584,109 @@ export function LexiAvatar({
                 strokeLinecap="round"
               />
             </>
-          )}
-
-          {mood === "restless" && (
+          ) : mood === "sleepy" ? (
             <>
+              <path
+                d="M33.5 44 C35.5 47, 40.5 47, 42.5 44"
+                stroke="#E5E7EB"
+                strokeWidth="2.3"
+                strokeLinecap="round"
+              />
+              <path
+                d="M57.5 44 C59.5 47, 64.5 47, 66.5 44"
+                stroke="#E5E7EB"
+                strokeWidth="2.3"
+                strokeLinecap="round"
+              />
+            </>
+          ) : mood === "alert" ? (
+            <g
+              className={cn(animated && "lexi-eye-blink transform-gpu")}
+              style={{ transformOrigin: "50px 43.5px" }}
+            >
+              <circle cx="38" cy="43.5" r="4.1" fill="#0B0D12" />
+              <circle cx="62" cy="43.5" r="4.1" fill="#0B0D12" />
+              <circle cx="38" cy="43.5" r="3.4" fill="#1F2937" />
+              <circle cx="62" cy="43.5" r="3.4" fill="#1F2937" />
+              <circle cx="39.3" cy="42.1" r="1.4" fill="#FFFFFF" />
+              <circle cx="63.3" cy="42.1" r="1.4" fill="#FFFFFF" />
+            </g>
+          ) : (
+            <g
+              className={cn(animated && "lexi-eye-blink-slow transform-gpu")}
+              style={{ transformOrigin: "50px 43.5px" }}
+            >
               <circle cx="38" cy="43.5" r="4.2" fill="#FFFFFF" opacity="0.9" />
               <circle cx="62" cy="43.5" r="4.2" fill="#FFFFFF" opacity="0.9" />
               <circle cx="39.2" cy="43.5" r="2.7" fill="#111319" />
               <circle cx="63.2" cy="43.5" r="2.7" fill="#111319" />
               <circle cx="40.1" cy="42.4" r="1" fill="#FFFFFF" />
               <circle cx="64.1" cy="42.4" r="1" fill="#FFFFFF" />
-            </>
+            </g>
+          )}
+
+          {/* Bond Level 4+ Sleek Minimal Glasses */}
+          {showBondGlasses && (
+            <g aria-hidden="true">
+              <path
+                d="M25.5 41.4 L30.5 42.6"
+                stroke="#E5E7EB"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+              />
+              <path
+                d="M74.5 41.4 L69.5 42.6"
+                stroke="#E5E7EB"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+              />
+              <rect
+                x="30.5"
+                y="38.2"
+                width="15"
+                height="10.6"
+                rx="4"
+                fill="rgba(56, 189, 248, 0.08)"
+                stroke="#E5E7EB"
+                strokeWidth="1.35"
+              />
+              <rect
+                x="54.5"
+                y="38.2"
+                width="15"
+                height="10.6"
+                rx="4"
+                fill="rgba(56, 189, 248, 0.08)"
+                stroke="#E5E7EB"
+                strokeWidth="1.35"
+              />
+              <path
+                d="M45.5 42.6 C48 41.4, 52 41.4, 54.5 42.6"
+                stroke="#E5E7EB"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+              />
+              <path
+                d="M32.8 40.2 L35.8 40.2"
+                stroke="rgba(255,255,255,0.55)"
+                strokeWidth="0.9"
+                strokeLinecap="round"
+              />
+              <path
+                d="M56.8 40.2 L59.8 40.2"
+                stroke="rgba(255,255,255,0.55)"
+                strokeWidth="0.9"
+                strokeLinecap="round"
+              />
+            </g>
+          )}
+
+          {/* Warm Soft Blush Glow on Hold-to-Pet */}
+          {holdHappyGlow && (
+            <g aria-hidden="true" opacity="0.5">
+              <ellipse cx="30.5" cy="51.5" rx="3.2" ry="1.8" fill="#FF8DA1" />
+              <ellipse cx="69.5" cy="51.5" rx="3.2" ry="1.8" fill="#FF8DA1" />
+            </g>
           )}
 
           {/* Nose */}
@@ -495,7 +697,7 @@ export function LexiAvatar({
           <ellipse cx="48.2" cy="53.6" rx="2.1" ry="0.9" fill="#464D63" />
 
           {/* Mouth & Chin */}
-          {mood === "happy" ? (
+          {holdHappyGlow || mood === "happy" ? (
             <>
               <path
                 d="M43 61.5 C46 65, 54 65, 57 61.5"
@@ -600,7 +802,12 @@ export function LexiAvatar({
     return (
       <button
         type="button"
-        onClick={onInteract}
+        onClick={handleButtonClick}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerEnd}
+        onPointerLeave={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        onContextMenu={(e) => e.preventDefault()}
         aria-label={label ?? `Lexi the Rottweiler (${mood})`}
         className={containerClassName}
       >

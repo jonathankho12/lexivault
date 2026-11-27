@@ -63,7 +63,10 @@ export function applyThemeToDom(preference: ThemePreference): ResolvedTheme {
   return resolved;
 }
 
-export function setThemePreference(preference: ThemePreference): ResolvedTheme {
+export function setThemePreference(
+  preference: ThemePreference,
+  emitEvent = true
+): ResolvedTheme {
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, preference);
@@ -74,7 +77,7 @@ export function setThemePreference(preference: ThemePreference): ResolvedTheme {
 
   const resolved = applyThemeToDom(preference);
 
-  if (typeof window !== "undefined") {
+  if (emitEvent && typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent(THEME_CHANGE_EVENT, {
         detail: { preference, resolved },
@@ -162,6 +165,7 @@ function getTransitionOrigin(origin?: ThemeTransitionOrigin): {
 }
 
 let activeThemeTransitionId = 0;
+let activeViewTransition: ViewTransitionLike | null = null;
 
 /**
  * Switches theme with an origin-aware circular View Transition reveal
@@ -202,6 +206,15 @@ export function setThemeWithTransition(
     return resolved;
   }
 
+  if (activeViewTransition?.skipTransition) {
+    try {
+      activeViewTransition.skipTransition();
+    } catch {
+      // Ignore if previous transition already finished
+    }
+    activeViewTransition = null;
+  }
+
   const { x, y } = getTransitionOrigin(eventOrElement);
   const endRadius = Math.ceil(
     Math.hypot(
@@ -214,14 +227,20 @@ export function setThemeWithTransition(
   const apply = (viaViewTransition: boolean) => {
     if (applied) return;
     applied = true;
-    const resolved = setThemePreference(nextTheme);
+    const resolved = setThemePreference(nextTheme, !onApply);
     onApply?.(resolved, viaViewTransition);
   };
 
   const root = document.documentElement;
   const transitionId = ++activeThemeTransitionId;
+  let safetyTimer: ReturnType<typeof setTimeout> | null = null;
   const clearTransitionClass = () => {
+    if (safetyTimer !== null) {
+      clearTimeout(safetyTimer);
+      safetyTimer = null;
+    }
     if (activeThemeTransitionId === transitionId) {
+      activeViewTransition = null;
       root.classList.remove("theme-transitioning");
     }
   };
@@ -232,6 +251,9 @@ export function setThemeWithTransition(
     const transition = startViewTransition.call(document, () => {
       apply(true);
     });
+    activeViewTransition = transition;
+
+    safetyTimer = setTimeout(clearTransitionClass, 700);
 
     if (transition.finished && typeof transition.finished.finally === "function") {
       transition.finished.finally(clearTransitionClass).catch(() => {
@@ -256,7 +278,7 @@ export function setThemeWithTransition(
           },
           {
             duration: 520,
-            easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
             fill: "both",
             pseudoElement: "::view-transition-new(root)",
           }

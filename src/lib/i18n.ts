@@ -135,6 +135,18 @@ export interface TranslationDictionary {
     duplicateExact: string;
     duplicateVariantPrefix: string;
     viewCardBtn: string;
+    sortLabel: string;
+    sortOptions: {
+      newest: string;
+      oldest: string;
+      "cefr-asc": string;
+      "cefr-desc": string;
+      "mastery-weak": string;
+      "mastery-strong": string;
+      "alpha-asc": string;
+      "alpha-desc": string;
+      type: string;
+    };
   };
   suggest: {
     title: string;
@@ -606,8 +618,27 @@ export interface TranslationDictionary {
       restless: string[];
       streak: string[];
       word: string[];
+      chunk: string[];
       treat: string[];
+      rapidTap: string[];
+      holdPet: string[];
       bondUp: string;
+    };
+    streakGuard: {
+      badge: string;
+      copy: string;
+      bubble: string;
+    };
+    quickCheck: {
+      fetchBtn: string;
+      fetchTooltip: string;
+      title: string;
+      meaningPrompt: string;
+      tapToReveal: string;
+      correctMsg: string;
+      wrongMsg: string;
+      closeAria: string;
+      viewCardTooltip: string;
     };
     intro: {
       badge: string;
@@ -788,13 +819,25 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       emptyFilterTitle: "Tidak Ada Hasil yang Cocok",
       emptyFilterSubtitle: "Coba ubah filter atau kata kunci pencarianmu.",
       capturePlaceholder: "Ketik 1 kata atau idiom (misal: gentrified)...",
-      captureSave: "Save",
+      captureSave: "Simpan",
       captureSaving: "AI Fill",
       captureSourceLabel: "Sumber:",
       captureHint: "Auto-kategori AI: Vocab / Idiom / Collocation & Register",
       duplicateExact: "Sudah terdaftar di Vault",
       duplicateVariantPrefix: "Sudah terdaftar di Vault sebagai",
       viewCardBtn: "Lihat Kartu",
+      sortLabel: "Urutkan:",
+      sortOptions: {
+        newest: "Terbaru",
+        oldest: "Terlama",
+        "cefr-asc": "CEFR: A1 → C2",
+        "cefr-desc": "CEFR: C2 → A1",
+        "mastery-weak": "Perlu Diulas Dulu",
+        "mastery-strong": "Sudah Dikuasai",
+        "alpha-asc": "Abjad: A → Z",
+        "alpha-desc": "Abjad: Z → A",
+        type: "Berdasarkan Tipe (Vocab → Idiom → Collocation)",
+      },
     },
     suggest: {
       title: "Tambah Kata / Idiom AI",
@@ -1254,22 +1297,22 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       emailCopied: "abeljonathankho@gmail.com disalin!",
     },
     lexi: {
-      eyebrow: "Perawatan Vault Harian",
+      eyebrow: "Status Vault Harian",
       ariaCard: "Kartu Status Harian Lexi",
-      ariaProgress: "Progres perawatan vault harian",
+      ariaProgress: "Progres status vault harian",
       streakPill: "streak {days}h",
       streakTooltip: "Lihat kalender streak",
       progressDrillsSuffix: "latihan",
       progressDailyPackSuffix: "target harian",
       vaultSecured: "Vault Aman ✓",
-      actionMakeHappy: "Bikin Lexi Senang",
+      actionMakeHappy: "Latihan Bareng Lexi",
       actionQuickReview: "Ulas Cepat 3 Menit",
       petHint: "Sentuh Lexi untuk elus",
       petAriaLabel: "Elus Lexi si Rottweiler",
-      giveTreatBtn: "Beri Camilan",
-      treatBoostBadge: "Lagi senang banget",
-      bondTooltipProgress: "Level Ikatan: {tier} · {remaining} camilan lagi ke {nextTier}",
-      bondTooltipMax: "Level Ikatan: {tier} · Ikatan maksimal ({total} camilan)",
+      giveTreatBtn: "Kasih Snack",
+      treatBoostBadge: "Lagi semangat banget",
+      bondTooltipProgress: "Level Ikatan: {tier} · {remaining} snack lagi ke {nextTier}",
+      bondTooltipMax: "Level Ikatan: {tier} · Ikatan maksimal ({total} snack)",
       moodBadges: {
         sleepy: "Istirahat",
         alert: "Siaga",
@@ -1277,11 +1320,11 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         restless: "Gelisah",
       },
       moodCopy: {
-        sleepy: "Lexi sedang istirahat. Mulai latihan singkat biar dia semangat.",
-        alert: "Vault aktif. Selesaikan latihan hari ini untuk kunci streak-mu.",
-        happy: "Vault aman hari ini. Lexi bangga sama konsistensimu!",
+        sleepy: "Lexi lagi santai. Mulai 1 latihan singkat yuk biar makin semangat.",
+        alert: "Vault aktif. Selesaikan latihan hari ini biar streak-mu makin aman.",
+        happy: "Vault aman hari ini. Bangga banget sama konsistensimu!",
         restless: "Vault kosakatamu mulai berdebu. Yuk ulas singkat sekarang.",
-        happyBoosted: "Lexi lagi senang banget habis dapat camilan! Yuk lanjut jaga ritme.",
+        happyBoosted: "Lexi lagi semangat banget habis dikasih snack! Yuk lanjut jaga ritme.",
       },
       notePrefixes: {
         happy: "Diasah hari ini:",
@@ -1290,47 +1333,75 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         sleepy: "Berikutnya di vault:",
       },
       bondTiers: {
-        acquaintance: "Kenalan Baru",
+        acquaintance: "Teman Baru",
         study_buddy: "Teman Belajar",
         loyal_guardian: "Penjaga Setia",
         best_friend: "Sahabat Terbaik",
       },
       bubbles: {
         sleepy: [
-          "Mmm... lima menit lagi ya? Atau langsung 1 drill cepat?",
-          "Telinga selalu siaga kalau ada kata baru masuk Vault.",
-          "Elusannya hangat banget. Siap bangun buat latihan singkat!",
+          "Hoam... 3 kartu dulu yuk sebelum istirahat.",
+          "Mata agak ngantuk, tapi telinga tetap siaga buat kosakata baru.",
+          "Oke, elusannya bikin melek. Yuk sikat 1 latihan dulu!",
         ],
         alert: [
-          "Mantap! Tinggal sedikit lagi buat amankan Vault hari ini.",
-          "Ritme kamu bagus hari ini—ekorku sudah mulai goyang!",
-          "Satu sesi singkat lagi, langsung beres target harian kita.",
+          "Hehe, makasih elusannya. Yuk sikat 1 latihan dulu!",
+          "Sip, energi penuh. Mau review kata yang mana nih?",
+          "Ritme kamu lagi oke banget hari ini—tinggal sedikit lagi beres!",
         ],
         happy: [
-          "Guk! Vault aman terkendali. Kamu keren banget hari ini!",
-          "Elusan terbaik! Konsistensimu bikin aku bangga jadi penjaga Vault.",
-          "Misi harian tuntas! Besok kita jaga lagi bareng ya.",
+          "Guk! Vault aman hari ini. Bangga banget sama kamu!",
+          "Makasih elusannya! Kamu beneran konsisten hari ini.",
+          "Target harian beres! Besok kita sikat lagi bareng ya.",
         ],
         restless: [
-          "Vault kita agak sepi beberapa hari ini... yuk pemanasan 3 menit!",
+          "Dielus terus, kapan latihannya nih? Yuk pemanasan 3 menit!",
           "Jangan biarkan kata-kata kerenmu berdebu. Aku siap nemenin!",
-          "Satu review cepat aja langsung bikin telingaku tegak lagi.",
+          "Satu review cepat aja langsung bikin aku semangat lagi.",
         ],
         streak: [
-          "Streak {days} hari berturut-turut! Ekorku nggak berhenti goyang.",
-          "{days} hari tanpa putus—ini baru penjaga kosakata sejati!",
+          "Streak {days} hari beruntun! Guk, bangga banget sama kamu.",
+          "{days} hari tanpa putus—gas terus, jangan kasih kendor!",
         ],
         word: [
-          "Eh—masih ingat makna \"{term}\" tanpa ngintip nggak?",
+          "Eh—masih ingat arti \"{term}\" tanpa ngintip nggak?",
           "Coba bikin satu kalimat pakai \"{term}\" di kepalamu sekarang!",
-          "Catatan penjaga: \"{term}\" siap kamu pakai di percakapan hari ini.",
+          "Catat nih: \"{term}\" siap banget dipakai ngobrol hari ini.",
+        ],
+        chunk: [
+          "Frasa keren nih: \"{chunk}\" (dari \"{term}\")—coba ucapin sekali!",
+          "Ingat kolokasi \"{chunk}\"? Dipakai bareng \"{term}\" bikin makin natural!",
         ],
         treat: [
-          "Kres! Camilan terenak! Terima kasih sudah rajin belajar!",
-          "Nyam! Energi penjaga langsung penuh 100%!",
-          "Guk guk! Hadiah terbaik setelah kerja keras hari ini!",
+          "Nyam! Makasih snack-nya, semangatku langsung 100%.",
+          "Kres! Snack terenak setelah beres target latihan!",
+          "Guk! Energi langsung penuh—siap lanjut belajar bareng?",
         ],
-        bondUp: "Ikatan naik ke {tier}! Aku makin setia jaga Vault-mu!",
+        rapidTap: [
+          "Waduh, dielus bertubi-tubi! Oke oke, aku siap nemenin latihan sekarang!",
+          "Hehe geli! 3x tap combo—yuk langsung gas 1 sesi cepat!",
+        ],
+        holdPet: [
+          "Mmm... hangat banget elusannya. Senang ditemenin belajar sama kamu.",
+          "Hehe, nyaman banget... siap lanjut jaga streak bareng!",
+        ],
+        bondUp: "Level ikatan naik ke {tier}! Makin kompak jaga Vault bareng kamu.",
+      },
+      streakGuard: {
+        badge: "Jaga Streak",
+        copy: "Sudah lewat jam 8 malam & progres hari ini masih 0%—yuk amankan streak {days} harimu!",
+        bubble: "Jam malam nih! Sikat 1 drill singkat biar streak {days} hari tetap aman.",
+      },
+      quickCheck: {
+        fetchBtn: "Fetch!",
+        fetchTooltip: "Ambil 1 kata cepat untuk kuis 5 detik",
+        title: "Cek Cepat 5 Detik",
+        meaningPrompt: "Pilih arti yang paling tepat:",
+        tapToReveal: "Ketuk untuk lihat arti",
+        correctMsg: "Mantap! +15 XP · progres tersimpan.",
+        wrongMsg: "Hampir! Arti yang tepat:",
+        closeAria: "Tutup cek cepat",
+        viewCardTooltip: "Buka kartu lengkap",
       },
       intro: {
         badge: "Penjaga Kosakata",
@@ -1356,10 +1427,10 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         dailyPackTitle: "Target Harian Tuntas!",
         dailyPackBody: "Lexi bangga! Semua item hari ini sudah masuk Vault.",
         comboTitle: "Kombo {combo}× Beruntun!",
-        comboBody: "Tajam banget! Ekor Lexi bergoyang kencang buat kamu.",
+        comboBody: "Fokus banget! Semangat terus pertahankan ritmenya.",
         weakestClearedTitle: "Kata Sulit Dikuasai!",
         weakestClearedBody: "\"{term}\" resmi lulus dari daftar Weakest Words!",
-        treatEarnedTag: "+1 Camilan Lexi",
+        treatEarnedTag: "+1 Snack Lexi",
         dismissAria: "Tutup sorakan Lexi",
       },
     },
@@ -1533,6 +1604,18 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       duplicateExact: "Already registered in your Vault",
       duplicateVariantPrefix: "Already in Vault as",
       viewCardBtn: "View Card",
+      sortLabel: "Sort:",
+      sortOptions: {
+        newest: "Newest First",
+        oldest: "Oldest First",
+        "cefr-asc": "CEFR: A1 → C2",
+        "cefr-desc": "CEFR: C2 → A1",
+        "mastery-weak": "Needs Review First",
+        "mastery-strong": "Mastered First",
+        "alpha-asc": "Alphabetical: A → Z",
+        "alpha-desc": "Alphabetical: Z → A",
+        type: "By Type (Vocab → Idiom → Collocation)",
+      },
     },
     suggest: {
       title: "AI Suggest Idiom / Word",
@@ -2060,12 +2143,40 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
           "Try using \"{term}\" in a sentence today. I'm listening!",
           "Guardian note: \"{term}\" deserves a spotlight in your vault.",
         ],
+        chunk: [
+          "Chunk check: \"{chunk}\" (from \"{term}\")—try saying it out loud!",
+          "Native phrasing spotlight: \"{chunk}\" pairs smoothly with \"{term}\"!",
+        ],
         treat: [
           "Crunch! Best treat ever—earned with real study gains!",
           "Nom nom! Guardian energy officially at 100%!",
           "Woof! Worth every single drill you crushed today!",
         ],
+        rapidTap: [
+          "Whoa, rapid-fire ear scratches! Okay okay, I'm hyped—let's drill!",
+          "3× pet combo unlocked! Now let's channel that energy into one quick card!",
+        ],
+        holdPet: [
+          "Mmmm... those slow ear rubs are the best. Happy to guard your vault.",
+          "Pure bliss... alright, I'm charged up whenever you're ready!",
+        ],
         bondUp: "Bond leveled up to {tier}! Always by your side.",
+      },
+      streakGuard: {
+        badge: "Streak Guard",
+        copy: "Past 8 PM with 0% today—quick drill to protect your {days}-day streak!",
+        bubble: "Evening check-in! One quick drill tonight keeps your {days}-day streak safe.",
+      },
+      quickCheck: {
+        fetchBtn: "Fetch!",
+        fetchTooltip: "Fetch an overdue or weak word for a 5-second check",
+        title: "5-Second Quick Check",
+        meaningPrompt: "Pick the matching meaning:",
+        tapToReveal: "Tap to reveal meaning",
+        correctMsg: "Spot on! +15 XP · progress saved.",
+        wrongMsg: "Almost! The right meaning is:",
+        closeAria: "Close quick check",
+        viewCardTooltip: "Open full word card",
       },
       intro: {
         badge: "Vocabulary Guardian",

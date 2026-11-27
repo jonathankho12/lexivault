@@ -4,32 +4,61 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bone,
+  CheckCircle2,
+  Eye,
   Flame,
   Heart,
   MessageCircleHeart,
   Play,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
+  X,
+  XCircle,
 } from "lucide-react";
 import { LexiAvatar, type LexiReactionType } from "@/components/LexiAvatar";
+import { AudioButton } from "@/components/ui/AudioButton";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import {
+  buildQuickCheckQuiz,
   computeLexiStatus,
   formatLexiTemplate,
+  pickFetchQuickCheckWord,
   pickLexiSpeechBubble,
   type LexiMood,
 } from "@/lib/lexi";
 import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import {
+  playCorrectChime,
   playGlassClick,
   playLexiPetSfx,
   playLexiTreatSfx,
+  playWrongThud,
 } from "@/lib/soundEffects";
-import { cn } from "@/lib/utils";
+import {
+  cn,
+  formatCefrBadgeClass,
+  getLocalizedMeaning,
+} from "@/lib/utils";
+import type { WordEntry } from "@/types/lexivault";
 
 const SPEECH_BUBBLE_TIMEOUT_MS = 4500;
 const REACTION_CLEAR_MS = 950;
+const RAPID_TAP_WINDOW_MS = 1400;
+
+function triggerHaptic(pattern: number | number[]) {
+  if (
+    typeof navigator !== "undefined" &&
+    typeof navigator.vibrate === "function"
+  ) {
+    try {
+      navigator.vibrate(pattern);
+    } catch {
+      // Ignore restricted vibration calls
+    }
+  }
+}
 
 const CARD_STYLE_BY_MOOD: Record<LexiMood, string> = {
   sleepy: "border-white/[0.1]",
@@ -75,6 +104,8 @@ export function LexiStatusCard() {
     isLexiHappyBoosted,
     petLexi,
     feedLexiTreat,
+    recordAnswer,
+    accent,
     studyLogs,
     todayStr,
     dailyRings,
@@ -92,14 +123,44 @@ export function LexiStatusCard() {
   } = useLexiVault();
   const { lang, t } = useLanguage();
 
+  const [localHour, setLocalHour] = useState(() => new Date().getHours());
   const [tapCount, setTapCount] = useState(0);
   const [speechBubble, setSpeechBubble] = useState<string | null>(null);
   const [reaction, setReaction] = useState<LexiReactionType | null>(null);
   const [reactionNonce, setReactionNonce] = useState(0);
+  const [streakFlameBurst, setStreakFlameBurst] = useState(false);
+
+  const [quickCheckWord, setQuickCheckWord] = useState<WordEntry | null>(null);
+  const [quickCheckQuiz, setQuickCheckQuiz] = useState<{
+    choices: string[];
+    correctChoice: string;
+  } | null>(null);
+  const [quickCheckPicked, setQuickCheckPicked] = useState<string | null>(null);
+  const [quickCheckRevealed, setQuickCheckRevealed] = useState(false);
 
   const lastBubbleRef = useRef<string | null>(null);
   const bubbleTimerRef = useRef<number | null>(null);
   const reactionTimerRef = useRef<number | null>(null);
+  const streakFlameTimerRef = useRef<number | null>(null);
+  const quickCheckTimerRef = useRef<number | null>(null);
+  const tapTimestampsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    const refreshHour = () => {
+      setLocalHour(new Date().getHours());
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshHour();
+      }
+    };
+    window.addEventListener("focus", refreshHour);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", refreshHour);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -108,6 +169,12 @@ export function LexiStatusCard() {
       }
       if (reactionTimerRef.current !== null) {
         window.clearTimeout(reactionTimerRef.current);
+      }
+      if (streakFlameTimerRef.current !== null) {
+        window.clearTimeout(streakFlameTimerRef.current);
+      }
+      if (quickCheckTimerRef.current !== null) {
+        window.clearTimeout(quickCheckTimerRef.current);
       }
     };
   }, []);
@@ -124,6 +191,7 @@ export function LexiStatusCard() {
         words,
         lang,
         isHappyBoosted: isLexiHappyBoosted,
+        localHour,
       }),
     [
       dailyPack,
@@ -131,6 +199,7 @@ export function LexiStatusCard() {
       dailyRings,
       isLexiHappyBoosted,
       lang,
+      localHour,
       streak,
       studyLogs,
       todayStr,
@@ -142,7 +211,12 @@ export function LexiStatusCard() {
     return null;
   }
 
-  const badgeStyle = BADGE_STYLE_BY_MOOD[status.mood];
+  const badgeStyle = status.isStreakGuard
+    ? BADGE_STYLE_BY_MOOD.restless
+    : BADGE_STYLE_BY_MOOD[status.mood];
+  const cardSurfaceClass = status.isStreakGuard
+    ? CARD_STYLE_BY_MOOD.restless
+    : CARD_STYLE_BY_MOOD[status.mood];
   const contextualNote = status.contextualNote;
   const bondTierName = t.lexi.bondTiers[lexiBondInfo.tierId];
   const bondTooltip = lexiBondInfo.nextTierId
@@ -183,10 +257,38 @@ export function LexiStatusCard() {
   };
 
   const handlePetLexi = () => {
-    playLexiPetSfx();
+    const now = Date.now();
+    const recent = tapTimestampsRef.current.filter(
+      (ts) => now - ts <= RAPID_TAP_WINDOW_MS
+    );
+    recent.push(now);
+
+    const isRapidTriple = recent.length >= 3;
+    tapTimestampsRef.current = isRapidTriple ? [] : recent;
+
     petLexi();
     const nextTap = tapCount + 1;
     setTapCount(nextTap);
+
+    if (isRapidTriple) {
+      triggerHaptic([15, 25, 20]);
+      playLexiTreatSfx();
+      const nextBubble = pickLexiSpeechBubble({
+        mood: "happy",
+        streak,
+        words,
+        lang,
+        tapCount: nextTap,
+        lastMessage: lastBubbleRef.current,
+        reactionType: "rapid_tap",
+        isStreakGuard: status.isStreakGuard,
+      });
+      showBubbleAndReaction("super", nextBubble);
+      return;
+    }
+
+    triggerHaptic(15);
+    playLexiPetSfx();
     const nextBubble = pickLexiSpeechBubble({
       mood: status.mood,
       streak,
@@ -195,6 +297,25 @@ export function LexiStatusCard() {
       tapCount: nextTap,
       lastMessage: lastBubbleRef.current,
       reactionType: "pet",
+      isStreakGuard: status.isStreakGuard,
+    });
+    showBubbleAndReaction("pet", nextBubble);
+  };
+
+  const handleHoldPet = () => {
+    triggerHaptic(15);
+    playLexiPetSfx();
+    petLexi();
+    const nextTap = tapCount + 1;
+    setTapCount(nextTap);
+    const nextBubble = pickLexiSpeechBubble({
+      mood: "happy",
+      streak,
+      words,
+      lang,
+      tapCount: nextTap,
+      lastMessage: lastBubbleRef.current,
+      reactionType: "hold_pet",
     });
     showBubbleAndReaction("pet", nextBubble);
   };
@@ -203,6 +324,7 @@ export function LexiStatusCard() {
     if (lexiCompanion.treatsAvailable <= 0) return;
     const res = feedLexiTreat();
     if (!res.fed) return;
+    triggerHaptic([15, 30, 15]);
     playLexiTreatSfx();
     const nextTap = tapCount + 1;
     setTapCount(nextTap);
@@ -217,6 +339,85 @@ export function LexiStatusCard() {
       leveledUpTo: res.leveledUpTo,
     });
     showBubbleAndReaction("treat", nextBubble);
+  };
+
+  const closeQuickCheck = () => {
+    if (quickCheckTimerRef.current !== null) {
+      window.clearTimeout(quickCheckTimerRef.current);
+      quickCheckTimerRef.current = null;
+    }
+    setQuickCheckWord(null);
+    setQuickCheckQuiz(null);
+    setQuickCheckPicked(null);
+    setQuickCheckRevealed(false);
+  };
+
+  const openQuickCheck = (targetWord: WordEntry) => {
+    if (quickCheckTimerRef.current !== null) {
+      window.clearTimeout(quickCheckTimerRef.current);
+      quickCheckTimerRef.current = null;
+    }
+    playGlassClick();
+    triggerHaptic(10);
+    setQuickCheckWord(targetWord);
+    setQuickCheckQuiz(buildQuickCheckQuiz(targetWord, words, lang));
+    setQuickCheckPicked(null);
+    setQuickCheckRevealed(false);
+  };
+
+  const handleFetchWord = () => {
+    if (words.length === 0) {
+      playGlassClick();
+      openDailyPackModal();
+      return;
+    }
+    const fetched = pickFetchQuickCheckWord(
+      words,
+      todayStr,
+      quickCheckWord?.id
+    );
+    if (fetched) {
+      openQuickCheck(fetched);
+    }
+  };
+
+  const handleQuickCheckChoice = (choice: string) => {
+    if (!quickCheckWord || !quickCheckQuiz || quickCheckPicked !== null) return;
+    setQuickCheckPicked(choice);
+    const isCorrect = choice === quickCheckQuiz.correctChoice;
+
+    if (isCorrect) {
+      triggerHaptic(15);
+      playCorrectChime(2);
+      showBubbleAndReaction("pet", t.lexi.quickCheck.correctMsg);
+      void recordAnswer(quickCheckWord.id, true).catch(() => {});
+    } else {
+      playWrongThud();
+      void recordAnswer(quickCheckWord.id, false).catch(() => {});
+    }
+
+    if (quickCheckTimerRef.current !== null) {
+      window.clearTimeout(quickCheckTimerRef.current);
+    }
+    quickCheckTimerRef.current = window.setTimeout(() => {
+      closeQuickCheck();
+    }, isCorrect ? 1200 : 1850);
+  };
+
+  const handleQuickCheckReveal = () => {
+    if (!quickCheckWord || quickCheckRevealed) return;
+    setQuickCheckRevealed(true);
+    triggerHaptic(15);
+    playCorrectChime(1);
+    showBubbleAndReaction("pet", t.lexi.quickCheck.correctMsg);
+    void recordAnswer(quickCheckWord.id, true).catch(() => {});
+
+    if (quickCheckTimerRef.current !== null) {
+      window.clearTimeout(quickCheckTimerRef.current);
+    }
+    quickCheckTimerRef.current = window.setTimeout(() => {
+      closeQuickCheck();
+    }, 1500);
   };
 
   const handlePrimaryAction = () => {
@@ -248,7 +449,7 @@ export function LexiStatusCard() {
       aria-label={t.lexi.ariaCard}
       className={cn(
         "liquid-glass rounded-3xl p-4 sm:px-5 sm:py-4 border transition-colors",
-        CARD_STYLE_BY_MOOD[status.mood]
+        cardSurfaceClass
       )}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
@@ -260,9 +461,12 @@ export function LexiStatusCard() {
               size="md"
               interactive
               onInteract={handlePetLexi}
+              onHoldPet={handleHoldPet}
               label={t.lexi.petAriaLabel}
               reaction={reaction}
               reactionNonce={reactionNonce}
+              bondLevel={lexiBondInfo.level}
+              streakGuard={status.isStreakGuard}
             />
 
             <AnimatePresence>
@@ -281,7 +485,7 @@ export function LexiStatusCard() {
           </div>
 
           <div className="min-w-0 flex-1 space-y-1.5">
-            {/* Eyebrow, Mood Badge, Bond Level & Streak Pill */}
+            {/* Eyebrow, Mood/Streak-Guard Badge, Bond Level & Interactive Streak Flame Pill */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8E8E93]">
                 {t.lexi.eyebrow}
@@ -293,10 +497,14 @@ export function LexiStatusCard() {
                   badgeStyle.pill
                 )}
               >
-                <span
-                  aria-hidden="true"
-                  className={cn("h-1.5 w-1.5 rounded-full", badgeStyle.dot)}
-                />
+                {status.isStreakGuard ? (
+                  <ShieldAlert className="h-2.5 w-2.5 shrink-0" />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className={cn("h-1.5 w-1.5 rounded-full", badgeStyle.dot)}
+                  />
+                )}
                 <span>{status.badgeLabel}</span>
               </span>
 
@@ -321,17 +529,42 @@ export function LexiStatusCard() {
                 type="button"
                 onClick={() => {
                   playGlassClick();
+                  setStreakFlameBurst(true);
+                  if (streakFlameTimerRef.current !== null) {
+                    window.clearTimeout(streakFlameTimerRef.current);
+                  }
+                  streakFlameTimerRef.current = window.setTimeout(() => {
+                    setStreakFlameBurst(false);
+                    streakFlameTimerRef.current = null;
+                  }, 700);
                   openStreakCalendar();
                 }}
                 title={t.lexi.streakTooltip}
-                className="inline-flex items-center gap-1 rounded-full bg-white/[0.05] border border-white/[0.09] px-2 py-0.5 text-[10px] font-semibold text-[#D1D1D6] hover:bg-white/[0.1] cursor-pointer tabular-nums"
+                className={cn(
+                  "lexi-flame-trigger relative overflow-visible inline-flex items-center gap-1 rounded-full bg-white/[0.05] border border-white/[0.09] px-2 py-0.5 text-[10px] font-semibold text-[#D1D1D6] hover:bg-white/[0.1] active:scale-95 transition-[transform,background-color] cursor-pointer tabular-nums",
+                  streakFlameBurst && "is-flaming"
+                )}
               >
-                <Flame
-                  className={cn(
-                    "h-3 w-3",
-                    streak > 0 ? "text-[#30D158]" : "text-[#8E8E93]"
-                  )}
-                />
+                <span className="relative inline-flex items-center justify-center">
+                  <Flame
+                    className={cn(
+                      "h-3 w-3 lexi-flame-icon",
+                      streak > 0 ? "text-[#FF9F0A]" : "text-[#8E8E93]"
+                    )}
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="lexi-flame-spark lexi-flame-spark-1 absolute top-0 left-0 h-1 w-1 rounded-full bg-[#FFD18C]"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="lexi-flame-spark lexi-flame-spark-2 absolute top-0 right-0 h-1 w-1 rounded-full bg-[#FF9F0A]"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="lexi-flame-spark lexi-flame-spark-3 absolute -top-0.5 left-1 h-1 w-1 rounded-full bg-[#FFE4B5]"
+                  />
+                </span>
                 <span>
                   {formatLexiTemplate(t.lexi.streakPill, { days: streak })}
                 </span>
@@ -363,21 +596,34 @@ export function LexiStatusCard() {
               {status.statusCopy}
             </p>
 
-            {/* Optional Subtle Word Note */}
-            {contextualNote && (
-              <p className="text-[11px] text-[#8E8E93] truncate">
-                {contextualNote.prefix}{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    playGlassClick();
-                    setSelectedWord(contextualNote.word);
-                  }}
-                  className="font-semibold text-[#70BCFF] hover:underline cursor-pointer"
-                >
-                  &ldquo;{contextualNote.term}&rdquo;
-                </button>
-              </p>
+            {/* Tappable Nudge Word + Compact "Fetch!" Micro-Button */}
+            {(contextualNote || words.length > 0) && (
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#8E8E93]">
+                {contextualNote && (
+                  <p className="min-w-0 truncate">
+                    {contextualNote.prefix}{" "}
+                    <button
+                      type="button"
+                      onClick={() => openQuickCheck(contextualNote.word)}
+                      className="font-semibold text-[#70BCFF] hover:underline cursor-pointer"
+                    >
+                      &ldquo;{contextualNote.term}&rdquo;
+                    </button>
+                  </p>
+                )}
+
+                {words.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleFetchWord}
+                    title={t.lexi.quickCheck.fetchTooltip}
+                    className="inline-flex items-center gap-1 rounded-full bg-[#0A84FF]/14 border border-[#0A84FF]/35 px-2 py-0.5 text-[10px] font-bold text-[#70BCFF] hover:bg-[#0A84FF]/24 active:scale-95 transition-all cursor-pointer shrink-0"
+                  >
+                    <Sparkles className="h-2.5 w-2.5" />
+                    <span>{t.lexi.quickCheck.fetchBtn}</span>
+                  </button>
+                )}
+              </div>
             )}
 
             {/* Compact Daily Progress Bar */}
@@ -425,7 +671,7 @@ export function LexiStatusCard() {
                 ? t.lexi.giveTreatBtn
                 : lang === "en"
                   ? "Complete Daily Pack, Practice, or close a Daily Ring to earn treats"
-                  : "Selesaikan Target Harian, Practice, atau tutup Daily Ring untuk dapat camilan"
+                  : "Selesaikan Target Harian, Practice, atau tutup Daily Ring untuk dapat snack"
             }
             className={cn(
               "inline-flex items-center justify-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-bold transition-all",
@@ -460,12 +706,12 @@ export function LexiStatusCard() {
               onClick={handlePrimaryAction}
               className={cn(
                 "flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold text-white transition-all cursor-pointer",
-                status.mood === "restless"
+                status.mood === "restless" || status.isStreakGuard
                   ? "bg-amber-600 hover:bg-amber-500 shadow-[0_6px_20px_rgba(217,119,6,0.28)]"
                   : "bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] shadow-[0_6px_20px_rgba(10,132,255,0.28)] hover:brightness-110"
               )}
             >
-              {status.mood === "restless" ? (
+              {status.mood === "restless" || status.isStreakGuard ? (
                 <Sparkles className="h-3.5 w-3.5" />
               ) : (
                 <Play className="h-3.5 w-3.5 fill-current" />
@@ -475,6 +721,155 @@ export function LexiStatusCard() {
           )}
         </div>
       </div>
+
+      {/* Inline 5-Second Nudge Mini-Quiz / Fetch Quick Check (Zero AI Calls) */}
+      <AnimatePresence>
+        {quickCheckWord && (
+          <motion.div
+            key={`quick-check-${quickCheckWord.id}`}
+            initial={{ opacity: 0, y: -6, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.985 }}
+            transition={IOS_SPRING}
+            className="mt-3.5 rounded-2xl border border-[#0A84FF]/30 bg-white/[0.04] p-3.5 space-y-2.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#70BCFF]">
+                  {t.lexi.quickCheck.title}
+                </span>
+                {quickCheckWord.cefr && (
+                  <span
+                    className={cn(
+                      "rounded-full border px-1.5 py-0.5 text-[9.5px] font-bold",
+                      formatCefrBadgeClass(quickCheckWord.cefr)
+                    )}
+                  >
+                    {quickCheckWord.cefr}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playGlassClick();
+                    setSelectedWord(quickCheckWord);
+                  }}
+                  title={t.lexi.quickCheck.viewCardTooltip}
+                  className="rounded-full p-1 text-[#8E8E93] hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playGlassClick();
+                    closeQuickCheck();
+                  }}
+                  aria-label={t.lexi.quickCheck.closeAria}
+                  className="rounded-full p-1 text-[#8E8E93] hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-base font-bold text-white truncate">
+                  {quickCheckWord.term}
+                </p>
+                <p className="text-[11px] text-[#8E8E93]">
+                  {quickCheckQuiz
+                    ? t.lexi.quickCheck.meaningPrompt
+                    : t.lexi.quickCheck.tapToReveal}
+                </p>
+              </div>
+              <AudioButton
+                text={quickCheckWord.term}
+                remoteUrl={
+                  accent === "UK"
+                    ? quickCheckWord.audio_uk_url
+                    : quickCheckWord.audio_us_url
+                }
+                wordId={quickCheckWord.id}
+                size="sm"
+              />
+            </div>
+
+            {quickCheckQuiz ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {quickCheckQuiz.choices.map((choice) => {
+                  const picked = quickCheckPicked === choice;
+                  const isCorrect = choice === quickCheckQuiz.correctChoice;
+                  const revealed = quickCheckPicked !== null;
+                  return (
+                    <button
+                      key={choice}
+                      type="button"
+                      disabled={revealed}
+                      onClick={() => handleQuickCheckChoice(choice)}
+                      className={cn(
+                        "flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-all",
+                        !revealed &&
+                          "bg-white/[0.04] border-white/[0.1] text-[#F5F5F7] hover:bg-white/[0.1] hover:border-[#0A84FF]/40 active:scale-[0.98] cursor-pointer",
+                        revealed &&
+                          isCorrect &&
+                          "bg-[#30D158]/18 border-[#30D158]/50 text-[#A6F8BA]",
+                        revealed &&
+                          picked &&
+                          !isCorrect &&
+                          "bg-red-500/15 border-red-500/45 text-red-300",
+                        revealed &&
+                          !picked &&
+                          !isCorrect &&
+                          "bg-white/[0.02] border-white/[0.06] text-[#8E8E93] opacity-55"
+                      )}
+                    >
+                      <span className="line-clamp-2 leading-snug">{choice}</span>
+                      {revealed && isCorrect && (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
+                      )}
+                      {revealed && picked && !isCorrect && (
+                        <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : quickCheckRevealed ? (
+              <div className="rounded-xl border border-[#30D158]/40 bg-[#30D158]/14 px-3 py-2 text-xs font-medium text-[#A6F8BA]">
+                {getLocalizedMeaning(quickCheckWord, lang)}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleQuickCheckReveal}
+                className="w-full rounded-xl border border-white/[0.12] bg-white/[0.05] px-3 py-2 text-xs font-semibold text-[#70BCFF] hover:bg-white/[0.09] active:scale-[0.99] transition-all cursor-pointer"
+              >
+                {t.lexi.quickCheck.tapToReveal}
+              </button>
+            )}
+
+            {quickCheckPicked !== null && quickCheckQuiz && (
+              <p
+                className={cn(
+                  "text-[11px] font-semibold",
+                  quickCheckPicked === quickCheckQuiz.correctChoice
+                    ? "text-[#7CF099]"
+                    : "text-red-300"
+                )}
+              >
+                {quickCheckPicked === quickCheckQuiz.correctChoice
+                  ? t.lexi.quickCheck.correctMsg
+                  : `${t.lexi.quickCheck.wrongMsg} ${quickCheckQuiz.correctChoice}`}
+              </p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

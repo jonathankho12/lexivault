@@ -1,5 +1,10 @@
 import { TRANSLATIONS, type AppLanguage } from "@/lib/i18n";
-import { shiftDateString } from "@/lib/utils";
+import { getDueWords } from "@/lib/sm2";
+import {
+  getLocalizedMeaning,
+  shiftDateString,
+  WEAKEST_CLEAR_STREAK,
+} from "@/lib/utils";
 import type {
   DailyPackRecord,
   DailyQuotaSettings,
@@ -328,13 +333,27 @@ export interface PickLexiSpeechBubbleInput {
   lang: AppLanguage;
   tapCount: number;
   lastMessage?: string | null;
-  reactionType?: "pet" | "treat";
+  reactionType?: "pet" | "treat" | "rapid_tap" | "hold_pet";
   leveledUpTo?: LexiBondTierId | null;
+  isStreakGuard?: boolean;
+}
+
+function pickDistinctFromPool(
+  pool: readonly string[],
+  tapCount: number,
+  lastMessage?: string | null
+): string | null {
+  if (pool.length === 0) return null;
+  const candidate = pool[tapCount % pool.length];
+  if (candidate !== lastMessage || pool.length <= 1) {
+    return candidate;
+  }
+  return pool[(tapCount + 1) % pool.length] ?? candidate;
 }
 
 /**
  * Picks a short, witty contextual speech bubble based on Lexi's mood, streak,
- * random vault vocabulary, or a treat/bond-up celebration without immediate repeats.
+ * random vault vocabulary/chunks, Streak Guard, or pet/treat/rapid-tap/hold reactions.
  */
 export function pickLexiSpeechBubble({
   mood,
@@ -345,6 +364,7 @@ export function pickLexiSpeechBubble({
   lastMessage,
   reactionType = "pet",
   leveledUpTo = null,
+  isStreakGuard = false,
 }: PickLexiSpeechBubbleInput): string {
   const dict = TRANSLATIONS[lang].lexi;
 
@@ -355,15 +375,37 @@ export function pickLexiSpeechBubble({
   }
 
   if (reactionType === "treat") {
-    const treatPool = dict.bubbles.treat;
-    const candidate = treatPool[tapCount % treatPool.length];
-    if (candidate !== lastMessage || treatPool.length <= 1) {
-      return candidate;
-    }
-    return treatPool[(tapCount + 1) % treatPool.length];
+    return (
+      pickDistinctFromPool(dict.bubbles.treat, tapCount, lastMessage) ??
+      dict.moodCopy.happyBoosted
+    );
+  }
+
+  if (reactionType === "rapid_tap") {
+    return (
+      pickDistinctFromPool(dict.bubbles.rapidTap, tapCount, lastMessage) ??
+      dict.bubbles.happy[0]
+    );
+  }
+
+  if (reactionType === "hold_pet") {
+    return (
+      pickDistinctFromPool(dict.bubbles.holdPet, tapCount, lastMessage) ??
+      dict.bubbles.happy[0]
+    );
   }
 
   const candidates: string[] = [...dict.bubbles[mood]];
+
+  if (isStreakGuard && streak > 0) {
+    const guardLine = formatLexiTemplate(dict.streakGuard.bubble, {
+      days: streak,
+    });
+    if (tapCount % 3 === 1 && guardLine !== lastMessage) {
+      return guardLine;
+    }
+    candidates.push(guardLine);
+  }
 
   if (streak >= 2) {
     for (const tpl of dict.bubbles.streak) {
@@ -371,6 +413,31 @@ export function pickLexiSpeechBubble({
     }
   }
 
+  const wordsWithChunks = words.filter(
+    (w) => Array.isArray(w.chunks) && w.chunks.length > 0
+  );
+  let chunkQuip: string | null = null;
+  if (wordsWithChunks.length > 0) {
+    const chunkWord =
+      wordsWithChunks[Math.floor(Math.random() * wordsWithChunks.length)];
+    const chunkList = chunkWord?.chunks ?? [];
+    const chosenChunk =
+      chunkList[Math.floor(Math.random() * chunkList.length)]?.trim();
+    if (chunkWord?.term && chosenChunk) {
+      const chunkTpl =
+        dict.bubbles.chunk[tapCount % dict.bubbles.chunk.length] ??
+        dict.bubbles.chunk[0];
+      if (chunkTpl) {
+        chunkQuip = formatLexiTemplate(chunkTpl, {
+          chunk: chosenChunk,
+          term: chunkWord.term,
+        });
+        candidates.push(chunkQuip);
+      }
+    }
+  }
+
+  let wordQuip: string | null = null;
   if (words.length > 0) {
     const randomWord = words[Math.floor(Math.random() * words.length)];
     if (randomWord?.term) {
@@ -378,20 +445,23 @@ export function pickLexiSpeechBubble({
         dict.bubbles.word[tapCount % dict.bubbles.word.length] ??
         dict.bubbles.word[0];
       if (wordTpl) {
-        candidates.push(formatLexiTemplate(wordTpl, { term: randomWord.term }));
+        wordQuip = formatLexiTemplate(wordTpl, { term: randomWord.term });
+        candidates.push(wordQuip);
       }
     }
+  }
+
+  if (chunkQuip && tapCount % 4 === 1 && chunkQuip !== lastMessage) {
+    return chunkQuip;
+  }
+
+  if (wordQuip && tapCount % 3 === 2 && wordQuip !== lastMessage) {
+    return wordQuip;
   }
 
   // Filter out the exact previous bubble so consecutive taps always feel fresh
   const filtered = candidates.filter((msg) => msg !== lastMessage);
   const pool = filtered.length > 0 ? filtered : candidates;
-
-  // On every 3rd tap when the user has vault words, favor the vault-word quip
-  if (words.length > 0 && tapCount % 3 === 2) {
-    const wordCandidate = pool[pool.length - 1];
-    if (wordCandidate) return wordCandidate;
-  }
 
   return pool[tapCount % pool.length] ?? dict.moodCopy[mood];
 }
@@ -412,6 +482,7 @@ export interface LexiStatus {
   mood: LexiMood;
   baseMood: LexiMood;
   isHappyBoosted: boolean;
+  isStreakGuard: boolean;
   badgeLabel: string;
   statusCopy: string;
   dailyProgressPct: number;
@@ -534,6 +605,7 @@ export interface ComputeLexiStatusInput {
   words: WordEntry[];
   lang?: AppLanguage;
   isHappyBoosted?: boolean;
+  localHour?: number;
 }
 
 /**
@@ -550,6 +622,7 @@ export function computeLexiStatus({
   words,
   lang = "en",
   isHappyBoosted = false,
+  localHour,
 }: ComputeLexiStatusInput): LexiStatus {
   const dict = TRANSLATIONS[lang].lexi;
   const recallTarget = Math.max(1, dailyRings.recallTarget);
@@ -609,10 +682,21 @@ export function computeLexiStatus({
   const effectiveHappyBoost = isHappyBoosted && baseMood !== "happy";
   const mood: LexiMood = effectiveHappyBoost ? "happy" : baseMood;
 
-  const badgeLabel = dict.moodBadges[mood];
+  const isStreakGuard =
+    streak > 0 &&
+    dailyProgressPct === 0 &&
+    !effectiveHappyBoost &&
+    typeof localHour === "number" &&
+    localHour >= 20;
+
+  const badgeLabel = isStreakGuard
+    ? dict.streakGuard.badge
+    : dict.moodBadges[mood];
   const statusCopy = effectiveHappyBoost
     ? dict.moodCopy.happyBoosted
-    : dict.moodCopy[mood];
+    : isStreakGuard
+      ? formatLexiTemplate(dict.streakGuard.copy, { days: streak })
+      : dict.moodCopy[mood];
 
   const progressLabel =
     packPct > drillPct && packTotal > 0
@@ -623,6 +707,7 @@ export function computeLexiStatus({
     mood,
     baseMood,
     isHappyBoosted: effectiveHappyBoost,
+    isStreakGuard,
     badgeLabel,
     statusCopy,
     dailyProgressPct,
@@ -631,4 +716,81 @@ export function computeLexiStatus({
     streak,
     contextualNote: pickContextualWordNote(baseMood, words, todayStr, lang),
   };
+}
+
+/**
+ * Picks an overdue or weak Vault word (falling back to any Vault word) for
+ * the zero-AI 5-Second Quick Check triggered by "Fetch!".
+ */
+export function pickFetchQuickCheckWord(
+  words: WordEntry[],
+  todayStr: string,
+  excludeWordId?: string | null
+): WordEntry | null {
+  if (words.length === 0) return null;
+
+  const due = getDueWords(words, Date.now(), todayStr);
+  const weak = words.filter(
+    (w) => w.wrong_count > 0 && (w.repetitions ?? 0) < WEAKEST_CLEAR_STREAK
+  );
+
+  const prioritizedMap = new Map<string, WordEntry>();
+  for (const w of [...weak, ...due]) {
+    if (!prioritizedMap.has(w.id)) {
+      prioritizedMap.set(w.id, w);
+    }
+  }
+  const prioritized = Array.from(prioritizedMap.values());
+  const pool = prioritized.length > 0 ? prioritized : words;
+  const withoutCurrent =
+    pool.length > 1 && excludeWordId
+      ? pool.filter((w) => w.id !== excludeWordId)
+      : pool;
+
+  const finalPool = withoutCurrent.length > 0 ? withoutCurrent : pool;
+  return finalPool[Math.floor(Math.random() * finalPool.length)] ?? null;
+}
+
+/**
+ * Builds a 3-option meaning quiz strictly from existing Vault words (zero AI calls).
+ * Returns null if fewer than 3 words or fewer than 2 distinct distractors exist,
+ * signaling the UI to fall back to tap-to-reveal definition.
+ */
+export function buildQuickCheckQuiz(
+  target: WordEntry,
+  words: WordEntry[],
+  lang: AppLanguage
+): { choices: string[]; correctChoice: string } | null {
+  if (words.length < 3) return null;
+  const correctChoice = getLocalizedMeaning(target, lang).trim();
+  if (!correctChoice) return null;
+
+  const seen = new Set<string>([correctChoice.toLowerCase()]);
+  const distractorPool: string[] = [];
+
+  for (const w of words) {
+    if (w.id === target.id) continue;
+    const m = getLocalizedMeaning(w, lang).trim();
+    if (!m) continue;
+    const key = m.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    distractorPool.push(m);
+  }
+
+  if (distractorPool.length < 2) return null;
+
+  // Fisher-Yates shuffle on distractorPool and final 3 choices
+  for (let i = distractorPool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [distractorPool[i], distractorPool[j]] = [distractorPool[j], distractorPool[i]];
+  }
+
+  const choices = [correctChoice, distractorPool[0], distractorPool[1]];
+  for (let i = choices.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [choices[i], choices[j]] = [choices[j], choices[i]];
+  }
+
+  return { choices, correctChoice };
 }

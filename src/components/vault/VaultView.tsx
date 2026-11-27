@@ -93,6 +93,27 @@ export function VaultView() {
   const [pendingTerm, setPendingTerm] = useState("");
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [extractorOpen, setExtractorOpen] = useState(false);
+  const [packFlameBurst, setPackFlameBurst] = useState(false);
+  const packFlameTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (packFlameTimerRef.current !== null) {
+        window.clearTimeout(packFlameTimerRef.current);
+      }
+    };
+  }, []);
+
+  const triggerPackFlameBurst = useCallback(() => {
+    setPackFlameBurst(true);
+    if (packFlameTimerRef.current !== null) {
+      window.clearTimeout(packFlameTimerRef.current);
+    }
+    packFlameTimerRef.current = window.setTimeout(() => {
+      setPackFlameBurst(false);
+      packFlameTimerRef.current = null;
+    }, 900);
+  }, []);
 
   useOverlayBackGuard("ai_suggest", suggestOpen, () => setSuggestOpen(false));
   useOverlayBackGuard("text_extractor", extractorOpen, () =>
@@ -210,9 +231,13 @@ export function VaultView() {
 
   const resultsCountLabel = !isHydrated
     ? "—"
-    : isFiltered || sortedWords.length !== words.length
-      ? `Showing ${sortedWords.length} of ${words.length} ${words.length === 1 ? "item" : "items"}`
-      : `Showing ${sortedWords.length} ${sortedWords.length === 1 ? "item" : "items"}`;
+    : lang === "id"
+      ? isFiltered || sortedWords.length !== words.length
+        ? `Menampilkan ${sortedWords.length} dari ${words.length} item`
+        : `Menampilkan ${sortedWords.length} item`
+      : isFiltered || sortedWords.length !== words.length
+        ? `Showing ${sortedWords.length} of ${words.length} ${words.length === 1 ? "item" : "items"}`
+        : `Showing ${sortedWords.length} ${sortedWords.length === 1 ? "item" : "items"}`;
 
   return (
     <div className="space-y-5">
@@ -300,13 +325,24 @@ export function VaultView() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start sm:items-center gap-3 min-w-0">
               <div
+                onClick={
+                  !dailyPackSummary.isComplete && !dailyPackSummary.isPaused
+                    ? () => {
+                        playGlassClick();
+                        triggerPackFlameBurst();
+                      }
+                    : undefined
+                }
                 className={cn(
-                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border",
+                  "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border overflow-visible",
                   dailyPackSummary.isComplete
                     ? "bg-[#30D158]/20 border-[#30D158]/40 text-[#7CF099]"
                     : dailyPackSummary.isPaused
                       ? "bg-white/[0.06] border-white/[0.1] text-[#8E8E93]"
-                      : "bg-gradient-to-br from-[#FF9F0A]/25 to-[#0A84FF]/25 border-[#FF9F0A]/35 text-[#FFD18C]"
+                      : cn(
+                          "lexi-flame-trigger cursor-pointer active:scale-95 transition-transform bg-gradient-to-br from-[#FF9F0A]/25 to-[#0A84FF]/25 border-[#FF9F0A]/35 text-[#FFD18C]",
+                          packFlameBurst && "is-flaming"
+                        )
                 )}
               >
                 {dailyPackSummary.isComplete ? (
@@ -314,7 +350,25 @@ export function VaultView() {
                 ) : dailyPackSummary.isPaused ? (
                   <PauseCircle className="h-5 w-5" />
                 ) : (
-                  <Flame className="h-5 w-5" />
+                  <>
+                    <Flame className="h-5 w-5 lexi-flame-icon" />
+                    <span
+                      aria-hidden="true"
+                      className="lexi-flame-spark lexi-flame-spark-1 absolute top-2 left-3.5 h-1.5 w-1.5 rounded-full bg-[#FFD18C]"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="lexi-flame-spark lexi-flame-spark-2 absolute top-1.5 right-3.5 h-1.5 w-1.5 rounded-full bg-[#FF9F0A]"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="lexi-flame-spark lexi-flame-spark-3 absolute top-1 left-1/2 h-1 w-1 rounded-full bg-[#FFE4B5]"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="lexi-flame-spark lexi-flame-spark-4 absolute top-2.5 right-2.5 h-1 w-1 rounded-full bg-[#FF6B35]"
+                    />
+                  </>
                 )}
               </div>
 
@@ -524,8 +578,8 @@ export function VaultView() {
             >
               <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-[#0A84FF]" />
               <span className="truncate">
-                <span className="text-[#8E8E93]">Sort:</span>{" "}
-                {currentSortOption.label}
+                <span className="text-[#8E8E93]">{t.vault.sortLabel}</span>{" "}
+                {t.vault.sortOptions[currentSortOption.id]}
               </span>
               <ChevronDown
                 className={cn(
@@ -539,7 +593,7 @@ export function VaultView() {
               {sortOpen && (
                 <motion.div
                   role="listbox"
-                  aria-label="Sort vocabulary items"
+                  aria-label={t.vault.sortLabel}
                   initial={{ opacity: 0, y: -6, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -6, scale: 0.97 }}
@@ -562,7 +616,9 @@ export function VaultView() {
                             : "text-[#D1D1D6] hover:bg-white/[0.08] hover:text-white"
                         )}
                       >
-                        <span className="truncate">{option.label}</span>
+                        <span className="truncate">
+                          {t.vault.sortOptions[option.id]}
+                        </span>
                         {isSelected && (
                           <Check className="h-3.5 w-3.5 shrink-0 text-[#0A84FF]" />
                         )}
