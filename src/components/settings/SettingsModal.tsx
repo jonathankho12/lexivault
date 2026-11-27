@@ -1613,7 +1613,7 @@ export function SettingsModal({
             </div>
 
             {/* About & Developer */}
-            <SettingsDeveloperCard />
+            <SettingsDeveloperCard useLexiBadge />
           </motion.div>
         </div>
       )}

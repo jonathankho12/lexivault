@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { LexiLogo } from "@/components/ui/LexiLogo";
 import { useLanguage } from "@/context/LanguageContext";
@@ -108,7 +109,11 @@ export function AuthDeveloperFooter() {
   );
 }
 
-export function SettingsDeveloperCard() {
+export function SettingsDeveloperCard({
+  useLexiBadge = false,
+}: {
+  useLexiBadge?: boolean;
+}) {
   const { t } = useLanguage();
 
   return (
@@ -136,7 +141,19 @@ export function SettingsDeveloperCard() {
 
         {/* Miniature Rottweiler "Lexi" Mascot Tribute */}
         <div className="group flex items-center gap-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] px-3 py-2.5">
-          <LexiLogo size="sm" showHoverShimmer />
+          {useLexiBadge ? (
+            <div className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center transform-gpu">
+              <Image
+                src="/lexi-badge.png"
+                alt={t.developer.mascotName}
+                width={384}
+                height={415}
+                className="h-full w-full object-contain select-none pointer-events-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.52)] transform-gpu will-change-transform transition-transform duration-300 ease-out group-hover:scale-[1.06]"
+              />
+            </div>
+          ) : (
+            <LexiLogo size="sm" showHoverShimmer />
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-white">

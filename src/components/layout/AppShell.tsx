@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Award,
@@ -36,7 +37,6 @@ import { ActivityRings } from "@/components/gamification/ActivityRings";
 import { AccentToggle } from "@/components/layout/AccentToggle";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { SettingsModal } from "@/components/settings/SettingsModal";
-import { LexiLogo } from "@/components/ui/LexiLogo";
 import { WordDetailSheet } from "@/components/ui/WordDetailSheet";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
@@ -206,7 +206,16 @@ export function AppShell({
           <div>
             {/* Brand */}
             <div className="group flex items-center gap-3 px-2 py-2">
-              <LexiLogo size="md" showHoverShimmer />
+              <div className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center transform-gpu">
+                <Image
+                  src="/lexi-badge.png"
+                  alt="LexiVault"
+                  width={384}
+                  height={415}
+                  priority
+                  className="h-full w-full object-contain select-none pointer-events-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.52)] transform-gpu will-change-transform transition-transform duration-300 ease-out group-hover:scale-[1.06]"
+                />
+              </div>
               <div>
                 <h1 className="text-lg font-bold tracking-tight text-white">
                   LexiVault
@@ -537,7 +546,16 @@ export function AppShell({
       <header className="md:hidden sticky top-0 z-30 pt-[env(safe-area-inset-top)] liquid-glass-chrome mobile-chrome-bar mobile-chrome-top rounded-none">
         <div className="flex items-center justify-between gap-2 px-3 py-2">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <LexiLogo size="sm" />
+            <div className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center transform-gpu">
+              <Image
+                src="/lexi-badge.png"
+                alt="LexiVault"
+                width={384}
+                height={415}
+                priority
+                className="h-full w-full object-contain select-none pointer-events-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.52)] transform-gpu"
+              />
+            </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center min-w-0">
                 <span className="text-[15px] leading-tight font-bold tracking-tight text-white whitespace-nowrap">
