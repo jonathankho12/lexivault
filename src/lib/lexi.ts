@@ -1,3 +1,4 @@
+import { TRANSLATIONS, type AppLanguage } from "@/lib/i18n";
 import { shiftDateString } from "@/lib/utils";
 import type {
   DailyPackRecord,
@@ -9,10 +10,82 @@ import type {
 
 export type LexiMood = "sleepy" | "alert" | "happy" | "restless";
 
+export type LexiBondTierId =
+  | "acquaintance"
+  | "study_buddy"
+  | "loyal_guardian"
+  | "best_friend";
+
+export type LexiMilestoneKey =
+  | "daily_pack"
+  | "practice_session"
+  | "ring_vocab"
+  | "ring_recall"
+  | "ring_ielts";
+
+export type LexiCheerReason =
+  | "daily_pack_complete"
+  | "combo_5x"
+  | "weakest_word_cleared";
+
+export interface LexiCheerState {
+  id: number;
+  reason: LexiCheerReason;
+  title: string;
+  body: string;
+  treatEarned?: boolean;
+}
+
+export interface LexiCompanionState {
+  treatsAvailable: number;
+  treatsFedTotal: number;
+  petsTotal: number;
+  hasPetted: boolean;
+  happyBoostUntil: number;
+  earnedMilestonesByDate: Record<string, LexiMilestoneKey[]>;
+}
+
+export interface LexiBondInfo {
+  tierId: LexiBondTierId;
+  nextTierId: LexiBondTierId | null;
+  level: number;
+  treatsFedTotal: number;
+  treatsToNext: number;
+  progressPct: number;
+}
+
 export const LEXI_HAS_MET_STORAGE_KEY_PREFIX = "lexivault_has_met_lexi_";
+export const LEXI_COMPANION_STATE_KEY_PREFIX = "lexivault_lexi_state_v1_";
+export const LEXI_TREAT_HAPPY_BOOST_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_STORED_TREATS = 99;
+const MAX_MILESTONE_HISTORY_DAYS = 7;
+
+export const DEFAULT_LEXI_COMPANION_STATE: LexiCompanionState = {
+  treatsAvailable: 0,
+  treatsFedTotal: 0,
+  petsTotal: 0,
+  hasPetted: false,
+  happyBoostUntil: 0,
+  earnedMilestonesByDate: {},
+};
+
+const BOND_THRESHOLDS: ReadonlyArray<{
+  tierId: LexiBondTierId;
+  minTreats: number;
+  level: number;
+}> = [
+  { tierId: "acquaintance", minTreats: 0, level: 1 },
+  { tierId: "study_buddy", minTreats: 3, level: 2 },
+  { tierId: "loyal_guardian", minTreats: 8, level: 3 },
+  { tierId: "best_friend", minTreats: 20, level: 4 },
+];
 
 export function getLexiHasMetStorageKey(userId: string): string {
   return `${LEXI_HAS_MET_STORAGE_KEY_PREFIX}${userId}`;
+}
+
+export function getLexiCompanionStorageKey(userId: string): string {
+  return `${LEXI_COMPANION_STATE_KEY_PREFIX}${userId}`;
 }
 
 export function hasUserMetLexi(userId: string): boolean {
@@ -35,6 +108,294 @@ export function markUserMetLexi(userId: string): void {
   }
 }
 
+function sanitizeMilestonesMap(
+  raw: unknown
+): Record<string, LexiMilestoneKey[]> {
+  if (!raw || typeof raw !== "object") return {};
+  const validKeys = new Set<string>([
+    "daily_pack",
+    "practice_session",
+    "ring_vocab",
+    "ring_recall",
+    "ring_ielts",
+  ]);
+  const entries = Object.entries(raw as Record<string, unknown>)
+    .filter(([dateKey]) => /^\d{4}-\d{2}-\d{2}$/.test(dateKey))
+    .sort(([a], [b]) => b.localeCompare(a))
+    .slice(0, MAX_MILESTONE_HISTORY_DAYS);
+
+  const out: Record<string, LexiMilestoneKey[]> = {};
+  for (const [dateKey, list] of entries) {
+    if (!Array.isArray(list)) continue;
+    const filtered = Array.from(
+      new Set(
+        list.filter(
+          (item): item is LexiMilestoneKey =>
+            typeof item === "string" && validKeys.has(item)
+        )
+      )
+    );
+    if (filtered.length > 0) {
+      out[dateKey] = filtered;
+    }
+  }
+  return out;
+}
+
+export function readLexiCompanionState(userId: string): LexiCompanionState {
+  if (typeof window === "undefined" || !userId) {
+    return { ...DEFAULT_LEXI_COMPANION_STATE, earnedMilestonesByDate: {} };
+  }
+  try {
+    const raw = window.localStorage.getItem(getLexiCompanionStorageKey(userId));
+    if (!raw) {
+      return { ...DEFAULT_LEXI_COMPANION_STATE, earnedMilestonesByDate: {} };
+    }
+    const parsed = JSON.parse(raw) as Partial<LexiCompanionState>;
+    return {
+      treatsAvailable:
+        typeof parsed.treatsAvailable === "number" &&
+        Number.isFinite(parsed.treatsAvailable)
+          ? Math.min(MAX_STORED_TREATS, Math.max(0, Math.floor(parsed.treatsAvailable)))
+          : 0,
+      treatsFedTotal:
+        typeof parsed.treatsFedTotal === "number" &&
+        Number.isFinite(parsed.treatsFedTotal)
+          ? Math.max(0, Math.floor(parsed.treatsFedTotal))
+          : 0,
+      petsTotal:
+        typeof parsed.petsTotal === "number" && Number.isFinite(parsed.petsTotal)
+          ? Math.max(0, Math.floor(parsed.petsTotal))
+          : 0,
+      hasPetted: Boolean(parsed.hasPetted),
+      happyBoostUntil:
+        typeof parsed.happyBoostUntil === "number" &&
+        Number.isFinite(parsed.happyBoostUntil)
+          ? Math.max(0, Math.floor(parsed.happyBoostUntil))
+          : 0,
+      earnedMilestonesByDate: sanitizeMilestonesMap(
+        parsed.earnedMilestonesByDate
+      ),
+    };
+  } catch {
+    return { ...DEFAULT_LEXI_COMPANION_STATE, earnedMilestonesByDate: {} };
+  }
+}
+
+export function writeLexiCompanionState(
+  userId: string,
+  state: LexiCompanionState
+): void {
+  if (typeof window === "undefined" || !userId) return;
+  try {
+    const pruned: LexiCompanionState = {
+      ...state,
+      earnedMilestonesByDate: sanitizeMilestonesMap(
+        state.earnedMilestonesByDate
+      ),
+    };
+    window.localStorage.setItem(
+      getLexiCompanionStorageKey(userId),
+      JSON.stringify(pruned)
+    );
+  } catch {
+    // Ignore storage access errors
+  }
+}
+
+export function getLexiBondInfo(treatsFedTotal: number): LexiBondInfo {
+  const safeTotal = Math.max(0, Math.floor(treatsFedTotal));
+  let currentIdx = 0;
+  for (let i = 0; i < BOND_THRESHOLDS.length; i += 1) {
+    if (safeTotal >= BOND_THRESHOLDS[i].minTreats) {
+      currentIdx = i;
+    }
+  }
+  const current = BOND_THRESHOLDS[currentIdx];
+  const next = BOND_THRESHOLDS[currentIdx + 1] ?? null;
+
+  if (!next) {
+    return {
+      tierId: current.tierId,
+      nextTierId: null,
+      level: current.level,
+      treatsFedTotal: safeTotal,
+      treatsToNext: 0,
+      progressPct: 100,
+    };
+  }
+
+  const span = Math.max(1, next.minTreats - current.minTreats);
+  const gained = Math.max(0, safeTotal - current.minTreats);
+  return {
+    tierId: current.tierId,
+    nextTierId: next.tierId,
+    level: current.level,
+    treatsFedTotal: safeTotal,
+    treatsToNext: Math.max(0, next.minTreats - safeTotal),
+    progressPct: Math.min(100, Math.round((gained / span) * 100)),
+  };
+}
+
+export function isLexiHappyBoostActive(
+  state: LexiCompanionState,
+  nowMs: number = Date.now()
+): boolean {
+  return state.happyBoostUntil > nowMs;
+}
+
+export function applyLexiPetToState(
+  state: LexiCompanionState
+): LexiCompanionState {
+  return {
+    ...state,
+    hasPetted: true,
+    petsTotal: state.petsTotal + 1,
+  };
+}
+
+export function applyLexiMilestoneTreatToState(
+  state: LexiCompanionState,
+  dateStr: string,
+  milestone: LexiMilestoneKey
+): { nextState: LexiCompanionState; awarded: boolean } {
+  const todayList = state.earnedMilestonesByDate[dateStr] ?? [];
+  if (todayList.includes(milestone)) {
+    return { nextState: state, awarded: false };
+  }
+
+  const nextMap = sanitizeMilestonesMap({
+    ...state.earnedMilestonesByDate,
+    [dateStr]: [...todayList, milestone],
+  });
+
+  return {
+    awarded: true,
+    nextState: {
+      ...state,
+      treatsAvailable: Math.min(MAX_STORED_TREATS, state.treatsAvailable + 1),
+      earnedMilestonesByDate: nextMap,
+    },
+  };
+}
+
+export function applyLexiFeedTreatToState(
+  state: LexiCompanionState,
+  nowMs: number = Date.now()
+): {
+  nextState: LexiCompanionState;
+  fed: boolean;
+  leveledUpTo: LexiBondTierId | null;
+} {
+  if (state.treatsAvailable <= 0) {
+    return { nextState: state, fed: false, leveledUpTo: null };
+  }
+
+  const prevBond = getLexiBondInfo(state.treatsFedTotal);
+  const nextTreatsFed = state.treatsFedTotal + 1;
+  const nextBond = getLexiBondInfo(nextTreatsFed);
+  const leveledUpTo =
+    nextBond.tierId !== prevBond.tierId ? nextBond.tierId : null;
+
+  return {
+    fed: true,
+    leveledUpTo,
+    nextState: {
+      ...state,
+      treatsAvailable: Math.max(0, state.treatsAvailable - 1),
+      treatsFedTotal: nextTreatsFed,
+      happyBoostUntil: Math.max(
+        state.happyBoostUntil,
+        nowMs + LEXI_TREAT_HAPPY_BOOST_MS
+      ),
+    },
+  };
+}
+
+export function formatLexiTemplate(
+  template: string,
+  params: Record<string, string | number>
+): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    params[key] !== undefined ? String(params[key]) : `{${key}}`
+  );
+}
+
+export interface PickLexiSpeechBubbleInput {
+  mood: LexiMood;
+  streak: number;
+  words: WordEntry[];
+  lang: AppLanguage;
+  tapCount: number;
+  lastMessage?: string | null;
+  reactionType?: "pet" | "treat";
+  leveledUpTo?: LexiBondTierId | null;
+}
+
+/**
+ * Picks a short, witty contextual speech bubble based on Lexi's mood, streak,
+ * random vault vocabulary, or a treat/bond-up celebration without immediate repeats.
+ */
+export function pickLexiSpeechBubble({
+  mood,
+  streak,
+  words,
+  lang,
+  tapCount,
+  lastMessage,
+  reactionType = "pet",
+  leveledUpTo = null,
+}: PickLexiSpeechBubbleInput): string {
+  const dict = TRANSLATIONS[lang].lexi;
+
+  if (leveledUpTo) {
+    return formatLexiTemplate(dict.bubbles.bondUp, {
+      tier: dict.bondTiers[leveledUpTo],
+    });
+  }
+
+  if (reactionType === "treat") {
+    const treatPool = dict.bubbles.treat;
+    const candidate = treatPool[tapCount % treatPool.length];
+    if (candidate !== lastMessage || treatPool.length <= 1) {
+      return candidate;
+    }
+    return treatPool[(tapCount + 1) % treatPool.length];
+  }
+
+  const candidates: string[] = [...dict.bubbles[mood]];
+
+  if (streak >= 2) {
+    for (const tpl of dict.bubbles.streak) {
+      candidates.push(formatLexiTemplate(tpl, { days: streak }));
+    }
+  }
+
+  if (words.length > 0) {
+    const randomWord = words[Math.floor(Math.random() * words.length)];
+    if (randomWord?.term) {
+      const wordTpl =
+        dict.bubbles.word[tapCount % dict.bubbles.word.length] ??
+        dict.bubbles.word[0];
+      if (wordTpl) {
+        candidates.push(formatLexiTemplate(wordTpl, { term: randomWord.term }));
+      }
+    }
+  }
+
+  // Filter out the exact previous bubble so consecutive taps always feel fresh
+  const filtered = candidates.filter((msg) => msg !== lastMessage);
+  const pool = filtered.length > 0 ? filtered : candidates;
+
+  // On every 3rd tap when the user has vault words, favor the vault-word quip
+  if (words.length > 0 && tapCount % 3 === 2) {
+    const wordCandidate = pool[pool.length - 1];
+    if (wordCandidate) return wordCandidate;
+  }
+
+  return pool[tapCount % pool.length] ?? dict.moodCopy[mood];
+}
+
 export interface LexiMoodMeta {
   mood: LexiMood;
   badgeLabel: string;
@@ -49,6 +410,8 @@ export interface LexiContextualWordNote {
 
 export interface LexiStatus {
   mood: LexiMood;
+  baseMood: LexiMood;
+  isHappyBoosted: boolean;
   badgeLabel: string;
   statusCopy: string;
   dailyProgressPct: number;
@@ -57,25 +420,6 @@ export interface LexiStatus {
   streak: number;
   contextualNote: LexiContextualWordNote | null;
 }
-
-const MOOD_COPY: Record<LexiMood, Omit<LexiMoodMeta, "mood">> = {
-  sleepy: {
-    badgeLabel: "Resting",
-    statusCopy: "Lexi's resting. Run a quick drill to wake him up.",
-  },
-  alert: {
-    badgeLabel: "Alert",
-    statusCopy: "Vault active. Finish today's drill to lock in your streak.",
-  },
-  happy: {
-    badgeLabel: "Happy",
-    statusCopy: "Vault secured for today. Lexi's proud of the consistency.",
-  },
-  restless: {
-    badgeLabel: "Restless",
-    statusCopy: "Your vocabulary vault is getting dusty. Time for a quick review.",
-  },
-};
 
 function parseUtcDayMs(dateStr: string): number | null {
   const parts = dateStr.split("-").map(Number);
@@ -134,9 +478,11 @@ export function countMissedConsecutiveDays(
 function pickContextualWordNote(
   mood: LexiMood,
   words: WordEntry[],
-  todayStr: string
+  todayStr: string,
+  lang: AppLanguage
 ): LexiContextualWordNote | null {
   if (words.length === 0) return null;
+  const prefixes = TRANSLATIONS[lang].lexi.notePrefixes;
 
   if (mood === "happy" || mood === "alert") {
     // Prefer the most recently practiced word, otherwise most recently saved word.
@@ -148,7 +494,7 @@ function pickContextualWordNote(
     const focusWord = sorted[0];
     if (!focusWord) return null;
     return {
-      prefix: mood === "happy" ? "Sharpened today:" : "Keep momentum on:",
+      prefix: mood === "happy" ? prefixes.happy : prefixes.alert,
       term: focusWord.term,
       word: focusWord,
     };
@@ -172,7 +518,7 @@ function pickContextualWordNote(
   if (!targetWord) return null;
 
   return {
-    prefix: mood === "restless" ? "Ready for review:" : "Up next in vault:",
+    prefix: mood === "restless" ? prefixes.restless : prefixes.sleepy,
     term: targetWord.term,
     word: targetWord,
   };
@@ -186,11 +532,13 @@ export interface ComputeLexiStatusInput {
   dailyQuota: DailyQuotaSettings;
   streak: number;
   words: WordEntry[];
+  lang?: AppLanguage;
+  isHappyBoosted?: boolean;
 }
 
 /**
  * Derives Lexi's current mood and daily vault maintenance progress from
- * existing study logs, daily rings, daily pack, and streak state.
+ * existing study logs, daily rings, daily pack, streak, and treat boost state.
  */
 export function computeLexiStatus({
   studyLogs,
@@ -200,7 +548,10 @@ export function computeLexiStatus({
   dailyQuota,
   streak,
   words,
+  lang = "en",
+  isHappyBoosted = false,
 }: ComputeLexiStatusInput): LexiStatus {
+  const dict = TRANSLATIONS[lang].lexi;
   const recallTarget = Math.max(1, dailyRings.recallTarget);
   const vocabTarget = Math.max(1, dailyRings.vocabTarget);
   const ieltsTarget = Math.max(1, dailyRings.ieltsTarget);
@@ -244,31 +595,40 @@ export function computeLexiStatus({
       ? countMissedConsecutiveDays(studyLogs, todayStr)
       : 0;
 
-  let mood: LexiMood;
+  let baseMood: LexiMood;
   if (dailyProgressPct >= 100) {
-    mood = "happy";
+    baseMood = "happy";
   } else if (dailyProgressPct > 0) {
-    mood = "alert";
+    baseMood = "alert";
   } else if (missedConsecutiveDays >= 2) {
-    mood = "restless";
+    baseMood = "restless";
   } else {
-    mood = "sleepy";
+    baseMood = "sleepy";
   }
 
-  const meta = MOOD_COPY[mood];
+  const effectiveHappyBoost = isHappyBoosted && baseMood !== "happy";
+  const mood: LexiMood = effectiveHappyBoost ? "happy" : baseMood;
+
+  const badgeLabel = dict.moodBadges[mood];
+  const statusCopy = effectiveHappyBoost
+    ? dict.moodCopy.happyBoosted
+    : dict.moodCopy[mood];
+
   const progressLabel =
     packPct > drillPct && packTotal > 0
-      ? `${Math.min(packCompleted, packTotal)}/${packTotal} daily pack`
-      : `${Math.min(dailyRings.recall, recallTarget)}/${recallTarget} drills`;
+      ? `${Math.min(packCompleted, packTotal)}/${packTotal} ${dict.progressDailyPackSuffix}`
+      : `${Math.min(dailyRings.recall, recallTarget)}/${recallTarget} ${dict.progressDrillsSuffix}`;
 
   return {
     mood,
-    badgeLabel: meta.badgeLabel,
-    statusCopy: meta.statusCopy,
+    baseMood,
+    isHappyBoosted: effectiveHappyBoost,
+    badgeLabel,
+    statusCopy,
     dailyProgressPct,
     progressLabel,
     missedConsecutiveDays,
     streak,
-    contextualNote: pickContextualWordNote(mood, words, todayStr),
+    contextualNote: pickContextualWordNote(baseMood, words, todayStr, lang),
   };
 }

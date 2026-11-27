@@ -37,7 +37,26 @@ import {
   getDailyPackTierMeta,
   resolveDailyPackTier,
 } from "@/lib/dailyPackTiers";
-import { hasUserMetLexi, markUserMetLexi } from "@/lib/lexi";
+import { TRANSLATIONS } from "@/lib/i18n";
+import {
+  applyLexiFeedTreatToState,
+  applyLexiMilestoneTreatToState,
+  applyLexiPetToState,
+  DEFAULT_LEXI_COMPANION_STATE,
+  formatLexiTemplate,
+  getLexiBondInfo,
+  hasUserMetLexi,
+  isLexiHappyBoostActive,
+  markUserMetLexi,
+  readLexiCompanionState,
+  writeLexiCompanionState,
+  type LexiBondInfo,
+  type LexiBondTierId,
+  type LexiCheerReason,
+  type LexiCheerState,
+  type LexiCompanionState,
+  type LexiMilestoneKey,
+} from "@/lib/lexi";
 import {
   getLatestRelease,
   hasUserSeenRelease,
@@ -186,6 +205,13 @@ export interface CelebrationToastState {
   cefr: CefrLevel;
 }
 
+export interface TriggerLexiCheerInput {
+  reason: LexiCheerReason;
+  combo?: number;
+  term?: string;
+  treatEarned?: boolean;
+}
+
 interface AuthActionResult {
   ok: boolean;
   error?: string;
@@ -257,6 +283,15 @@ interface LexiVaultContextValue {
   lexiEnabled: boolean;
   setLexiEnabled: (enabled: boolean) => void;
   toggleLexiEnabled: () => void;
+  lexiCompanion: LexiCompanionState;
+  lexiBondInfo: LexiBondInfo;
+  isLexiHappyBoosted: boolean;
+  petLexi: () => void;
+  feedLexiTreat: () => { fed: boolean; leveledUpTo: LexiBondTierId | null };
+  awardLexiMilestoneTreat: (milestone: LexiMilestoneKey) => boolean;
+  lexiCheerToast: LexiCheerState | null;
+  triggerLexiCheer: (input: TriggerLexiCheerInput) => void;
+  clearLexiCheerToast: () => void;
   cefrPromotion: CefrPromotionStatus;
   completeCefrOnboarding: (
     cefr: CefrLevel,
@@ -384,6 +419,14 @@ export function LexiVaultProvider({
   );
   const [previewWhatsNew, setPreviewWhatsNew] = useState(false);
   const [lexiEnabled, setLexiEnabledState] = useState(true);
+  const [lexiCompanion, setLexiCompanion] = useState<LexiCompanionState>(() => ({
+    ...DEFAULT_LEXI_COMPANION_STATE,
+    earnedMilestonesByDate: {},
+  }));
+  const [lexiNowMs, setLexiNowMs] = useState(() => Date.now());
+  const [lexiCheerToast, setLexiCheerToast] = useState<LexiCheerState | null>(
+    null
+  );
   const [placementLaunchNonce, setPlacementLaunchNonce] = useState(0);
   const [celebrationToast, setCelebrationToast] =
     useState<CelebrationToastState | null>(null);
@@ -407,6 +450,14 @@ export function LexiVaultProvider({
 
   const launchNonceRef = useRef(0);
   const celebrationNonceRef = useRef(0);
+  const lexiCheerNonceRef = useRef(0);
+  const lexiEnabledRef = useRef(lexiEnabled);
+  lexiEnabledRef.current = lexiEnabled;
+  const lexiCompanionRef = useRef<LexiCompanionState>(lexiCompanion);
+  lexiCompanionRef.current = lexiCompanion;
+  const todayStrRef = useRef(todayStr);
+  todayStrRef.current = todayStr;
+  const pendingDailyPackTreatDateRef = useRef<string | null>(null);
   const batchRefreshAbortRef = useRef<AbortController | null>(null);
   const batchRefreshRunningRef = useRef(false);
   const wordsRef = useRef<WordEntry[]>([]);
@@ -576,6 +627,14 @@ export function LexiVaultProvider({
       setShowLexiIntro(false);
       setWhatsNewRelease(null);
       setCelebrationToast(null);
+      const emptyCompanion: LexiCompanionState = {
+        ...DEFAULT_LEXI_COMPANION_STATE,
+        earnedMilestonesByDate: {},
+      };
+      lexiCompanionRef.current = emptyCompanion;
+      setLexiCompanion(emptyCompanion);
+      setLexiCheerToast(null);
+      pendingDailyPackTreatDateRef.current = null;
       setSyncMode("local");
       setSyncStatus("local");
       setSyncError(null);
@@ -662,6 +721,10 @@ export function LexiVaultProvider({
           localToday,
           res.ringTargets
         );
+        const loadedCompanion = readLexiCompanionState(user.id);
+        lexiCompanionRef.current = loadedCompanion;
+        setLexiCompanion(loadedCompanion);
+        pendingDailyPackTreatDateRef.current = null;
         setIsHydrated(true);
 
         void loadIeltsState(user.id)
@@ -719,7 +782,118 @@ export function LexiVaultProvider({
     [studyLogs, todayStr, ringTargets]
   );
 
-  // Trigger harmonic ring completion chord when a ring newly reaches 100%
+  useEffect(() => {
+    const until = lexiCompanion.happyBoostUntil;
+    const now = Date.now();
+    if (!lexiEnabled || until <= now) return;
+    const delay = Math.min(until - now + 150, 2_147_483_000);
+    const timer = window.setTimeout(() => {
+      setLexiNowMs(Date.now());
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [lexiCompanion.happyBoostUntil, lexiEnabled]);
+
+  const lexiBondInfo = useMemo(
+    () => getLexiBondInfo(lexiCompanion.treatsFedTotal),
+    [lexiCompanion.treatsFedTotal]
+  );
+
+  const isLexiHappyBoosted = isLexiHappyBoostActive(
+    lexiCompanion,
+    lexiNowMs
+  );
+
+  const awardLexiMilestoneTreat = useCallback(
+    (milestone: LexiMilestoneKey): boolean => {
+      const activeUser = userRef.current;
+      if (!activeUser || !lexiEnabledRef.current) return false;
+      const { nextState, awarded } = applyLexiMilestoneTreatToState(
+        lexiCompanionRef.current,
+        todayStrRef.current,
+        milestone
+      );
+      if (!awarded) return false;
+      lexiCompanionRef.current = nextState;
+      setLexiCompanion(nextState);
+      writeLexiCompanionState(activeUser.id, nextState);
+      return true;
+    },
+    []
+  );
+
+  const petLexi = useCallback(() => {
+    const activeUser = userRef.current;
+    if (!activeUser || !lexiEnabledRef.current) return;
+    const next = applyLexiPetToState(lexiCompanionRef.current);
+    lexiCompanionRef.current = next;
+    setLexiCompanion(next);
+    writeLexiCompanionState(activeUser.id, next);
+  }, []);
+
+  const feedLexiTreat = useCallback((): {
+    fed: boolean;
+    leveledUpTo: LexiBondTierId | null;
+  } => {
+    const activeUser = userRef.current;
+    if (!activeUser || !lexiEnabledRef.current) {
+      return { fed: false, leveledUpTo: null };
+    }
+    const res = applyLexiFeedTreatToState(lexiCompanionRef.current, Date.now());
+    if (!res.fed) {
+      return { fed: false, leveledUpTo: null };
+    }
+    lexiCompanionRef.current = res.nextState;
+    setLexiCompanion(res.nextState);
+    writeLexiCompanionState(activeUser.id, res.nextState);
+    return { fed: true, leveledUpTo: res.leveledUpTo };
+  }, []);
+
+  const clearLexiCheerToast = useCallback(() => {
+    setLexiCheerToast(null);
+  }, []);
+
+  const triggerLexiCheer = useCallback(
+    (input: TriggerLexiCheerInput) => {
+      if (!userRef.current || !lexiEnabledRef.current) return;
+      const cheerDict = TRANSLATIONS[lang].lexi.cheer;
+      let title = cheerDict.dailyPackTitle;
+      let body = cheerDict.dailyPackBody;
+      let treatEarned = Boolean(input.treatEarned);
+
+      if (input.reason === "daily_pack_complete") {
+        title = cheerDict.dailyPackTitle;
+        body = cheerDict.dailyPackBody;
+        if (pendingDailyPackTreatDateRef.current === todayStrRef.current) {
+          pendingDailyPackTreatDateRef.current = null;
+          treatEarned = true;
+        } else if (!treatEarned) {
+          treatEarned = awardLexiMilestoneTreat("daily_pack");
+        }
+      } else if (input.reason === "combo_5x") {
+        title = formatLexiTemplate(cheerDict.comboTitle, {
+          combo: input.combo ?? 5,
+        });
+        body = cheerDict.comboBody;
+      } else if (input.reason === "weakest_word_cleared") {
+        title = cheerDict.weakestClearedTitle;
+        body = formatLexiTemplate(cheerDict.weakestClearedBody, {
+          term: input.term ?? "",
+        });
+      }
+
+      lexiCheerNonceRef.current += 1;
+      setLexiCheerToast({
+        id: lexiCheerNonceRef.current,
+        reason: input.reason,
+        title,
+        body,
+        treatEarned,
+      });
+    },
+    [awardLexiMilestoneTreat, lang]
+  );
+
+  // Trigger harmonic ring completion chord & award daily Lexi treats when rings close
   useEffect(() => {
     if (!isHydrated) return;
     const prev = prevRingsRef.current;
@@ -739,7 +913,10 @@ export function LexiVaultProvider({
     if (vocabClosed || recallClosed || ieltsClosed) {
       playRingCompleteChord();
     }
-  }, [dailyRings, isHydrated]);
+    if (vocabClosed) awardLexiMilestoneTreat("ring_vocab");
+    if (recallClosed) awardLexiMilestoneTreat("ring_recall");
+    if (ieltsClosed) awardLexiMilestoneTreat("ring_ielts");
+  }, [awardLexiMilestoneTreat, dailyRings, isHydrated]);
 
   const toggleSfxMuted = useCallback(() => {
     setSfxMutedState((prev) => {
@@ -750,7 +927,11 @@ export function LexiVaultProvider({
   }, []);
 
   const setLexiEnabled = useCallback((enabled: boolean) => {
+    lexiEnabledRef.current = enabled;
     setLexiEnabledState(enabled);
+    if (!enabled) {
+      setLexiCheerToast(null);
+    }
     if (typeof window !== "undefined") {
       try {
         window.localStorage.setItem(
@@ -764,21 +945,8 @@ export function LexiVaultProvider({
   }, []);
 
   const toggleLexiEnabled = useCallback(() => {
-    setLexiEnabledState((prev) => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(
-            LEXI_ENABLED_STORAGE_KEY,
-            next ? "true" : "false"
-          );
-        } catch {
-          // Ignore storage access errors
-        }
-      }
-      return next;
-    });
-  }, []);
+    setLexiEnabled(!lexiEnabledRef.current);
+  }, [setLexiEnabled]);
 
   const setAccent = useCallback((next: AccentType) => {
     setAccentState(next);
@@ -1275,6 +1443,12 @@ export function LexiVaultProvider({
         };
         dailyPackRef.current = nextPack;
         setDailyPack(nextPack);
+        if (isAllDone && !alreadyRecorded) {
+          const awarded = awardLexiMilestoneTreat("daily_pack");
+          if (awarded) {
+            pendingDailyPackTreatDateRef.current = todayStr;
+          }
+        }
         void runCloudMutation(() =>
           saveDailyPack(nextPack, activeUser.id)
         ).catch((err) => {
@@ -1333,7 +1507,7 @@ export function LexiVaultProvider({
 
       return savedEntry;
     },
-    [runCloudMutation, silentlyEnrichWordIfNeeded, todayStr]
+    [awardLexiMilestoneTreat, runCloudMutation, silentlyEnrichWordIfNeeded, todayStr]
   );
 
   const recordDailyPackWrongAttempt = useCallback(async () => {
@@ -2869,6 +3043,8 @@ export function LexiVaultProvider({
     setWhatsNewRelease(null);
     whatsNewCheckedKeyRef.current = null;
     setSelectedWord(null);
+    setLexiCheerToast(null);
+    pendingDailyPackTreatDateRef.current = null;
     setActiveTab("vault");
   }, [setActiveTab]);
 
@@ -2958,6 +3134,8 @@ export function LexiVaultProvider({
     setWhatsNewRelease(null);
     whatsNewCheckedKeyRef.current = null;
     setSelectedWord(null);
+    setLexiCheerToast(null);
+    pendingDailyPackTreatDateRef.current = null;
     setSyncError(null);
     clearLastSupabaseSyncError();
     setActiveTab("vault");
@@ -3050,6 +3228,15 @@ export function LexiVaultProvider({
     lexiEnabled,
     setLexiEnabled,
     toggleLexiEnabled,
+    lexiCompanion,
+    lexiBondInfo,
+    isLexiHappyBoosted,
+    petLexi,
+    feedLexiTreat,
+    awardLexiMilestoneTreat,
+    lexiCheerToast,
+    triggerLexiCheer,
+    clearLexiCheerToast,
     cefrPromotion,
     completeCefrOnboarding,
     dismissCefrOnboarding,

@@ -40,7 +40,7 @@ import {
   playGlassClick,
   playWrongThud,
 } from "@/lib/soundEffects";
-import { cn, getLocalizedMeaning, getWeakestWords } from "@/lib/utils";
+import { cn, getLocalizedMeaning, getWeakestWords, WEAKEST_CLEAR_STREAK } from "@/lib/utils";
 import type {
   DiscoveryItem,
   PracticeMode,
@@ -61,6 +61,8 @@ export function PracticeView() {
     clearPracticeLaunch,
     commuteLaunchNonce,
     clearCommuteLaunch,
+    awardLexiMilestoneTreat,
+    triggerLexiCheer,
     isHydrated,
   } = useLexiVault();
   const { lang, t } = useLanguage();
@@ -78,6 +80,7 @@ export function PracticeView() {
   const transitionLockRef = useRef(false);
   const scoredQuestionIdsRef = useRef<Set<string>>(new Set());
   const sessionAbortRef = useRef<AbortController | null>(null);
+  const comboRef = useRef(0);
 
   const weakestWords = useMemo(() => getWeakestWords(words), [words]);
 
@@ -173,6 +176,7 @@ export function PracticeView() {
 
       transitionLockRef.current = false;
       scoredQuestionIdsRef.current = new Set();
+      comboRef.current = 0;
       setActiveMode(mode);
       setQuestions(finalQuestions);
       setCurrentIndex(0);
@@ -206,19 +210,40 @@ export function PracticeView() {
       // Synchronous lock prevents spam-click double scoring before index advances
       transitionLockRef.current = true;
 
+      let cheerPayload:
+        | { reason: "combo_5x"; combo: number }
+        | { reason: "weakest_word_cleared"; term: string }
+        | null = null;
+
       // Per-question deduplication: each question can score / increment combo / grant XP at most once
       if (!scoredQuestionIdsRef.current.has(currentQuestion.id)) {
         scoredQuestionIdsRef.current.add(currentQuestion.id);
 
+        const liveWord =
+          words.find((w) => w.id === currentQuestion.word.id) ??
+          currentQuestion.word;
+        const prevReps =
+          typeof liveWord.repetitions === "number" &&
+          Number.isFinite(liveWord.repetitions)
+            ? Math.max(0, Math.floor(liveWord.repetitions))
+            : 0;
+        const clearedWeakest =
+          isCorrect &&
+          liveWord.wrong_count > 0 &&
+          prevReps < WEAKEST_CLEAR_STREAK &&
+          prevReps + 1 >= WEAKEST_CLEAR_STREAK;
+
+        let nextCombo = comboRef.current;
         if (isCorrect) {
-          setCombo((prev) => {
-            const next = prev + 1;
-            playCorrectChime(next);
-            return next;
-          });
+          nextCombo = comboRef.current + 1;
+          comboRef.current = nextCombo;
+          setCombo(nextCombo);
+          playCorrectChime(nextCombo);
         } else {
-          playWrongThud();
+          nextCombo = 0;
+          comboRef.current = 0;
           setCombo(0);
+          playWrongThud();
         }
 
         setResults((prev) => [
@@ -230,15 +255,43 @@ export function PracticeView() {
         void recordAnswer(currentQuestion.word.id, isCorrect).catch((err) => {
           console.error("[LexiVault] Background recordAnswer failed:", err);
         });
+
+        if (clearedWeakest) {
+          cheerPayload = {
+            reason: "weakest_word_cleared",
+            term: liveWord.term,
+          };
+        } else if (nextCombo > 0 && nextCombo % 5 === 0) {
+          cheerPayload = {
+            reason: "combo_5x",
+            combo: nextCombo,
+          };
+        }
       }
 
+      let earnedSessionTreat = false;
       if (currentIndex + 1 >= questions.length) {
+        earnedSessionTreat = awardLexiMilestoneTreat("practice_session");
         setPhase("summary");
       } else {
         setCurrentIndex((prev) => prev + 1);
       }
+
+      if (cheerPayload) {
+        triggerLexiCheer({
+          ...cheerPayload,
+          treatEarned: earnedSessionTreat,
+        });
+      }
     },
-    [currentIndex, questions, recordAnswer]
+    [
+      awardLexiMilestoneTreat,
+      currentIndex,
+      questions,
+      recordAnswer,
+      triggerLexiCheer,
+      words,
+    ]
   );
 
   const correctTotal = results.filter((r) => r.isCorrect).length;

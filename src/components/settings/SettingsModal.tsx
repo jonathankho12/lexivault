@@ -1072,10 +1072,10 @@ export function SettingsModal({
                     />
                     <div className="min-w-0">
                       <p className="text-xs sm:text-sm font-medium text-white">
-                        Lexi Companion
+                        {t.lexi.settings.title}
                       </p>
                       <p className="text-[11px] text-[#8E8E93]">
-                        Show Lexi&apos;s daily vault status card on your dashboard
+                        {t.lexi.settings.desc}
                       </p>
                     </div>
                   </div>
@@ -1083,7 +1083,7 @@ export function SettingsModal({
                   <button
                     type="button"
                     role="switch"
-                    aria-label="Lexi Companion"
+                    aria-label={t.lexi.settings.ariaLabel}
                     aria-checked={lexiEnabled}
                     onClick={() => {
                       playGlassClick();

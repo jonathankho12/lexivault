@@ -88,3 +88,22 @@ export function playRingCompleteChord(): void {
   playTone(783.99, 0.4, "sine", 0.05, 0.08);
   playTone(1046.5, 0.48, "triangle", 0.055, 0.12);
 }
+
+/**
+ * Gentle, playful micro-SFX when tapping/petting Lexi.
+ * Automatically respects the global SFX mute toggle via getAudioContext().
+ */
+export function playLexiPetSfx(): void {
+  playTone(540, 0.065, "sine", 0.036, 0, 740);
+  playTone(780, 0.085, "triangle", 0.032, 0.055, 920);
+}
+
+/**
+ * Joyful ascending chime when giving Lexi a treat.
+ * Automatically respects the global SFX mute toggle via getAudioContext().
+ */
+export function playLexiTreatSfx(): void {
+  playTone(587.33, 0.12, "triangle", 0.048, 0);
+  playTone(783.99, 0.14, "sine", 0.05, 0.06);
+  playTone(1046.5, 0.24, "sine", 0.055, 0.12, 1174.66);
+}

@@ -197,6 +197,7 @@ export function DailyPackModal() {
     ensureDailyPackLoaded,
     completeDailyPackItem,
     recordDailyPackWrongAttempt,
+    triggerLexiCheer,
     setActiveTab,
   } = useLexiVault();
   const activeTierMeta = getDailyPackTierMeta(
@@ -446,6 +447,7 @@ export function DailyPackModal() {
     if (stillRemaining.length === 0) {
       playRingCompleteChord();
       setStage("completed");
+      triggerLexiCheer({ reason: "daily_pack_complete" });
     } else {
       playCorrectChime(4);
       setStage("round_done");

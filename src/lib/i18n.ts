@@ -557,6 +557,88 @@ export interface TranslationDictionary {
     email: string;
     emailCopied: string;
   };
+  lexi: {
+    eyebrow: string;
+    ariaCard: string;
+    ariaProgress: string;
+    streakPill: string;
+    streakTooltip: string;
+    progressDrillsSuffix: string;
+    progressDailyPackSuffix: string;
+    vaultSecured: string;
+    actionMakeHappy: string;
+    actionQuickReview: string;
+    petHint: string;
+    petAriaLabel: string;
+    giveTreatBtn: string;
+    treatBoostBadge: string;
+    bondTooltipProgress: string;
+    bondTooltipMax: string;
+    moodBadges: {
+      sleepy: string;
+      alert: string;
+      happy: string;
+      restless: string;
+    };
+    moodCopy: {
+      sleepy: string;
+      alert: string;
+      happy: string;
+      restless: string;
+      happyBoosted: string;
+    };
+    notePrefixes: {
+      happy: string;
+      alert: string;
+      restless: string;
+      sleepy: string;
+    };
+    bondTiers: {
+      acquaintance: string;
+      study_buddy: string;
+      loyal_guardian: string;
+      best_friend: string;
+    };
+    bubbles: {
+      sleepy: string[];
+      alert: string[];
+      happy: string[];
+      restless: string[];
+      streak: string[];
+      word: string[];
+      treat: string[];
+      bondUp: string;
+    };
+    intro: {
+      badge: string;
+      headline: string;
+      subcopy: string;
+      companionTitle: string;
+      companionActive: string;
+      companionPaused: string;
+      companionToggleAria: string;
+      settingsNote: string;
+      primaryCta: string;
+      openingLevelCheck: string;
+      skipCta: string;
+      openingDashboard: string;
+    };
+    settings: {
+      title: string;
+      desc: string;
+      ariaLabel: string;
+    };
+    cheer: {
+      dailyPackTitle: string;
+      dailyPackBody: string;
+      comboTitle: string;
+      comboBody: string;
+      weakestClearedTitle: string;
+      weakestClearedBody: string;
+      treatEarnedTag: string;
+      dismissAria: string;
+    };
+  };
 }
 
 export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
@@ -1152,6 +1234,116 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       email: "Email",
       emailCopied: "abeljonathankho@gmail.com disalin!",
     },
+    lexi: {
+      eyebrow: "Perawatan Vault Harian",
+      ariaCard: "Kartu Status Harian Lexi",
+      ariaProgress: "Progres perawatan vault harian",
+      streakPill: "streak {days}h",
+      streakTooltip: "Lihat kalender streak",
+      progressDrillsSuffix: "latihan",
+      progressDailyPackSuffix: "target harian",
+      vaultSecured: "Vault Aman ✓",
+      actionMakeHappy: "Bikin Lexi Senang",
+      actionQuickReview: "Ulas Cepat 3 Menit",
+      petHint: "Sentuh Lexi untuk elus",
+      petAriaLabel: "Elus Lexi si Rottweiler",
+      giveTreatBtn: "Beri Camilan",
+      treatBoostBadge: "Lagi senang banget",
+      bondTooltipProgress: "Level Ikatan: {tier} · {remaining} camilan lagi ke {nextTier}",
+      bondTooltipMax: "Level Ikatan: {tier} · Ikatan maksimal ({total} camilan)",
+      moodBadges: {
+        sleepy: "Istirahat",
+        alert: "Siaga",
+        happy: "Senang",
+        restless: "Gelisah",
+      },
+      moodCopy: {
+        sleepy: "Lexi sedang istirahat. Mulai latihan singkat biar dia semangat.",
+        alert: "Vault aktif. Selesaikan latihan hari ini untuk kunci streak-mu.",
+        happy: "Vault aman hari ini. Lexi bangga sama konsistensimu!",
+        restless: "Vault kosakatamu mulai berdebu. Yuk ulas singkat sekarang.",
+        happyBoosted: "Lexi lagi senang banget habis dapat camilan! Yuk lanjut jaga ritme.",
+      },
+      notePrefixes: {
+        happy: "Diasah hari ini:",
+        alert: "Jaga momentum di:",
+        restless: "Siap diulas lagi:",
+        sleepy: "Berikutnya di vault:",
+      },
+      bondTiers: {
+        acquaintance: "Kenalan Baru",
+        study_buddy: "Teman Belajar",
+        loyal_guardian: "Penjaga Setia",
+        best_friend: "Sahabat Terbaik",
+      },
+      bubbles: {
+        sleepy: [
+          "Mmm... lima menit lagi ya? Atau langsung 1 drill cepat?",
+          "Telinga selalu siaga kalau ada kata baru masuk Vault.",
+          "Elusannya hangat banget. Siap bangun buat latihan singkat!",
+        ],
+        alert: [
+          "Mantap! Tinggal sedikit lagi buat amankan Vault hari ini.",
+          "Ritme kamu bagus hari ini—ekorku sudah mulai goyang!",
+          "Satu sesi singkat lagi, langsung beres target harian kita.",
+        ],
+        happy: [
+          "Guk! Vault aman terkendali. Kamu keren banget hari ini!",
+          "Elusan terbaik! Konsistensimu bikin aku bangga jadi penjaga Vault.",
+          "Misi harian tuntas! Besok kita jaga lagi bareng ya.",
+        ],
+        restless: [
+          "Vault kita agak sepi beberapa hari ini... yuk pemanasan 3 menit!",
+          "Jangan biarkan kata-kata kerenmu berdebu. Aku siap nemenin!",
+          "Satu review cepat aja langsung bikin telingaku tegak lagi.",
+        ],
+        streak: [
+          "Streak {days} hari berturut-turut! Ekorku nggak berhenti goyang.",
+          "{days} hari tanpa putus—ini baru penjaga kosakata sejati!",
+        ],
+        word: [
+          "Eh—masih ingat makna \"{term}\" tanpa ngintip nggak?",
+          "Coba bikin satu kalimat pakai \"{term}\" di kepalamu sekarang!",
+          "Catatan penjaga: \"{term}\" siap kamu pakai di percakapan hari ini.",
+        ],
+        treat: [
+          "Kres! Camilan terenak! Terima kasih sudah rajin belajar!",
+          "Nyam! Energi penjaga langsung penuh 100%!",
+          "Guk guk! Hadiah terbaik setelah kerja keras hari ini!",
+        ],
+        bondUp: "Ikatan naik ke {tier}! Aku makin setia jaga Vault-mu!",
+      },
+      intro: {
+        badge: "Penjaga Kosakata",
+        headline: "Kenalan dengan Lexi, penjaga kosakatamu.",
+        subcopy:
+          "Setiap latihan harian bikin bahasa Inggrismu makin tajam—dan bikin Lexi senang. Kalau terlalu lama bolong, vault-mu mulai berdebu.",
+        companionTitle: "Lexi Companion",
+        companionActive: "Aktif di Dashboard kamu",
+        companionPaused: "Dijeda — tersembunyi di Dashboard",
+        companionToggleAria: "Aktifkan Lexi Companion",
+        settingsNote: "Kamu bisa menyalakan atau mematikan Lexi kapan saja di Pengaturan.",
+        primaryCta: "Sapa & Cek Level Saya",
+        openingLevelCheck: "Membuka Cek Level...",
+        skipCta: "Lewati ke Dashboard",
+        openingDashboard: "Membuka Dashboard...",
+      },
+      settings: {
+        title: "Lexi Companion",
+        desc: "Tampilkan kartu status harian & sorakan penyemangat Lexi",
+        ariaLabel: "Lexi Companion",
+      },
+      cheer: {
+        dailyPackTitle: "Target Harian Tuntas!",
+        dailyPackBody: "Lexi bangga! Semua item hari ini sudah masuk Vault.",
+        comboTitle: "Kombo {combo}× Beruntun!",
+        comboBody: "Tajam banget! Ekor Lexi bergoyang kencang buat kamu.",
+        weakestClearedTitle: "Kata Sulit Dikuasai!",
+        weakestClearedBody: "\"{term}\" resmi lulus dari daftar Weakest Words!",
+        treatEarnedTag: "+1 Camilan Lexi",
+        dismissAria: "Tutup sorakan Lexi",
+      },
+    },
   },
   en: {
     auth: {
@@ -1741,6 +1933,116 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       linkedin: "LinkedIn",
       email: "Email",
       emailCopied: "abeljonathankho@gmail.com copied!",
+    },
+    lexi: {
+      eyebrow: "Daily Vault Maintenance",
+      ariaCard: "Lexi Daily Vault Maintenance",
+      ariaProgress: "Daily vault maintenance progress",
+      streakPill: "{days}d streak",
+      streakTooltip: "View streak calendar",
+      progressDrillsSuffix: "drills",
+      progressDailyPackSuffix: "daily pack",
+      vaultSecured: "Vault Secured ✓",
+      actionMakeHappy: "Make Lexi Happy",
+      actionQuickReview: "Quick 3-Min Review",
+      petHint: "Tap Lexi to pet",
+      petAriaLabel: "Pet Lexi the Rottweiler",
+      giveTreatBtn: "Give Treat",
+      treatBoostBadge: "Treat happy boost",
+      bondTooltipProgress: "Bond: {tier} · {remaining} more treats to {nextTier}",
+      bondTooltipMax: "Bond: {tier} · Max bond reached ({total} treats)",
+      moodBadges: {
+        sleepy: "Resting",
+        alert: "Alert",
+        happy: "Happy",
+        restless: "Restless",
+      },
+      moodCopy: {
+        sleepy: "Lexi's resting. Run a quick drill to wake him up.",
+        alert: "Vault active. Finish today's drill to lock in your streak.",
+        happy: "Vault secured for today. Lexi's proud of the consistency.",
+        restless: "Your vocabulary vault is getting dusty. Time for a quick review.",
+        happyBoosted: "Lexi's beaming after that treat! Keep the momentum rolling.",
+      },
+      notePrefixes: {
+        happy: "Sharpened today:",
+        alert: "Keep momentum on:",
+        restless: "Ready for review:",
+        sleepy: "Up next in vault:",
+      },
+      bondTiers: {
+        acquaintance: "Acquaintance",
+        study_buddy: "Study Buddy",
+        loyal_guardian: "Loyal Guardian",
+        best_friend: "Best Friend",
+      },
+      bubbles: {
+        sleepy: [
+          "Five more minutes... or a quick 60-second drill?",
+          "Eyes half-shut, ears always up for fresh vocab.",
+          "Okay, okay—those ear scratches woke me up. Let's drill!",
+        ],
+        alert: [
+          "Looking sharp! Just a bit more to lock in today's vault.",
+          "Solid momentum—my tail's already picking up speed.",
+          "One quick round and today's guard shift is complete.",
+        ],
+        happy: [
+          "Woof! Vault locked down tight. Proud of you today!",
+          "Best pats ever. Consistency looks great on you.",
+          "All clear for today! Ready to guard again tomorrow.",
+        ],
+        restless: [
+          "The vault's been quiet lately... how about a 3-min warmup?",
+          "Dusting off your best words together—let's jump in!",
+          "One quick review and my ears perk right back up.",
+        ],
+        streak: [
+          "{days} days straight! My tail literally can't stop wagging.",
+          "{days}-day streak locked in—true guardian discipline!",
+        ],
+        word: [
+          "Pop quiz—still remember \"{term}\" without peeking?",
+          "Try using \"{term}\" in a sentence today. I'm listening!",
+          "Guardian note: \"{term}\" deserves a spotlight in your vault.",
+        ],
+        treat: [
+          "Crunch! Best treat ever—earned with real study gains!",
+          "Nom nom! Guardian energy officially at 100%!",
+          "Woof! Worth every single drill you crushed today!",
+        ],
+        bondUp: "Bond leveled up to {tier}! Always by your side.",
+      },
+      intro: {
+        badge: "Vocabulary Guardian",
+        headline: "Meet Lexi, your vocabulary guardian.",
+        subcopy:
+          "Every daily drill keeps your English sharp—and keeps Lexi happy. Skip too many days, and your vault gets dusty.",
+        companionTitle: "Lexi Companion",
+        companionActive: "Active on your Dashboard",
+        companionPaused: "Paused — hidden on Dashboard",
+        companionToggleAria: "Enable Lexi Companion",
+        settingsNote: "You can turn Lexi on or off anytime in Settings.",
+        primaryCta: "Say Hi & Check My Level",
+        openingLevelCheck: "Opening Level Check...",
+        skipCta: "Skip to Dashboard",
+        openingDashboard: "Opening Dashboard...",
+      },
+      settings: {
+        title: "Lexi Companion",
+        desc: "Show Lexi's daily vault status card & study-session cheers",
+        ariaLabel: "Lexi Companion",
+      },
+      cheer: {
+        dailyPackTitle: "Daily Pack Complete!",
+        dailyPackBody: "Lexi approves! Today's full pack is locked in your Vault.",
+        comboTitle: "{combo}× Combo Streak!",
+        comboBody: "Laser focus! Lexi's tail is wagging at top speed.",
+        weakestClearedTitle: "Weakest Word Cleared!",
+        weakestClearedBody: "\"{term}\" just graduated off your Weakest Words list!",
+        treatEarnedTag: "+1 Lexi Treat",
+        dismissAria: "Dismiss Lexi cheer",
+      },
     },
   },
 };

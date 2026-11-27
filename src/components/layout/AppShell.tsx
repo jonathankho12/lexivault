@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { CefrOnboardingModal } from "@/components/CefrOnboardingModal";
 import { IntroducingLexiModal } from "@/components/IntroducingLexiModal";
+import { LexiCheerToast } from "@/components/LexiCheerToast";
 import {
   hasSeenQuickGuide,
   markQuickGuideSeen,
@@ -799,6 +800,9 @@ export function AppShell({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Compact Lexi Study-Session Mini Cheer Toast */}
+      <LexiCheerToast />
     </div>
   );
 }

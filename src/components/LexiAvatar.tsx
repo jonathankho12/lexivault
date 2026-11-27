@@ -5,6 +5,7 @@ import type { LexiMood } from "@/lib/lexi";
 import { cn } from "@/lib/utils";
 
 export type LexiAvatarSize = "xs" | "sm" | "md" | "lg" | "xl";
+export type LexiReactionType = "pet" | "treat";
 
 export interface LexiAvatarProps {
   mood?: LexiMood;
@@ -12,6 +13,10 @@ export interface LexiAvatarProps {
   animated?: boolean;
   className?: string;
   label?: string;
+  interactive?: boolean;
+  onInteract?: () => void;
+  reaction?: LexiReactionType | null;
+  reactionNonce?: number;
 }
 
 const SIZE_CLASSES: Record<LexiAvatarSize, string> = {
@@ -58,6 +63,10 @@ export function LexiAvatar({
   animated = true,
   className,
   label,
+  interactive = false,
+  onInteract,
+  reaction = null,
+  reactionNonce = 0,
 }: LexiAvatarProps) {
   const palette = MOOD_BACKDROP[mood];
 
@@ -91,34 +100,129 @@ export function LexiAvatar({
           : ""
     : "";
 
-  return (
-    <div
-      role="img"
-      aria-label={label ?? `Lexi the Rottweiler (${mood})`}
-      className={cn(
-        "group relative inline-flex shrink-0 items-center justify-center rounded-2xl border select-none transform-gpu overflow-hidden transition-colors",
-        palette.ring,
-        SIZE_CLASSES[size],
-        className
-      )}
-    >
+  const reactionAnimClass =
+    reaction === "treat"
+      ? "lexi-react-treat"
+      : reaction === "pet"
+        ? "lexi-react-pet"
+        : "";
+
+  const containerClassName = cn(
+    "group relative inline-flex shrink-0 items-center justify-center rounded-2xl border select-none transform-gpu overflow-visible transition-[transform,colors,border-color,background-color,box-shadow]",
+    palette.ring,
+    SIZE_CLASSES[size],
+    interactive &&
+      "cursor-pointer hover:scale-[1.04] active:scale-[0.95] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A84FF] focus-visible:ring-offset-1 focus-visible:ring-offset-transparent",
+    className
+  );
+
+  const innerContent = (
+    <>
       {/* Soft radial aura behind Lexi */}
       <span
         aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute inset-1 rounded-full transform-gpu",
-          animated && mood === "happy" && "lexi-happy-aura"
-        )}
-        style={{
-          background: `radial-gradient(circle, ${palette.glow} 0%, transparent 72%)`,
-        }}
-      />
+        className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl"
+      >
+        <span
+          className={cn(
+            "pointer-events-none absolute inset-1 rounded-full transform-gpu",
+            animated && mood === "happy" && "lexi-happy-aura"
+          )}
+          style={{
+            background: `radial-gradient(circle, ${palette.glow} 0%, transparent 72%)`,
+          }}
+        />
+      </span>
 
+      {/* Floating Pet / Treat Particles */}
+      {reaction && (
+        <span
+          key={`particles-${reaction}-${reactionNonce}`}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-20 overflow-visible"
+        >
+          {reaction === "treat" ? (
+            <>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-1 absolute -top-1 left-0.5 h-3 w-3 text-[#FFD18C]"
+              >
+                <path
+                  d="M8 1.5L9.7 5.8L14 7.5L9.7 9.2L8 13.5L6.3 9.2L2 7.5L6.3 5.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-2 absolute -top-2 right-0.5 h-3.5 w-3.5 text-[#FF9F0A]"
+              >
+                <path
+                  d="M4.2 5.2C2.9 5.2 2 6.1 2 7.2C2 8 2.5 8.7 3.2 9C2.5 9.3 2 10 2 10.8C2 11.9 2.9 12.8 4.2 12.8C5.2 12.8 6 12.2 6.3 11.3H9.7C10 12.2 10.8 12.8 11.8 12.8C13.1 12.8 14 11.9 14 10.8C14 10 13.5 9.3 12.8 9C13.5 8.7 14 8 14 7.2C14 6.1 13.1 5.2 11.8 5.2C10.8 5.2 10 5.8 9.7 6.7H6.3C6 5.8 5.2 5.2 4.2 5.2Z"
+                  fill="currentColor"
+                />
+              </svg>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-3 absolute top-2 -right-1 h-2.5 w-2.5 text-[#7CF099]"
+              >
+                <path
+                  d="M8 1.5L9.7 5.8L14 7.5L9.7 9.2L8 13.5L6.3 9.2L2 7.5L6.3 5.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </>
+          ) : (
+            <>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-1 absolute -top-1 left-1 h-3 w-3 text-[#FF6B8B]"
+              >
+                <path
+                  d="M8 13.8C8 13.8 2 9.9 2 5.6C2 3.7 3.5 2.2 5.3 2.2C6.5 2.2 7.5 2.8 8 3.8C8.5 2.8 9.5 2.2 10.7 2.2C12.5 2.2 14 3.7 14 5.6C14 9.9 8 13.8 8 13.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-2 absolute -top-2 right-1 h-2.5 w-2.5 text-[#FFD18C]"
+              >
+                <path
+                  d="M8 1.5L9.7 5.8L14 7.5L9.7 9.2L8 13.5L6.3 9.2L2 7.5L6.3 5.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="lexi-particle-3 absolute top-2 -right-0.5 h-2.5 w-2.5 text-[#FF8DA1]"
+              >
+                <path
+                  d="M8 13.8C8 13.8 2 9.9 2 5.6C2 3.7 3.5 2.2 5.3 2.2C6.5 2.2 7.5 2.8 8 3.8C8.5 2.8 9.5 2.2 10.7 2.2C12.5 2.2 14 3.7 14 5.6C14 9.9 8 13.8 8 13.8Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </>
+          )}
+        </span>
+      )}
+
+      <span
+        key={reactionNonce}
+        className={cn(
+          "relative z-10 flex h-full w-full items-center justify-center transform-gpu",
+          reactionAnimClass
+        )}
+      >
       <svg
         viewBox="0 0 100 100"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className={cn("relative z-10 h-[88%] w-[88%] transform-gpu", rootAnimClass)}
+        className={cn("h-[88%] w-[88%] transform-gpu", rootAnimClass)}
       >
         {/* Neck & Collar */}
         <path
@@ -488,6 +592,30 @@ export function LexiAvatar({
           </g>
         )}
       </svg>
+      </span>
+    </>
+  );
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        onClick={onInteract}
+        aria-label={label ?? `Lexi the Rottweiler (${mood})`}
+        className={containerClassName}
+      >
+        {innerContent}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      role="img"
+      aria-label={label ?? `Lexi the Rottweiler (${mood})`}
+      className={containerClassName}
+    >
+      {innerContent}
     </div>
   );
 }
