@@ -61,6 +61,7 @@ export interface TranslationDictionary {
     createAccountSync: string;
     logout: string;
     settings: string;
+    quickGuide: string;
   };
   dailyPack: {
     eyebrow: string;
@@ -393,6 +394,12 @@ export interface TranslationDictionary {
       dailyPack: string;
       audioStudy: string;
       dataStorage: string;
+      helpGuide: string;
+    };
+    guide: {
+      title: string;
+      desc: string;
+      openBtn: string;
     };
     dailyPack: {
       wordsPerDay: string;
@@ -506,6 +513,36 @@ export interface TranslationDictionary {
     androidStep2: string;
     androidManualHint: string;
   };
+  quickGuide: {
+    eyebrow: string;
+    stepOf: string;
+    skip: string;
+    back: string;
+    next: string;
+    startExploring: string;
+    steps: [
+      {
+        title: string;
+        description: string;
+        chips: [string, string];
+      },
+      {
+        title: string;
+        description: string;
+        chips: [string, string, string];
+      },
+      {
+        title: string;
+        description: string;
+        chips: [string, string];
+      },
+      {
+        title: string;
+        description: string;
+        chips: [string, string, string];
+      },
+    ];
+  };
   developer: {
     builtBy: string;
     sectionTitle: string;
@@ -580,6 +617,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       createAccountSync: "Buat Akun untuk Sync",
       logout: "Keluar",
       settings: "Settings",
+      quickGuide: "Panduan Cepat",
     },
     dailyPack: {
       eyebrow: "Tantangan Belajar Harian",
@@ -933,6 +971,12 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         dailyPack: "Target Harian (Daily Pack)",
         audioStudy: "Preferensi Audio & Belajar",
         dataStorage: "Data & Penyimpanan",
+        helpGuide: "Bantuan & Panduan",
+      },
+      guide: {
+        title: "Panduan Cepat · Cara Kerja LexiVault",
+        desc: "Lihat kembali tur 4 langkah singkat seputar Vault, Flashcards, IELTS, dan Daily Rings.",
+        openBtn: "Buka Panduan",
       },
       dailyPack: {
         wordsPerDay: "Kata Baru / Hari",
@@ -1058,6 +1102,40 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       androidManualHint:
         "Buka menu titik tiga browser (⋮), lalu pilih 'Install app' atau 'Add to Home screen'.",
     },
+    quickGuide: {
+      eyebrow: "Panduan Cepat LexiVault",
+      stepOf: "Langkah {current} dari {total}",
+      skip: "Lewati",
+      back: "Kembali",
+      next: "Lanjut",
+      startExploring: "Mulai Jelajahi",
+      steps: [
+        {
+          title: "Vault & Target Harian",
+          description:
+            "Simpan kata atau idiom apa pun dengan AI autofill otomatis, atau ambil paket harian CEFR untuk membangun leksikon pribadimu.",
+          chips: ["AI Autofill", "Target Harian CEFR"],
+        },
+        {
+          title: "Cards & Practice",
+          description:
+            "Ulas dengan flashcard SM-2 (geser kartu atau tombol 1–4) lalu latih pemakaian aktif lewat AI Sentence Maker & Weakest Drill.",
+          chips: ["SM-2 Geser / 1–4", "AI Sentence Maker", "Weakest Drill"],
+        },
+        {
+          title: "Grammar & IELTS",
+          description:
+            "Perbaiki kalimat dengan penulisan ulang sesuai konteks dan latih 4 skill IELTS lengkap dengan feedback penguji AI.",
+          chips: ["Rewrites Kontekstual", "4 Skill IELTS"],
+        },
+        {
+          title: "Daily Rings & Lexi",
+          description:
+            "Tutup 3 ring harianmu untuk menjaga Lexi tetap senang, menjaga streak, dan menaikkan Mastery Rank kamu.",
+          chips: ["Vocab Ring", "Recall Ring", "IELTS Ring"],
+        },
+      ],
+    },
     developer: {
       builtBy: "Dibuat oleh Abel Jonathan",
       sectionTitle: "Tentang Pengembang",
@@ -1130,6 +1208,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       createAccountSync: "Create Account to Sync",
       logout: "Sign Out",
       settings: "Settings",
+      quickGuide: "Quick Guide",
     },
     dailyPack: {
       eyebrow: "Daily Learning Challenge",
@@ -1480,6 +1559,12 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         dailyPack: "Daily Learning Pack",
         audioStudy: "Audio & Study Preferences",
         dataStorage: "Data & Storage",
+        helpGuide: "Help & Guide",
+      },
+      guide: {
+        title: "Quick Guide / How LexiVault Works",
+        desc: "Replay the 4-step tour covering Vault, Flashcards, IELTS, and Daily Rings.",
+        openBtn: "Open Guide",
       },
       dailyPack: {
         wordsPerDay: "New Words / Day",
@@ -1604,6 +1689,40 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       androidStep2: "Tap 'Install app' or 'Add to Home screen' and confirm.",
       androidManualHint:
         "Open your browser menu (⋮), then tap 'Install app' or 'Add to Home screen'.",
+    },
+    quickGuide: {
+      eyebrow: "LexiVault Quick Guide",
+      stepOf: "Step {current} of {total}",
+      skip: "Skip",
+      back: "Back",
+      next: "Next",
+      startExploring: "Start Exploring",
+      steps: [
+        {
+          title: "Vault & Daily Pack",
+          description:
+            "Save any word or idiom with AI autofill, or grab your daily CEFR pack to build your personal lexicon.",
+          chips: ["AI Autofill", "Daily CEFR Pack"],
+        },
+        {
+          title: "Cards & Practice",
+          description:
+            "Review with SM-2 flashcards (swipe or 1–4 keys) and test active usage with AI Sentence Maker & Weakest Drill.",
+          chips: ["SM-2 Swipe / 1–4", "AI Sentence Maker", "Weakest Drill"],
+        },
+        {
+          title: "Grammar & IELTS",
+          description:
+            "Fix sentences with context-aware rewrites and train all 4 IELTS skills with AI examiner feedback.",
+          chips: ["Context Rewrites", "All 4 IELTS Skills"],
+        },
+        {
+          title: "Daily Rings & Lexi",
+          description:
+            "Close your 3 daily rings to keep Lexi happy and level up your Mastery Rank.",
+          chips: ["Vocab Ring", "Recall Ring", "IELTS Ring"],
+        },
+      ],
     },
     developer: {
       builtBy: "Built by Abel Jonathan",

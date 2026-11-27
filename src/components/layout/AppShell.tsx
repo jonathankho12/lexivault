@@ -9,6 +9,7 @@ import {
   Compass,
   Flame,
   GraduationCap,
+  HelpCircle,
   Layers,
   LogOut,
   Moon,
@@ -24,6 +25,11 @@ import {
 } from "lucide-react";
 import { CefrOnboardingModal } from "@/components/CefrOnboardingModal";
 import { IntroducingLexiModal } from "@/components/IntroducingLexiModal";
+import {
+  hasSeenQuickGuide,
+  markQuickGuideSeen,
+  QuickGuideModal,
+} from "@/components/QuickGuideModal";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { ActivityRings } from "@/components/gamification/ActivityRings";
 import { AccentToggle } from "@/components/layout/AccentToggle";
@@ -69,6 +75,12 @@ export function AppShell({
     syncStatus,
     syncError,
     isHydrated,
+    cefrOnboardingCompleted,
+    showCefrOnboarding,
+    isLexiIntroOpen,
+    isWhatsNewOpen,
+    dailyPackModalOpen,
+    selectedWord,
     celebrationToast,
     clearCelebrationToast,
     openStreakCalendar,
@@ -78,6 +90,52 @@ export function AppShell({
   const { lang, t } = useLanguage();
   const { resolvedTheme, toggleTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [quickGuideOpen, setQuickGuideOpen] = useState(false);
+
+  const handleCloseQuickGuide = React.useCallback(() => {
+    markQuickGuideSeen(user);
+    setQuickGuideOpen(false);
+  }, [user]);
+
+  const handleOpenQuickGuide = React.useCallback(() => {
+    setQuickGuideOpen(true);
+  }, []);
+
+  // Auto-open Quick Guide once for first-time users only when no other blocking modal is open
+  useEffect(() => {
+    if (!isHydrated || !user || quickGuideOpen) return;
+    if (
+      !cefrOnboardingCompleted ||
+      showCefrOnboarding ||
+      isLexiIntroOpen ||
+      isWhatsNewOpen ||
+      dailyPackModalOpen ||
+      settingsOpen ||
+      Boolean(selectedWord)
+    ) {
+      return;
+    }
+    if (hasSeenQuickGuide(user)) return;
+
+    const timer = setTimeout(() => {
+      if (!hasSeenQuickGuide(user)) {
+        setQuickGuideOpen(true);
+      }
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [
+    cefrOnboardingCompleted,
+    dailyPackModalOpen,
+    isHydrated,
+    isLexiIntroOpen,
+    isWhatsNewOpen,
+    quickGuideOpen,
+    selectedWord,
+    settingsOpen,
+    showCefrOnboarding,
+    user,
+  ]);
 
   const themeToggleLabel =
     resolvedTheme === "dark"
@@ -351,6 +409,20 @@ export function AppShell({
               <motion.button
                 type="button"
                 whileTap={TAP_SCALE}
+                onClick={() => {
+                  playGlassClick();
+                  handleOpenQuickGuide();
+                }}
+                aria-label={t.nav.quickGuide}
+                title={t.nav.quickGuide}
+                className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl bg-white/[0.05] border border-white/[0.09] text-[#8E8E93] hover:text-white hover:bg-white/[0.1] cursor-pointer transition-colors"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </motion.button>
+
+              <motion.button
+                type="button"
+                whileTap={TAP_SCALE}
                 onClick={(e) => {
                   playGlassClick();
                   toggleTheme(e);
@@ -533,6 +605,20 @@ export function AppShell({
               whileTap={TAP_SCALE}
               onClick={() => {
                 playGlassClick();
+                handleOpenQuickGuide();
+              }}
+              aria-label={t.nav.quickGuide}
+              title={t.nav.quickGuide}
+              className="hidden min-[380px]:flex h-8 w-8 items-center justify-center rounded-full border bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer transition-colors"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+            </motion.button>
+
+            <motion.button
+              type="button"
+              whileTap={TAP_SCALE}
+              onClick={() => {
+                playGlassClick();
                 setSettingsOpen(true);
               }}
               aria-label={hasSyncError ? t.nav.syncError : t.nav.settings}
@@ -649,6 +735,13 @@ export function AppShell({
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        onOpenQuickGuide={handleOpenQuickGuide}
+      />
+
+      {/* Quick App Guide (4-Step Onboarding Tour) */}
+      <QuickGuideModal
+        open={quickGuideOpen}
+        onClose={handleCloseQuickGuide}
       />
 
       {/* First-Time Lexi Guardian Introduction Modal */}

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   Check,
+  Compass,
   Database,
   Download,
   Eye,
@@ -51,9 +52,11 @@ import { cn, getLocalDateString } from "@/lib/utils";
 export function SettingsModal({
   open,
   onClose,
+  onOpenQuickGuide,
 }: {
   open: boolean;
   onClose: () => void;
+  onOpenQuickGuide?: () => void;
 }) {
   const {
     user,
@@ -1561,6 +1564,45 @@ export function SettingsModal({
                 </div>
               </div>
             </section>
+
+            {/* 5. HELP & QUICK GUIDE */}
+            {onOpenQuickGuide && (
+              <section className="space-y-2">
+                <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
+                  {t.settings.sections.helpGuide}
+                </h3>
+
+                <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0A84FF]/15 border border-[#0A84FF]/35 text-[#70BCFF]">
+                      <Compass className="h-4.5 w-4.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-semibold text-white">
+                        {t.settings.guide.title}
+                      </p>
+                      <p className="text-[11px] text-[#8E8E93] leading-relaxed">
+                        {t.settings.guide.desc}
+                      </p>
+                    </div>
+                  </div>
+
+                  <motion.button
+                    type="button"
+                    whileTap={TAP_SCALE}
+                    onClick={() => {
+                      playGlassClick();
+                      onClose();
+                      onOpenQuickGuide();
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-3.5 py-1.5 text-xs font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-colors cursor-pointer shrink-0"
+                  >
+                    <Compass className="h-3.5 w-3.5" />
+                    <span>{t.settings.guide.openBtn}</span>
+                  </motion.button>
+                </div>
+              </section>
+            )}
 
             {/* Bottom Get Android App CTA */}
             <div className="pt-2 border-t border-white/[0.08] flex justify-center">
