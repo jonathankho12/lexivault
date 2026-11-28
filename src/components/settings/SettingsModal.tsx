@@ -54,10 +54,12 @@ export function SettingsModal({
   open,
   onClose,
   onOpenQuickGuide,
+  onCreateAccountFromGuest,
 }: {
   open: boolean;
   onClose: () => void;
   onOpenQuickGuide?: () => void;
+  onCreateAccountFromGuest?: () => void;
 }) {
   const {
     user,
@@ -510,9 +512,13 @@ export function SettingsModal({
                       type="button"
                       whileTap={TAP_SCALE}
                       onClick={() => {
-                        playGlassClick();
-                        onClose();
-                        void openRegisterFromGuest();
+                        if (onCreateAccountFromGuest) {
+                          onCreateAccountFromGuest();
+                        } else {
+                          playGlassClick();
+                          onClose();
+                          openRegisterFromGuest();
+                        }
                       }}
                       className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-[#0A84FF] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1A8EFF] cursor-pointer"
                     >

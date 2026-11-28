@@ -126,6 +126,12 @@ export function AppShell({
     setQuickGuideOpen(true);
   }, []);
 
+  const handleCreateAccountFromGuest = React.useCallback(() => {
+    playGlassClick();
+    setSettingsOpen(false);
+    openRegisterFromGuest();
+  }, [openRegisterFromGuest]);
+
   const handleStartFirstDailyPack = React.useCallback(() => {
     markQuickGuideSeen(user);
     setQuickGuideOpen(false);
@@ -581,10 +587,7 @@ export function AppShell({
                     <motion.button
                       type="button"
                       whileTap={TAP_SCALE}
-                      onClick={() => {
-                        playGlassClick();
-                        void openRegisterFromGuest();
-                      }}
+                      onClick={handleCreateAccountFromGuest}
                       className="w-full inline-flex items-center justify-center gap-1.5 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-3 py-1.5 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer"
                     >
                       <UserPlus className="h-3 w-3" />
@@ -788,10 +791,7 @@ export function AppShell({
               <motion.button
                 type="button"
                 whileTap={TAP_SCALE}
-                onClick={() => {
-                  playGlassClick();
-                  void openRegisterFromGuest();
-                }}
+                onClick={handleCreateAccountFromGuest}
                 className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-2.5 py-1 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer"
               >
                 <UserPlus className="h-3 w-3" />
@@ -865,6 +865,7 @@ export function AppShell({
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onOpenQuickGuide={handleOpenQuickGuide}
+        onCreateAccountFromGuest={handleCreateAccountFromGuest}
       />
 
       {/* Quick App Guide (Duolingo-Style Interactive Onboarding) */}

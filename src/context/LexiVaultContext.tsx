@@ -373,12 +373,14 @@ interface LexiVaultContextValue {
     url: string
   ) => void;
   authInitialMode: "login" | "register";
+  showAuthModal: boolean;
   continueAsGuest: () => void;
   ringTargets: DailyRingTargets;
   updateRingTargets: (patch: Partial<DailyRingTargets>) => void;
   resetRingTargets: () => void;
   changePassword: (newPassword: string) => Promise<AuthActionResult>;
-  openRegisterFromGuest: () => Promise<void>;
+  openRegisterFromGuest: () => void;
+  closeAuthModal: () => void;
   login: (
     username: string,
     password: string,
@@ -404,6 +406,7 @@ export function LexiVaultProvider({
   const [authInitialMode, setAuthInitialMode] = useState<"login" | "register">(
     "login"
   );
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [todayStr, setTodayStr] = useState("2026-01-01");
@@ -610,6 +613,10 @@ export function LexiVaultProvider({
         }
         return nextUser;
       });
+      if (nextUser && nextUser.provider !== "guest") {
+        setShowAuthModal(false);
+        setAuthInitialMode("login");
+      }
       setIsAuthChecked(true);
     });
 
@@ -3249,6 +3256,7 @@ export function LexiVaultProvider({
 
   const continueAsGuest = useCallback(() => {
     const guest = continueAsGuestSession();
+    setShowAuthModal(false);
     setAuthInitialMode("login");
     setUser(guest);
     setActiveTab("vault");
@@ -3315,7 +3323,7 @@ export function LexiVaultProvider({
     }
   }, [lang]);
 
-  const openRegisterFromGuest = useCallback(async () => {
+  const openRegisterFromGuest = useCallback(() => {
     if (
       userRef.current?.provider === "guest" &&
       typeof window !== "undefined"
@@ -3329,21 +3337,21 @@ export function LexiVaultProvider({
         // Ignore storage error
       }
     }
-    await signOutUser();
     setAuthInitialMode("register");
-    setUser(null);
-    setWords([]);
-    setStudyLogs([]);
-    setXp(0);
-    setDailyPack(null);
-    setDailyPackModalOpen(false);
-    setWhatsNewRelease(null);
-    whatsNewCheckedKeyRef.current = null;
-    setSelectedWord(null);
-    setLexiCheerToast(null);
-    pendingDailyPackTreatDateRef.current = null;
-    setActiveTab("vault");
-  }, [setActiveTab]);
+    setShowAuthModal(true);
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+    setShowAuthModal(false);
+    setAuthInitialMode("login");
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(PENDING_GUEST_UPGRADE_KEY);
+      } catch {
+        // Ignore storage error
+      }
+    }
+  }, []);
 
   const login = useCallback(
     async (
@@ -3358,6 +3366,7 @@ export function LexiVaultProvider({
         lang
       );
       if (res.user) {
+        setShowAuthModal(false);
         setAuthInitialMode("login");
         setUser(res.user);
         setActiveTab("vault");
@@ -3374,8 +3383,25 @@ export function LexiVaultProvider({
       password: string,
       rememberMe: boolean
     ): Promise<AuthActionResult> => {
-      pendingLexiIntroRef.current = true;
-      onboardingFlowActiveRef.current = true;
+      const upgradingGuestId =
+        userRef.current?.provider === "guest" ? userRef.current.id : null;
+      const guestAlreadyMetLexi = upgradingGuestId
+        ? hasUserMetLexi(upgradingGuestId)
+        : false;
+      if (upgradingGuestId && typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            PENDING_GUEST_UPGRADE_KEY,
+            upgradingGuestId
+          );
+        } catch {
+          // Ignore storage error
+        }
+      }
+      if (!guestAlreadyMetLexi) {
+        pendingLexiIntroRef.current = true;
+        onboardingFlowActiveRef.current = true;
+      }
       const res = await signUpWithUsername(
         username,
         password,
@@ -3383,15 +3409,19 @@ export function LexiVaultProvider({
         lang
       );
       if (res.user) {
-        justRegisteredUserIdRef.current = res.user.id;
-        if (typeof window !== "undefined") {
-          try {
-            window.sessionStorage.setItem(
-              pendingLexiIntroSessionKey(res.user.id),
-              "1"
-            );
-          } catch {
-            // Ignore sessionStorage restrictions
+        if (guestAlreadyMetLexi) {
+          markUserMetLexi(res.user.id);
+        } else {
+          justRegisteredUserIdRef.current = res.user.id;
+          if (typeof window !== "undefined") {
+            try {
+              window.sessionStorage.setItem(
+                pendingLexiIntroSessionKey(res.user.id),
+                "1"
+              );
+            } catch {
+              // Ignore sessionStorage restrictions
+            }
           }
         }
         if (res.user.provider === "supabase") {
@@ -3400,6 +3430,7 @@ export function LexiVaultProvider({
             res.user.id
           );
         }
+        setShowAuthModal(false);
         setAuthInitialMode("login");
         setUser(res.user);
         setActiveTab("vault");
@@ -3425,6 +3456,7 @@ export function LexiVaultProvider({
     setBatchRefresh(INITIAL_BATCH_REFRESH_STATE);
     setRuBatchTranslate(INITIAL_RU_BATCH_TRANSLATE_STATE);
     await signOutUser();
+    setShowAuthModal(false);
     setAuthInitialMode("login");
     setUser(null);
     setWords([]);
@@ -3580,12 +3612,14 @@ export function LexiVaultProvider({
     grantXpAndSyncLog,
     updateWordAudioUrl,
     authInitialMode,
+    showAuthModal,
     ringTargets,
     updateRingTargets,
     resetRingTargets,
     changePassword,
     continueAsGuest,
     openRegisterFromGuest,
+    closeAuthModal,
     login,
     register,
     logout,

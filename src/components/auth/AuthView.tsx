@@ -5,6 +5,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   Check,
   Eye,
@@ -29,9 +30,17 @@ import { cn } from "@/lib/utils";
 type AuthMode = "login" | "register";
 
 export function AuthView() {
-  const { authInitialMode, login, register, continueAsGuest } = useLexiVault();
+  const {
+    user,
+    showAuthModal,
+    authInitialMode,
+    closeAuthModal,
+    login,
+    register,
+    continueAsGuest,
+  } = useLexiVault();
   const { openAppModal } = usePwaInstall();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const [mode, setMode] = useState<AuthMode>(authInitialMode);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -42,11 +51,24 @@ export function AuthView() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const cloudConfigured = isSupabaseConfigured();
+  const isReturningGuest = Boolean(showAuthModal && user?.provider === "guest");
 
   useEffect(() => {
     setMode(authInitialMode);
     setErrorMsg(null);
-  }, [authInitialMode]);
+  }, [authInitialMode, showAuthModal]);
+
+  useEffect(() => {
+    if (!isReturningGuest || submitting) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        playGlassClick();
+        closeAuthModal();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [closeAuthModal, isReturningGuest, submitting]);
 
   const handleModeChange = (next: AuthMode) => {
     setMode(next);
@@ -83,9 +105,51 @@ export function AuthView() {
     continueAsGuest();
   };
 
+  const handleBackToGuest = () => {
+    if (submitting) return;
+    playGlassClick();
+    closeAuthModal();
+  };
+
+  const backToGuestLabel =
+    lang === "en"
+      ? "Back to Guest Mode"
+      : lang === "ru"
+        ? "В гостевой режим"
+        : "Kembali ke Mode Tamu";
+
+  const backToGuestCardTitle =
+    lang === "en"
+      ? "Back to Guest Mode"
+      : lang === "ru"
+        ? "Вернуться в гостевой режим"
+        : "Kembali ke Mode Tamu";
+
+  const backToGuestCardSubtitle =
+    lang === "en"
+      ? "Return to your local Vault without losing data"
+      : lang === "ru"
+        ? "Вернуться в локальный Vault без потери данных"
+        : "Kembali ke Vault lokal tanpa kehilangan data";
+
   return (
     <div className="relative min-h-dvh w-full flex items-center justify-center px-4 pt-16 pb-8 sm:py-10 overflow-x-hidden">
       <AmbientBackground />
+
+      {isReturningGuest && (
+        <div className="fixed top-[max(1.25rem,env(safe-area-inset-top))] left-5 sm:top-6 sm:left-6 z-30">
+          <motion.button
+            type="button"
+            whileTap={TAP_SCALE}
+            disabled={submitting}
+            onClick={handleBackToGuest}
+            className="liquid-glass-pill inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-[#F5F5F7] hover:bg-white/[0.12] transition-colors cursor-pointer disabled:opacity-60"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
+            <span>{backToGuestLabel}</span>
+          </motion.button>
+        </div>
+      )}
 
       {/* Floating Top-Right Compact Flag + Language Dropdown */}
       <div className="fixed top-[max(1.25rem,env(safe-area-inset-top))] right-5 sm:top-6 sm:right-6 z-30">
@@ -312,8 +376,11 @@ export function AuthView() {
             <motion.button
               type="button"
               whileTap={TAP_SCALE}
-              onClick={handleContinueAsGuest}
-              className="liquid-glass-pill transform-gpu w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-white/[0.11] hover:border-white/[0.22] cursor-pointer"
+              disabled={isReturningGuest && submitting}
+              onClick={
+                isReturningGuest ? handleBackToGuest : handleContinueAsGuest
+              }
+              className="liquid-glass-pill transform-gpu w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-white/[0.11] hover:border-white/[0.22] cursor-pointer disabled:opacity-60"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.08] border border-white/[0.14] text-[#F5F5F7]">
@@ -321,14 +388,22 @@ export function AuthView() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm font-semibold text-white truncate">
-                    {t.auth.guestTitle}
+                    {isReturningGuest
+                      ? backToGuestCardTitle
+                      : t.auth.guestTitle}
                   </p>
                   <p className="text-[11px] text-[#8E8E93] truncate">
-                    {t.auth.guestSubtitle}
+                    {isReturningGuest
+                      ? backToGuestCardSubtitle
+                      : t.auth.guestSubtitle}
                   </p>
                 </div>
               </div>
-              <ArrowRight className="h-4 w-4 shrink-0 text-[#8E8E93]" />
+              {isReturningGuest ? (
+                <ArrowLeft className="h-4 w-4 shrink-0 text-[#8E8E93]" />
+              ) : (
+                <ArrowRight className="h-4 w-4 shrink-0 text-[#8E8E93]" />
+              )}
             </motion.button>
 
             <div className="flex items-center justify-between text-[11px] px-0.5">
