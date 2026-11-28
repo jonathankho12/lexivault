@@ -63,7 +63,9 @@ export function AudioButton({
       aria-label={
         lang === "en"
           ? `Play ${targetAccent} pronunciation for ${text}`
-          : `Putar pengucapan ${targetAccent} untuk ${text}`
+          : lang === "ru"
+            ? `Воспроизвести произношение (${targetAccent}) для ${text}`
+            : `Putar pengucapan ${targetAccent} untuk ${text}`
       }
       className={cn(
         "inline-flex items-center justify-center gap-1.5 rounded-full transition-colors select-none",

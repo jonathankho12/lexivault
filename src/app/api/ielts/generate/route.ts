@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       speakingPart?: SpeakingPart;
       cefrLevel?: CefrLevel;
       excludeIds?: string[];
+      lang?: "en" | "id" | "ru";
     };
 
     const skill: IeltsSubTab =
@@ -59,10 +60,21 @@ export async function POST(request: Request) {
         : "reading";
     const cefrLevel = normalizeCefr(body.cefrLevel);
     const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds : [];
+    const lang =
+      body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
+    const isRu = lang === "ru";
 
     if (skill === "reading") {
       const readingTargetLevel: CefrLevel =
         cefrLevel === "A1" ? "A2" : cefrLevel;
+
+      const explanationPromptNote = isRu
+        ? `In both "explanation_en" and "explanation_ru" (natural Russian, casual "ты" tone), explicitly explain the IELTS distinction between FALSE (directly contradicted by the passage) vs NOT GIVEN (information not mentioned / unverifiable in the passage). Provide "explanation_en" and "explanation_ru" on every question.`
+        : `In both "explanation_en" and "explanation_id", explicitly explain the IELTS distinction between FALSE (directly contradicted by the passage) vs NOT GIVEN (information not mentioned / unverifiable in the passage).`;
+
+      const vocabNoteLang = isRu
+        ? 'brief Russian meaning (casual "ты" tone)'
+        : "brief English definition";
 
       const prompt = `Generate a brand-new, authentic IELTS Reading passage adapted to CEFR ${readingTargetLevel} level with 6 exam-style questions.
 Adapt passage vocabulary, sentence complexity, and concept density realistically for CEFR ${readingTargetLevel}:
@@ -70,6 +82,7 @@ Adapt passage vocabulary, sentence complexity, and concept density realistically
 - B2: Upper-intermediate academic topic (~85-110 words per paragraph).
 - C1/C2: Dense scholarly IELTS Academic passage (~95-125 words per paragraph).
 
+Keep the passage, title, topic, question prompts, options, answers, and evidence_quote strictly in English.
 Return strictly valid JSON matching the schema:
 - "id": unique string id like "read-ai-..."
 - "title": engaging article title
@@ -78,12 +91,12 @@ Return strictly valid JSON matching the schema:
 - "recommendedMinutes": integer (10 for A2/B1, 12 for B2/C1/C2)
 - "paragraphs": exactly 4 cohesive paragraphs (corresponding to Paragraph A, B, C, D — do NOT prefix the text with "Paragraph A:").
 - "questions": exactly 6 questions mixing:
-  1. 2 "tfng" questions with options ["TRUE", "FALSE", "NOT GIVEN"] — include at least ONE FALSE and ONE NOT GIVEN. In both "explanation_en" and "explanation_id", explicitly explain the IELTS distinction between FALSE (directly contradicted by the passage) vs NOT GIVEN (information not mentioned / unverifiable in the passage).
+  1. 2 "tfng" questions with options ["TRUE", "FALSE", "NOT GIVEN"] — include at least ONE FALSE and ONE NOT GIVEN. ${explanationPromptNote}
   2. 2 "fill_blank" (Summary Completion) questions using _____ with "wordLimit" set to "ONE WORD ONLY" or "NO MORE THAN TWO WORDS", exact "answer", and lowercase variants in "acceptedAnswers".
   3. 1 "matching_headings" question asking which heading best summarizes a specific paragraph (e.g. "Choose the best heading for Paragraph B"), with 4 concise Roman-numeral options ("i. ...", "ii. ...", "iii. ...", "iv. ...") and "paragraphRef": "Paragraph B".
   4. 1 "mcq" nuanced inference question with 4 options.
   Every question MUST include "evidence_quote" (an EXACT verbatim substring sentence or clause copied from the passage so the UI can highlight it inside the passage).
-- "keyVocabulary": array of 4-5 level-appropriate academic words/collocations from the passage: { "term", "note" (brief English definition), "cefr": "${readingTargetLevel}", "category": "vocab"|"collocation"|"idiom" }.`;
+- "keyVocabulary": array of 4-5 level-appropriate academic English words/collocations from the passage: { "term", "note" (${vocabNoteLang}), "cefr": "${readingTargetLevel}", "category": "vocab"|"collocation"|"idiom" }.`;
 
       const aiRes = await generateStructuredWithHybridModel<ReadingPassagePack>({
         tier: "flash",
@@ -122,7 +135,9 @@ Return strictly valid JSON matching the schema:
                   },
                   wordLimit: { type: Type.STRING },
                   paragraphRef: { type: Type.STRING },
-                  explanation_id: { type: Type.STRING },
+                  ...(isRu
+                    ? { explanation_ru: { type: Type.STRING } }
+                    : { explanation_id: { type: Type.STRING } }),
                   explanation_en: { type: Type.STRING },
                   evidence_quote: { type: Type.STRING },
                 },
@@ -131,7 +146,7 @@ Return strictly valid JSON matching the schema:
                   "type",
                   "prompt",
                   "answer",
-                  "explanation_id",
+                  isRu ? "explanation_ru" : "explanation_id",
                   "evidence_quote",
                 ],
               },
@@ -177,6 +192,10 @@ Return strictly valid JSON matching the schema:
         return NextResponse.json({
           pack: {
             ...aiRes.data,
+            questions: aiRes.data.questions.map((q) => ({
+              ...q,
+              explanation_id: q.explanation_id || "",
+            })),
             cefrLevel: aiRes.data.cefrLevel || readingTargetLevel,
             id: aiRes.data.id || `read-ai-${Date.now()}`,
           },
@@ -196,9 +215,17 @@ Return strictly valid JSON matching the schema:
         cefrLevel === "A1" || cefrLevel === "A2" || cefrLevel === "B1";
       const sectionType = isFoundation ? "section1" : "section4";
 
+      const explReq = isRu
+        ? 'Include both "explanation_en" and "explanation_ru" (natural Russian in casual "ты" tone).'
+        : 'Include both "explanation_en" and "explanation_id".';
+      const vocabNotePrompt = isRu
+        ? 'brief Russian meaning (casual "ты" tone)'
+        : "concise explanation";
+
       const prompt = isFoundation
         ? `Generate a brand-new, realistic IELTS Listening Section 1 (Everyday Dialogue / Form Completion) adapted for CEFR ${cefrLevel}.
 Scenario: An everyday booking, registration, library card, clinic appointment, hotel reservation, or sports club inquiry with clear dates, places, numbers, prices, or spelling details.
+Keep script segments, question prompts, options, and answers strictly in English.
 Return strictly valid JSON:
 - "id": unique id
 - "sectionLabel": "Section 1 · Everyday Dialogue"
@@ -208,10 +235,11 @@ Return strictly valid JSON:
 - "context": 1-sentence concise context description
 - "accentsLabel": "British (UK) & American (US)"
 - "segments": 6-7 natural short spoken turns (each under 220 characters so TTS is crisp), alternating 2 speakers using accents "GB_F", "GB_M", or "US_M". Include clear dates, times, numbers, and booking details (plus 1 realistic self-correction like IELTS exams!).
-- "questions": 5 questions: 3 "form_completion" (with _____ and "wordLimit" like "ONE WORD AND/OR A NUMBER", exact "answer", "acceptedAnswers") + 2 "mcq" (4 options). Include both "explanation_en" and "explanation_id".
-- "keyVocabulary": 4 useful everyday/booking phrases or collocations from the script: { "term", "note", "cefr": "${cefrLevel}", "category": "vocab"|"collocation"|"idiom" }.`
+- "questions": 5 questions: 3 "form_completion" (with _____ and "wordLimit" like "ONE WORD AND/OR A NUMBER", exact "answer", "acceptedAnswers") + 2 "mcq" (4 options). ${explReq}
+- "keyVocabulary": 4 useful everyday/booking English phrases or collocations from the script: { "term", "note" (${vocabNotePrompt}), "cefr": "${cefrLevel}", "category": "vocab"|"collocation"|"idiom" }.`
         : `Generate a brand-new, realistic IELTS Listening Section 4 (Academic Mini-Lecture) adapted for CEFR ${cefrLevel}.
 Scenario: A university mini-lecture on science, history, urban design, psychology, or ecology, optionally followed by a brief moderator announcement.
+Keep script segments, question prompts, options, and answers strictly in English.
 Return strictly valid JSON:
 - "id": unique id
 - "sectionLabel": "Section 4 · Academic Mini-Lecture"
@@ -221,8 +249,8 @@ Return strictly valid JSON:
 - "context": 1-sentence concise context description
 - "accentsLabel": "British (UK) & American (US)"
 - "segments": 5-6 clear spoken lecture segments (each under 240 characters so TTS is crisp), using accents "GB_F", "GB_M", or "US_M".
-- "questions": 5 questions: 3 "form_completion" (Note Completion with _____ and "wordLimit" like "ONE WORD ONLY" or "NO MORE THAN TWO WORDS", exact "answer", "acceptedAnswers") + 2 nuanced inference "mcq" (4 options). Include both "explanation_en" and "explanation_id".
-- "keyVocabulary": 4-5 academic words or collocations from the lecture: { "term", "note", "cefr": "${cefrLevel}", "category": "vocab"|"collocation"|"idiom" }.`;
+- "questions": 5 questions: 3 "form_completion" (Note Completion with _____ and "wordLimit" like "ONE WORD ONLY" or "NO MORE THAN TWO WORDS", exact "answer", "acceptedAnswers") + 2 nuanced inference "mcq" (4 options). ${explReq}
+- "keyVocabulary": 4-5 academic English words or collocations from the lecture: { "term", "note" (${vocabNotePrompt}), "cefr": "${cefrLevel}", "category": "vocab"|"collocation"|"idiom" }.`;
 
       const aiRes = await generateStructuredWithHybridModel<ListeningSectionPack>(
         {
@@ -280,10 +308,18 @@ Return strictly valid JSON:
                       items: { type: Type.STRING },
                     },
                     wordLimit: { type: Type.STRING },
-                    explanation_id: { type: Type.STRING },
+                    ...(isRu
+                      ? { explanation_ru: { type: Type.STRING } }
+                      : { explanation_id: { type: Type.STRING } }),
                     explanation_en: { type: Type.STRING },
                   },
-                  required: ["id", "type", "prompt", "answer", "explanation_id"],
+                  required: [
+                    "id",
+                    "type",
+                    "prompt",
+                    "answer",
+                    isRu ? "explanation_ru" : "explanation_id",
+                  ],
                 },
               },
               keyVocabulary: {
@@ -329,6 +365,10 @@ Return strictly valid JSON:
         return NextResponse.json({
           pack: {
             ...aiRes.data,
+            questions: aiRes.data.questions.map((q) => ({
+              ...q,
+              explanation_id: q.explanation_id || "",
+            })),
             sectionType: aiRes.data.sectionType || sectionType,
             cefrLevel: aiRes.data.cefrLevel || cefrLevel,
             id: aiRes.data.id || `list-ai-${Date.now()}`,
@@ -429,12 +469,17 @@ Return strictly valid JSON with "id", "part": "${part}", "cefrLevel": "${cefrLev
 
     // Writing Task 1 or Task 2
     const taskType = body.taskType === "task1" ? "task1" : "task2";
+    const tipsLangNote = isRu
+      ? 'in natural Russian (casual "ты" tone)'
+      : "in English";
     const prompt =
       taskType === "task1"
         ? `Generate a brand-new IELTS Academic Writing Task 1 prompt (calibrated for CEFR ${cefrLevel}) with realistic comparative numeric table/chart data across 4 categories and 2 years/groups.
-Return strictly valid JSON with "id", "taskType": "task1", "cefrLevel": "${cefrLevel}", "title", "prompt", "minWords": 150, "recommendedMinutes": 20, "chartData" ({ "title", "unit", "columns" (4 strings), "rows" (2 objects with "label" and 4 numbers in "values") }), "outlineTips" (3 short structural tips), and "fallbackBand85Sample" (170-190 word Band 8.5 academic report).`
+Keep title, prompt, chartData, and fallbackBand85Sample strictly in English. Write "outlineTips" ${tipsLangNote}.
+Return strictly valid JSON with "id", "taskType": "task1", "cefrLevel": "${cefrLevel}", "title", "prompt", "minWords": 150, "recommendedMinutes": 20, "chartData" ({ "title", "unit", "columns" (4 strings), "rows" (2 objects with "label" and 4 numbers in "values") }), "outlineTips" (3 short structural tips ${tipsLangNote}), and "fallbackBand85Sample" (170-190 word Band 8.5 academic report in English).`
         : `Generate a brand-new IELTS Academic Writing Task 2 essay prompt (calibrated for CEFR ${cefrLevel}) on technology, society, environment, or education.
-Return strictly valid JSON with "id", "taskType": "task2", "cefrLevel": "${cefrLevel}", "title", "prompt", "minWords": 250, "recommendedMinutes": 40, "outlineTips" (4 short essay structure tips), and "fallbackBand85Sample" (270-300 word Band 8.5 academic essay).`;
+Keep title, prompt, and fallbackBand85Sample strictly in English. Write "outlineTips" ${tipsLangNote}.
+Return strictly valid JSON with "id", "taskType": "task2", "cefrLevel": "${cefrLevel}", "title", "prompt", "minWords": 250, "recommendedMinutes": 40, "outlineTips" (4 short essay structure tips ${tipsLangNote}), and "fallbackBand85Sample" (270-300 word Band 8.5 academic essay in English).`;
 
     const aiRes = await generateStructuredWithHybridModel<WritingTaskPack>({
       tier: "flash",

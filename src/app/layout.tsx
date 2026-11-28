@@ -8,7 +8,7 @@ import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const inter = Inter({
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
   variable: "--font-inter",
   display: "swap",
 });
@@ -121,7 +121,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="id"
+      lang="en"
       data-theme="dark"
       className={`${inter.variable} dark`}
       suppressHydrationWarning

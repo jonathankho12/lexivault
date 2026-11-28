@@ -141,7 +141,8 @@ export function PlacementTestFlow({
           const evalRes = gradePlacementParaphraseHeuristic(
             q.originalSentence || "",
             paraphraseText,
-            q.keywords
+            q.keywords,
+            lang
           );
           paraphraseScore = evalRes.score;
           paraphraseFeedback = evalRes.feedback;
@@ -222,16 +223,26 @@ export function PlacementTestFlow({
 
         <div className="space-y-1.5">
           <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
-            {isEn ? "Placement Complete" : "Placement Selesai"}
+            {isEn
+              ? "Placement Complete"
+              : lang === "ru"
+                ? "Тест уровня завершён"
+                : "Placement Selesai"}
           </p>
           <h3 className="text-2xl sm:text-3xl font-bold text-white">
-            {isEn ? "Your Level: " : "Level Kamu: "}
+            {isEn
+              ? "Your Level: "
+              : lang === "ru"
+                ? "Твой уровень: "
+                : "Level Kamu: "}
             {resultSummary.cefr} • Band {resultSummary.band.toFixed(1)}
           </h3>
           <p className="text-sm text-[#8E8E93]">
             {isEn
               ? `Objective score ${resultSummary.correctCount}/9 correct`
-              : `Skor objektif ${resultSummary.correctCount}/9 benar`}
+              : lang === "ru"
+                ? `Точность ответов: ${resultSummary.correctCount}/9`
+                : `Skor objektif ${resultSummary.correctCount}/9 benar`}
             {!isEn && resultSummary.paraphraseFeedback
               ? ` · ${resultSummary.paraphraseFeedback}`
               : ""}
@@ -271,7 +282,9 @@ export function PlacementTestFlow({
             {finishLabel ??
               (isEn
                 ? "Open Full IELTS Dashboard"
-                : "Buka Dashboard IELTS Lengkap")}
+                : lang === "ru"
+                  ? "Открыть панель IELTS"
+                  : "Buka Dashboard IELTS Lengkap")}
           </span>
           <ArrowRight className="h-4 w-4" />
         </motion.button>
@@ -288,15 +301,19 @@ export function PlacementTestFlow({
               <Sparkles className="h-3.5 w-3.5" />
               {isEn
                 ? "3–5 Minutes · 10 Adaptive Questions (A2–C2)"
-                : "3–5 Menit · 10 Soal Lintas Level (A2–C2)"}
+                : lang === "ru"
+                  ? "3–5 минут · 10 адаптивных заданий (A2–C2)"
+                  : "3–5 Menit · 10 Soal Lintas Level (A2–C2)"}
             </span>
             <h3 className="text-2xl font-bold text-white">
-              Quick Placement Test
+              {lang === "ru" ? "Быстрый тест уровня" : "Quick Placement Test"}
             </h3>
             <p className="text-sm text-[#8E8E93] leading-relaxed">
               {isEn
                 ? "Estimate your starting IELTS Band and CEFR level (A1–C2) through 4 vocabulary/grammar nuance items, 3 short academic reading inferences, 2 British/Australian listening clips, and 1 formal paraphrase task."
-                : "Ukur estimasi Band IELTS dan level CEFR awalmu (A1–C2) lewat 4 soal nuansa Vocab/Grammar, 3 soal Short Reading inference, 2 klip audio Listening aksen British/Australian, dan 1 parafrase Writing akademik."}
+                : lang === "ru"
+                  ? "Определи свой стартовый балл IELTS и уровень CEFR (A1–C2): 4 вопроса по лексике и грамматике, 3 коротких чтения, 2 аудиозаписи и 1 задание на перефраз."
+                  : "Ukur estimasi Band IELTS dan level CEFR awalmu (A1–C2) lewat 4 soal nuansa Vocab/Grammar, 3 soal Short Reading inference, 2 klip audio Listening aksen British/Australian, dan 1 parafrase Writing akademik."}
             </p>
           </div>
 
@@ -305,7 +322,13 @@ export function PlacementTestFlow({
               type="button"
               onClick={onCancel}
               className="rounded-full bg-white/[0.07] p-2 text-[#8E8E93] hover:text-white cursor-pointer"
-              aria-label={isEn ? "Close placement test" : "Tutup placement test"}
+              aria-label={
+                isEn
+                  ? "Close placement test"
+                  : lang === "ru"
+                    ? "Закрыть тест уровня"
+                    : "Tutup placement test"
+              }
             >
               <X className="h-4 w-4" />
             </button>
@@ -322,7 +345,9 @@ export function PlacementTestFlow({
             <span>
               {isEn
                 ? "Start Placement Test Now"
-                : "Mulai Placement Test Sekarang"}
+                : lang === "ru"
+                  ? "Начать тест сейчас"
+                  : "Mulai Placement Test Sekarang"}
             </span>
             <ArrowRight className="h-4 w-4" />
           </motion.button>
@@ -333,7 +358,11 @@ export function PlacementTestFlow({
               onClick={onCancel}
               className="rounded-full bg-white/[0.07] border border-white/[0.1] px-4 py-2.5 text-xs font-medium text-[#D1D1D6] hover:text-white cursor-pointer"
             >
-              {isEn ? "Skip to Modules" : "Lewati & Masuk ke Modul"}
+              {isEn
+                ? "Skip to Modules"
+                : lang === "ru"
+                  ? "Перейти к модулям"
+                  : "Lewati & Masuk ke Modul"}
             </button>
           )}
         </div>
@@ -355,7 +384,9 @@ export function PlacementTestFlow({
           <span className="font-semibold text-white">
             {isEn
               ? `Question ${index + 1} of ${total}`
-              : `Soal ${index + 1} dari ${total}`}
+              : lang === "ru"
+                ? `Вопрос ${index + 1} из ${total}`
+                : `Soal ${index + 1} dari ${total}`}
           </span>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-[#5E5CE6]/20 border border-[#5E5CE6]/35 px-2.5 py-0.5 text-[11px] font-semibold text-[#C4C2FF]">
@@ -367,7 +398,8 @@ export function PlacementTestFlow({
                 onClick={onCancel}
                 className="text-[#8E8E93] hover:text-white cursor-pointer"
               >
-                {cancelLabel ?? (isEn ? "Exit" : "Keluar")}
+                {cancelLabel ??
+                  (isEn ? "Exit" : lang === "ru" ? "Выход" : "Keluar")}
               </button>
             )}
           </div>
@@ -386,7 +418,7 @@ export function PlacementTestFlow({
       {current.passage && (
         <div className="rounded-2xl bg-white/[0.04] border border-white/[0.09] p-4 text-xs sm:text-sm leading-relaxed text-[#E5E5EA]">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-[#70BCFF] mb-1.5">
-            Short Academic Passage
+            {lang === "ru" ? "Короткий академический текст" : "Short Academic Passage"}
           </p>
           {current.passage}
         </div>
@@ -401,12 +433,16 @@ export function PlacementTestFlow({
               <p className="text-xs font-semibold text-white">
                 {isEn
                   ? `Placement Audio Clip (${current.audioSegments[0]?.speaker})`
-                  : `Audio Klip Placement (${current.audioSegments[0]?.speaker})`}
+                  : lang === "ru"
+                    ? `Аудиофрагмент (${current.audioSegments[0]?.speaker})`
+                    : `Audio Klip Placement (${current.audioSegments[0]?.speaker})`}
               </p>
               <p className="text-[11px] text-[#8E8E93]">
                 {isEn
                   ? "Click Play to hear the neural dialogue clip"
-                  : "Klik play untuk mendengarkan percakapan neural"}
+                  : lang === "ru"
+                    ? "Нажми, чтобы прослушать диалог"
+                    : "Klik play untuk mendengarkan percakapan neural"}
               </p>
             </div>
           </div>
@@ -429,10 +465,14 @@ export function PlacementTestFlow({
               {audioPlaying
                 ? isEn
                   ? "Pause"
-                  : "Jeda"
+                  : lang === "ru"
+                    ? "Пауза"
+                    : "Jeda"
                 : isEn
                   ? "Play Clip"
-                  : "Putar Klip"}
+                  : lang === "ru"
+                    ? "Слушать"
+                    : "Putar Klip"}
             </span>
           </motion.button>
         </div>
@@ -456,7 +496,9 @@ export function PlacementTestFlow({
               placeholder={
                 isEn
                   ? "Rewrite in formal IELTS C1/C2 academic style..."
-                  : "Tulis ulang dalam gaya formal IELTS C1/C2..."
+                  : lang === "ru"
+                    ? "Перефразируй в формальном академическом стиле IELTS..."
+                    : "Tulis ulang dalam gaya formal IELTS C1/C2..."
               }
               className="w-full rounded-2xl bg-white/[0.05] border border-white/[0.12] p-3.5 text-base text-[#F5F5F7] placeholder:text-[#8E8E93] focus:outline-none focus:border-[#0A84FF]/60"
             />
@@ -499,7 +541,7 @@ export function PlacementTestFlow({
           onClick={() => setIndex((i) => Math.max(0, i - 1))}
           className="rounded-full bg-white/[0.07] px-4 py-2 text-xs font-medium text-[#D1D1D6] disabled:opacity-35 cursor-pointer"
         >
-          {isEn ? "Previous" : "Sebelumnya"}
+          {isEn ? "Previous" : lang === "ru" ? "Назад" : "Sebelumnya"}
         </button>
 
         {isLast ? (
@@ -514,13 +556,21 @@ export function PlacementTestFlow({
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>
-                  {isEn ? "Calculating Level..." : "Menghitung Level..."}
+                  {isEn
+                    ? "Calculating Level..."
+                    : lang === "ru"
+                      ? "Определяю уровень..."
+                      : "Menghitung Level..."}
                 </span>
               </>
             ) : (
               <>
                 <span>
-                  {isEn ? "Finish & View Level" : "Selesai & Lihat Level"}
+                  {isEn
+                    ? "Finish & View Level"
+                    : lang === "ru"
+                      ? "Завершить и узнать"
+                      : "Selesai & Lihat Level"}
                 </span>
                 <CheckCircle2 className="h-4 w-4" />
               </>
@@ -534,7 +584,7 @@ export function PlacementTestFlow({
             onClick={() => setIndex((i) => Math.min(total - 1, i + 1))}
             className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white cursor-pointer disabled:opacity-45"
           >
-            <span>{isEn ? "Next" : "Lanjut"}</span>
+            <span>{isEn ? "Next" : lang === "ru" ? "Дальше" : "Lanjut"}</span>
             <ArrowRight className="h-4 w-4" />
           </motion.button>
         )}

@@ -26,21 +26,25 @@ function gradePlacementWritingHeuristic(
     regex: RegExp;
     en: string;
     id: string;
+    ru: string;
   }> = [
     {
       regex: /\b(i am agree|he don't|she don't|it don't|people is|smartphones is|they was|we was)\b/i,
       en: "Subject-verb agreement and auxiliary verb accuracy",
       id: "Kesesuaian subjek–kata kerja dan kata kerja bantu (auxiliary)",
+      ru: "Согласование подлежащего и сказуемого, а также вспомогательные глаголы",
     },
     {
       regex: /\b(smartphone help|phone make|it very|they very|this very|is help|are help|can helps|will helps)\b/i,
       en: "Basic verb inflection & missing 'be' verbs",
       id: "Konjugasi kata kerja dasar & penggunaan kata kerja 'be'",
+      ru: "Базовые окончания глаголов и пропуск глагола-связки «be»",
     },
     {
       regex: /\b(a people|a informations|many time|much peoples|more better|more easier)\b/i,
       en: "Countable/uncountable nouns and comparative forms",
       id: "Kata benda countable/uncountable dan bentuk komparatif",
+      ru: "Исчисляемые/неисчисляемые существительные и степени сравнения",
     },
   ];
 
@@ -143,18 +147,22 @@ function gradePlacementWritingHeuristic(
 
   const weaknessesEn: string[] = matchedErrors.map((e) => e.en);
   const weaknessesId: string[] = matchedErrors.map((e) => e.id);
+  const weaknessesRu: string[] = matchedErrors.map((e) => e.ru);
 
   if (words < 25) {
     weaknessesEn.push("Insufficient response length to demonstrate range");
     weaknessesId.push("Panjang tulisan belum cukup untuk menunjukkan variasi bahasa");
+    weaknessesRu.push("Недостаточный объём текста, чтобы раскрыть словарный запас и грамматику");
   }
   if (connectorHits === 0) {
     weaknessesEn.push("Limited use of discourse markers and complex clauses");
     weaknessesId.push("Penggunaan kata penghubung dan klausa kompleks masih terbatas");
+    weaknessesRu.push("Мало связующих слов и сложных придаточных предложений");
   }
   if (weaknessesEn.length === 0) {
     weaknessesEn.push("Higher-register lexical precision and syntactic variety");
     weaknessesId.push("Ketepatan diksi tingkat lanjut dan variasi struktur kalimat");
+    weaknessesRu.push("Более точный выбор лексики высокого регистра и разнообразие синтаксиса");
   }
 
   return {
@@ -166,12 +174,16 @@ function gradePlacementWritingHeuristic(
     has_basic_a1_a2_errors: hasBasicErrors,
     weaknesses_en: weaknessesEn.slice(0, 3),
     weaknesses_id: weaknessesId.slice(0, 3),
+    weaknesses_ru: weaknessesRu.slice(0, 3),
     summary_en: hasBasicErrors
       ? `Your ${words}-word response communicates a basic idea, but foundational grammar and sentence structure errors keep it in the ${cefr} range.`
       : `Your ${words}-word response is clear and structured (${cefr}, est. Band ${band.toFixed(1)}). Expanding complex clauses and precise vocabulary will push you higher.`,
     summary_id: hasBasicErrors
       ? `Tulisanmu (${words} kata) sudah menyampaikan ide dasar, namun kesalahan grammar dan struktur kalimat dasar masih menahannya di level ${cefr}.`
       : `Tulisanmu (${words} kata) cukup jelas dan terstruktur (${cefr}, est. Band ${band.toFixed(1)}). Menambah klausa kompleks dan diksi presisi akan menaikkan levelmu.`,
+    summary_ru: hasBasicErrors
+      ? `Твой ответ (${words} сл.) передаёт основную мысль, но базовые ошибки в грамматике и структуре фраз пока удерживают его на уровне ${cefr}.`
+      : `Твой ответ (${words} сл.) написан понятно и связно (${cefr}, ориент. Band ${band.toFixed(1)}). Более сложные конструкции и точная лексика помогут подняться выше.`,
     modelUsed: "heuristic-fallback",
   };
 }
@@ -188,8 +200,12 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       prompt?: string;
       response?: string;
+      lang?: "en" | "id" | "ru";
     };
 
+    const lang =
+      body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
+    const isRu = lang === "ru";
     const promptText = body.prompt?.trim() ?? "";
     const userResponse = body.response?.trim() ?? "";
 
@@ -229,9 +245,8 @@ Return strictly valid JSON:
 - "lexical_range": number (2.5 to 9.0 in 0.5 increments)
 - "has_basic_a1_a2_errors": boolean
 - "weaknesses_en": array of 1–3 concise, specific English diagnostic weaknesses observed in this writing
-- "weaknesses_id": array of 1–3 matching Indonesian translations of weaknesses_en
-- "summary_en": 1–2 concise sentences diagnosing the writing in English
-- "summary_id": 1–2 concise sentences diagnosing the writing in Indonesian`;
+${isRu ? '- "weaknesses_ru": array of 1–3 matching natural Russian translations (casual "ты" tone) of weaknesses_en\n' : '- "weaknesses_id": array of 1–3 matching Indonesian translations of weaknesses_en\n'}- "summary_en": 1–2 concise sentences diagnosing the writing in English
+${isRu ? '- "summary_ru": 1–2 concise sentences diagnosing the writing in natural Russian (casual "ты" tone)' : '- "summary_id": 1–2 concise sentences diagnosing the writing in Indonesian'}`;
 
     const aiRes = await generateStructuredWithHybridModel<
       Omit<PlacementWritingGradeResult, "modelUsed">
@@ -255,12 +270,22 @@ Return strictly valid JSON:
             type: Type.ARRAY,
             items: { type: Type.STRING },
           },
-          weaknesses_id: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
+          ...(isRu
+            ? {
+                weaknesses_ru: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                summary_ru: { type: Type.STRING },
+              }
+            : {
+                weaknesses_id: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                summary_id: { type: Type.STRING },
+              }),
           summary_en: { type: Type.STRING },
-          summary_id: { type: Type.STRING },
         },
         required: [
           "cefr",
@@ -270,9 +295,9 @@ Return strictly valid JSON:
           "lexical_range",
           "has_basic_a1_a2_errors",
           "weaknesses_en",
-          "weaknesses_id",
+          isRu ? "weaknesses_ru" : "weaknesses_id",
           "summary_en",
-          "summary_id",
+          isRu ? "summary_ru" : "summary_id",
         ],
       },
     });
@@ -305,9 +330,20 @@ Return strictly valid JSON:
       const weaknessesEn = Array.isArray(aiRes.data.weaknesses_en)
         ? aiRes.data.weaknesses_en.filter(Boolean).slice(0, 3)
         : [];
+      const weaknessesRu = Array.isArray(aiRes.data.weaknesses_ru)
+        ? aiRes.data.weaknesses_ru.filter(Boolean).slice(0, 3)
+        : isRu
+          ? weaknessesEn
+          : undefined;
       const weaknessesId = Array.isArray(aiRes.data.weaknesses_id)
         ? aiRes.data.weaknesses_id.filter(Boolean).slice(0, 3)
-        : weaknessesEn;
+        : weaknessesRu ?? weaknessesEn;
+
+      const summaryRu =
+        aiRes.data.summary_ru?.trim() ||
+        (isRu
+          ? `Уровень оценён как ${cefr} (Band ${band.toFixed(1)}).`
+          : undefined);
 
       const normalized: PlacementWritingGradeResult = {
         cefr,
@@ -318,12 +354,15 @@ Return strictly valid JSON:
         has_basic_a1_a2_errors: hasBasic,
         weaknesses_en: weaknessesEn,
         weaknesses_id: weaknessesId,
+        ...(weaknessesRu ? { weaknesses_ru: weaknessesRu } : {}),
         summary_en:
           aiRes.data.summary_en?.trim() ||
           `Assessed at ${cefr} (Band ${band.toFixed(1)}).`,
         summary_id:
           aiRes.data.summary_id?.trim() ||
+          summaryRu ||
           `Dinilai pada level ${cefr} (Band ${band.toFixed(1)}).`,
+        ...(summaryRu ? { summary_ru: summaryRu } : {}),
         modelUsed: aiRes.modelUsed,
       };
 

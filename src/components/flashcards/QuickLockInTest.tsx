@@ -344,14 +344,17 @@ export function QuickLockInTest({
           <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
             {isEn
               ? `Lock-In Test Complete · Round ${roundNumber}`
-              : `Tes Lock-In Selesai · Ronde ${roundNumber}`}
+              : lang === "ru"
+                ? `Блиц-тест завершён · Раунд ${roundNumber}`
+                : `Tes Lock-In Selesai · Ronde ${roundNumber}`}
           </p>
           <h3 className="text-2xl sm:text-3xl font-bold text-white">
-            {accuracy}% {isEn ? "Locked In" : "Terkunci"}
+            {accuracy}%{" "}
+            {isEn ? "Locked In" : lang === "ru" ? "Усвоено" : "Terkunci"}
           </h3>
           <p className="text-sm text-[#8E8E93]">
             {correctCount} / {results.length}{" "}
-            {isEn ? "correct" : "benar"}
+            {isEn ? "correct" : lang === "ru" ? "верно" : "benar"}
             {xpEarned > 0 ? ` · +${xpEarned} XP` : ""}
           </p>
         </div>
@@ -374,12 +377,20 @@ export function QuickLockInTest({
                 {item.isCorrect ? (
                   <>
                     <TrendingUp className="h-3.5 w-3.5" />
-                    <span>{isEn ? "Mastery +1" : "Mastery +1"}</span>
+                    <span>
+                      {lang === "ru" ? "Уровень +1" : "Mastery +1"}
+                    </span>
                   </>
                 ) : (
                   <>
                     <TrendingDown className="h-3.5 w-3.5" />
-                    <span>{isEn ? "Review sooner" : "Ulang lebih cepat"}</span>
+                    <span>
+                      {isEn
+                        ? "Review sooner"
+                        : lang === "ru"
+                          ? "Повторить раньше"
+                          : "Ulang lebih cepat"}
+                    </span>
                   </>
                 )}
               </span>
@@ -399,7 +410,13 @@ export function QuickLockInTest({
               className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(10,132,255,0.3)] cursor-pointer"
             >
               <Sparkles className="h-4 w-4" />
-              <span>{isEn ? "Start Next Round" : "Mulai Ronde Berikutnya"}</span>
+              <span>
+                {isEn
+                  ? "Start Next Round"
+                  : lang === "ru"
+                    ? "Следующий раунд"
+                    : "Mulai Ronde Berikutnya"}
+              </span>
             </motion.button>
           )}
 
@@ -413,7 +430,13 @@ export function QuickLockInTest({
             className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] border border-white/[0.15] px-5 py-2.5 text-sm font-semibold text-[#F5F5F7] hover:bg-white/[0.14] cursor-pointer"
           >
             <Layers className="h-4 w-4 text-[#70BCFF]" />
-            <span>{isEn ? "Back to Deck" : "Kembali ke Deck"}</span>
+            <span>
+              {isEn
+                ? "Back to Deck"
+                : lang === "ru"
+                  ? "К карточкам"
+                  : "Kembali ke Deck"}
+            </span>
           </motion.button>
         </div>
       </motion.div>
@@ -441,7 +464,13 @@ export function QuickLockInTest({
           <div className="flex items-center gap-2 min-w-0">
             <span className="whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[#BF5AF2]/20 border border-[#BF5AF2]/40 px-3 py-1 text-xs font-semibold text-[#E5B8FF]">
               <Sparkles className="h-3 w-3" />
-              <span>{isEn ? "Quick Lock-In Test" : "Tes Cepat Lock-In"}</span>
+              <span>
+                {isEn
+                  ? "Quick Lock-In Test"
+                  : lang === "ru"
+                    ? "Блиц-проверка"
+                    : "Tes Cepat Lock-In"}
+              </span>
             </span>
             <span className="whitespace-nowrap text-xs font-semibold text-[#8E8E93] tabular-nums">
               {currentIndex + 1} / {questions.length}
@@ -457,7 +486,13 @@ export function QuickLockInTest({
                 playGlassClick();
                 onExit();
               }}
-              aria-label={isEn ? "Exit Lock-In Test" : "Keluar Tes Lock-In"}
+              aria-label={
+                isEn
+                  ? "Exit Lock-In Test"
+                  : lang === "ru"
+                    ? "Выйти из блиц-теста"
+                    : "Keluar Tes Lock-In"
+              }
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[#8E8E93] hover:text-white cursor-pointer"
             >
               <X className="h-4 w-4" />
@@ -492,10 +527,14 @@ export function QuickLockInTest({
                 {currentQuestion.mode === "fill_blank"
                   ? isEn
                     ? "Context Fill-in-the-Blank"
-                    : "Lengkapi Kalimat Konteks"
+                    : lang === "ru"
+                      ? "Пропуск в контексте"
+                      : "Lengkapi Kalimat Konteks"
                   : isEn
                     ? "Meaning Recall"
-                    : "Tebak Arti"}
+                    : lang === "ru"
+                      ? "Вспомни значение"
+                      : "Tebak Arti"}
               </span>
               <AudioButton
                 text={currentQuestion.word.term}
@@ -530,7 +569,11 @@ export function QuickLockInTest({
                   )}
                 </p>
                 <p className="text-xs text-[#8E8E93] leading-relaxed">
-                  {isEn ? "Hint: " : "Petunjuk: "}
+                  {isEn
+                    ? "Hint: "
+                    : lang === "ru"
+                      ? "Подсказка: "
+                      : "Petunjuk: "}
                   {getLocalizedMeaning(currentQuestion.word, lang)}
                 </p>
               </div>
@@ -539,7 +582,9 @@ export function QuickLockInTest({
                 <p className="text-xs uppercase tracking-wider text-[#8E8E93]">
                   {isEn
                     ? "Choose the accurate meaning for:"
-                    : "Pilih arti yang tepat untuk:"}
+                    : lang === "ru"
+                      ? "Выбери точное значение для:"
+                      : "Pilih arti yang tepat untuk:"}
                 </p>
                 <h3 className="text-3xl sm:text-4xl font-bold tracking-tight text-white break-words">
                   {currentQuestion.word.term}
@@ -626,10 +671,14 @@ export function QuickLockInTest({
                     {isCorrect
                       ? isEn
                         ? "Locked in! Mastery boosted (+15 XP)"
-                        : "Terkunci! Mastery meningkat (+15 XP)"
+                        : lang === "ru"
+                          ? "Отлично! Прогресс вырос (+15 XP)"
+                          : "Terkunci! Mastery meningkat (+15 XP)"
                       : isEn
                         ? "Scheduled to return sooner in future rounds"
-                        : "Dijadwalkan muncul lebih cepat di ronde berikutnya"}
+                        : lang === "ru"
+                          ? "Вернём это слово раньше в следующих раундах"
+                          : "Dijadwalkan muncul lebih cepat di ronde berikutnya"}
                   </span>
                 </div>
 
@@ -644,10 +693,14 @@ export function QuickLockInTest({
                     {currentIndex + 1 >= questions.length
                       ? isEn
                         ? "See Results"
-                        : "Lihat Hasil"
+                        : lang === "ru"
+                          ? "Итоги"
+                          : "Lihat Hasil"
                       : isEn
                         ? "Next"
-                        : "Lanjut"}
+                        : lang === "ru"
+                          ? "Дальше"
+                          : "Lanjut"}
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </motion.button>

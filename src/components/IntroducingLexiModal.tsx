@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { LexiAvatar } from "@/components/LexiAvatar";
+import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { IOS_SHEET_SPRING, IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 export function IntroducingLexiModal() {
   const { isLexiIntroOpen, completeLexiIntro, lexiEnabled, setLexiEnabled } =
     useLexiVault();
+  const { t } = useLanguage();
   const [submitting, setSubmitting] = useState<"check-level" | "skip" | null>(
     null
   );
@@ -77,7 +79,7 @@ export function IntroducingLexiModal() {
               {/* Guardian Badge */}
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF]">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                <span>Vocabulary Guardian</span>
+                <span>{t.lexi.intro.badge}</span>
               </span>
 
               {/* Minimalist Rottweiler Avatar with smooth entrance & live ON/OFF reaction */}
@@ -114,11 +116,10 @@ export function IntroducingLexiModal() {
                   id="lexi-intro-headline"
                   className="text-2xl font-bold tracking-tight text-white"
                 >
-                  Meet Lexi, your vocabulary guardian.
+                  {t.lexi.intro.headline}
                 </h2>
                 <p className="text-sm text-[#D1D1D6] leading-relaxed">
-                  Every daily drill keeps your English sharp—and keeps Lexi
-                  happy. Skip too many days, and your vault gets dusty.
+                  {t.lexi.intro.subcopy}
                 </p>
               </div>
 
@@ -127,19 +128,19 @@ export function IntroducingLexiModal() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs sm:text-sm font-semibold text-white">
-                      Lexi Companion
+                      {t.lexi.intro.companionTitle}
                     </p>
                     <p className="text-[11px] font-medium text-[#70BCFF]">
                       {lexiEnabled
-                        ? "Active on your Dashboard"
-                        : "Paused — hidden on Dashboard"}
+                        ? t.lexi.intro.companionActive
+                        : t.lexi.intro.companionPaused}
                     </p>
                   </div>
 
                   <button
                     type="button"
                     role="switch"
-                    aria-label="Enable Lexi Companion"
+                    aria-label={t.lexi.intro.companionToggleAria}
                     aria-checked={lexiEnabled}
                     onClick={handleToggleLexi}
                     className={cn(
@@ -159,7 +160,7 @@ export function IntroducingLexiModal() {
                 </div>
 
                 <p className="text-[11px] text-[#8E8E93] leading-snug">
-                  You can turn Lexi on or off anytime in Settings.
+                  {t.lexi.intro.settingsNote}
                 </p>
               </div>
 
@@ -175,11 +176,11 @@ export function IntroducingLexiModal() {
                   {submitting === "check-level" ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Opening Level Check...</span>
+                      <span>{t.lexi.intro.openingLevelCheck}</span>
                     </>
                   ) : (
                     <>
-                      <span>Say Hi & Check My Level</span>
+                      <span>{t.lexi.intro.primaryCta}</span>
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
@@ -191,7 +192,9 @@ export function IntroducingLexiModal() {
                   onClick={() => void handleAction("skip")}
                   className="w-full rounded-full py-2.5 px-4 text-xs font-medium text-[#8E8E93] hover:text-white hover:bg-white/[0.05] transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  {submitting === "skip" ? "Opening Dashboard..." : "Skip to Dashboard"}
+                  {submitting === "skip"
+                    ? t.lexi.intro.openingDashboard
+                    : t.lexi.intro.skipCta}
                 </button>
               </div>
             </div>

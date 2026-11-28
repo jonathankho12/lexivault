@@ -303,7 +303,7 @@ export function StatsView() {
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-[#30D158]" />
-              {isEn ? "Correct" : "Benar"}
+              {isEn ? "Correct" : lang === "ru" ? "Верно" : "Benar"}
             </span>
           </div>
         </div>
@@ -356,7 +356,13 @@ export function StatsView() {
                     isToday ? "text-[#0A84FF] font-bold" : "text-[#8E8E93]"
                   )}
                 >
-                  {isToday ? (isEn ? "Today" : "Hari Ini") : point.label}
+                  {isToday
+                    ? isEn
+                      ? "Today"
+                      : lang === "ru"
+                        ? "Сегодня"
+                        : "Hari Ini"
+                    : point.label}
                 </span>
               </div>
             );
@@ -374,16 +380,20 @@ export function StatsView() {
             <h3 className="text-base sm:text-lg font-bold text-white">
               {isEn
                 ? "Vault CEFR Level Breakdown"
-                : "Distribusi Level CEFR di Vault"}
+                : lang === "ru"
+                  ? "Распределение по уровням CEFR"
+                  : "Distribusi Level CEFR di Vault"}
             </h3>
             <p className="text-xs text-[#8E8E93]">
               {isEn
                 ? "Objective A1–C2 distribution across all expressions saved in your Vault."
-                : "Distribusi objektif A1–C2 dari seluruh kosakata & idiom yang tersimpan di Vault."}
+                : lang === "ru"
+                  ? "Распределение всех сохранённых выражений в словаре от A1 до C2."
+                  : "Distribusi objektif A1–C2 dari seluruh kosakata & idiom yang tersimpan di Vault."}
             </p>
           </div>
           <span className="text-xs font-semibold text-[#8E8E93]">
-            {words.length} {isEn ? "total" : "total"}
+            {words.length} {lang === "ru" ? "всего" : "total"}
           </span>
         </div>
 
@@ -459,10 +469,14 @@ export function StatsView() {
             {words.some((w) => w.wrong_count > 0)
               ? isEn
                 ? "All weak words cleared — keep up your momentum!"
-                : "Semua kata terlemah sudah dibersihkan — pertahankan ritmemu!"
+                : lang === "ru"
+                  ? "Все сложные слова отработаны — так держать!"
+                  : "Semua kata terlemah sudah dibersihkan — pertahankan ritmemu!"
               : isEn
                 ? "No missed words yet — keep up your accuracy!"
-                : "Belum ada kata dengan catatan kesalahan — pertahankan akurasimu!"}
+                : lang === "ru"
+                  ? "Ошибок пока нет — отличная точность!"
+                  : "Belum ada kata dengan catatan kesalahan — pertahankan akurasimu!"}
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -502,7 +516,9 @@ export function StatsView() {
                             : "bg-[#FF9F0A]/15 border-[#FF9F0A]/35 text-[#FFD18C]"
                         )}
                       >
-                        {word.wrong_count} {isEn ? "missed" : "salah"} · {acc}%
+                        {word.wrong_count}{" "}
+                        {isEn ? "missed" : lang === "ru" ? "ошибок" : "salah"} ·{" "}
+                        {acc}%
                       </span>
                       {streakCount === 1 && (
                         <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[#30D158]/12 border border-[#30D158]/30 text-[#7CF099]">
@@ -534,16 +550,22 @@ export function StatsView() {
           <h3 className="text-base font-bold text-white">
             {isEn
               ? "Start from Scratch (Personal Vocabulary Only)"
-              : "Mulai dari Nol (Data Kosakata Pribadi)"}
+              : lang === "ru"
+                ? "Начать с нуля (только свой словарь)"
+                : "Mulai dari Nol (Data Kosakata Pribadi)"}
           </h3>
           <p className="text-xs text-[#8E8E93] max-w-xl">
             {hasDemoWords
               ? isEn
                 ? "Remove the 5 starter C1–C2 expressions so your Vault contains 100% words you added yourself (your own saved words will remain untouched)."
-                : "Hapus 5 kata/idiom starter bawaan agar Vault berisi 100% kosakata yang kamu simpan sendiri (kata yang sudah kamu tambahkan tidak akan terhapus)."
+                : lang === "ru"
+                  ? "Удали 5 стартовых выражений C1–C2, чтобы в словаре остались только твои собственные слова."
+                  : "Hapus 5 kata/idiom starter bawaan agar Vault berisi 100% kosakata yang kamu simpan sendiri (kata yang sudah kamu tambahkan tidak akan terhapus)."
               : isEn
                 ? "Starter items cleared — your Vault now contains 100% your own vocabulary."
-                : "Data starter sudah dibersihkan — Vault kamu sekarang berisi 100% kosakata milikmu sendiri."}
+                : lang === "ru"
+                  ? "Стартовые карточки удалены — теперь в словаре только твоя лексика."
+                  : "Data starter sudah dibersihkan — Vault kamu sekarang berisi 100% kosakata milikmu sendiri."}
           </p>
         </div>
 
@@ -551,7 +573,11 @@ export function StatsView() {
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#30D158]/15 border border-[#30D158]/35 px-4 py-2 text-xs font-semibold text-[#7CF099]">
             <CheckCircle2 className="h-3.5 w-3.5" />
             <span>
-              {isEn ? "Personal Vault Active" : "Kosakata Sendiri Aktif"}
+              {isEn
+                ? "Personal Vault Active"
+                : lang === "ru"
+                  ? "Только личный словарь"
+                  : "Kosakata Sendiri Aktif"}
             </span>
           </span>
         ) : !confirmReset ? (
@@ -565,7 +591,9 @@ export function StatsView() {
             <span>
               {isEn
                 ? "Start from Scratch (Remove Starter)"
-                : "Mulai dari Nol (Hapus Starter)"}
+                : lang === "ru"
+                  ? "Очистить стартовый набор"
+                  : "Mulai dari Nol (Hapus Starter)"}
             </span>
           </motion.button>
         ) : (
@@ -576,7 +604,7 @@ export function StatsView() {
               onClick={() => setConfirmReset(false)}
               className="rounded-full bg-white/[0.08] px-3.5 py-2 text-xs font-medium text-[#8E8E93] hover:text-white cursor-pointer"
             >
-              {isEn ? "Cancel" : "Batal"}
+              {isEn ? "Cancel" : lang === "ru" ? "Отмена" : "Batal"}
             </motion.button>
             <motion.button
               type="button"
@@ -588,7 +616,11 @@ export function StatsView() {
               }}
               className="rounded-full bg-[#FF453A] px-4 py-2 text-xs font-semibold text-white cursor-pointer"
             >
-              {isEn ? "Confirm Remove Starter" : "Konfirmasi Hapus Starter"}
+              {isEn
+                ? "Confirm Remove Starter"
+                : lang === "ru"
+                  ? "Удалить стартовые"
+                  : "Konfirmasi Hapus Starter"}
             </motion.button>
           </div>
         )}

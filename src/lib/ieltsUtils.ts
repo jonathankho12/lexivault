@@ -1,3 +1,4 @@
+import type { AppLanguage } from "@/lib/i18n";
 import type {
   CefrLevel,
   WritingGradeResult,
@@ -62,15 +63,21 @@ export function countWords(text: string): number {
 export function gradePlacementParaphraseHeuristic(
   original: string,
   userAnswer: string,
-  keywords: string[] = []
+  keywords: string[] = [],
+  lang: AppLanguage = "id"
 ): { score: number; feedback: string } {
+  const pick = (en: string, id: string, ru: string) =>
+    lang === "en" ? en : lang === "ru" ? ru : id;
   const clean = userAnswer.trim();
   const words = countWords(clean);
   if (words < 5) {
     return {
       score: 0,
-      feedback:
+      feedback: pick(
+        "Paraphrase is too short. Rewrite the original sentence using different vocabulary.",
         "Parafrase terlalu singkat. Tulis ulang makna kalimat asli dengan kosakata berbeda.",
+        "Перефраз слишком короткий. Передай смысл исходного предложения другими словами."
+      ),
     };
   }
 
@@ -79,8 +86,11 @@ export function gradePlacementParaphraseHeuristic(
   if (normUser === normOrig) {
     return {
       score: 0.25,
-      feedback:
+      feedback: pick(
+        "Your sentence is almost identical to the original. Use synonyms and vary sentence structure.",
         "Kalimat hampir identik dengan kalimat asli. Gunakan sinonim dan ubah struktur kalimat.",
+        "Предложение почти совпадает с оригиналом. Используй синонимы и измени структуру фразы."
+      ),
     };
   }
 
@@ -94,15 +104,26 @@ export function gradePlacementParaphraseHeuristic(
     score,
     feedback:
       score >= 1
-        ? "Parafrase akurat — makna utama tersampaikan dengan struktur kalimat baru."
-        : "Makna cukup tertangkap; coba variasikan sinonim akademik agar lebih natural.",
+        ? pick(
+            "Accurate paraphrase — core meaning preserved with a fresh sentence structure.",
+            "Parafrase akurat — makna utama tersampaikan dengan struktur kalimat baru.",
+            "Точный перефраз — главный смысл передан новой структурой предложения."
+          )
+        : pick(
+            "Core meaning comes through; vary academic synonyms further for a more natural tone.",
+            "Makna cukup tertangkap; coba variasikan sinonim akademik agar lebih natural.",
+            "Основная мысль передана; попробуй подобрать более точные академические синонимы."
+          ),
   };
 }
 
 export function gradeWritingHeuristic(
   task: WritingTaskPack,
-  essay: string
+  essay: string,
+  lang: AppLanguage = "id"
 ): WritingGradeResult {
+  const pick = (en: string, id: string, ru: string) =>
+    lang === "en" ? en : lang === "ru" ? ru : id;
   const words = countWords(essay);
   const sentences = essay
     .split(/[.!?]+/)
@@ -230,8 +251,16 @@ export function gradeWritingHeuristic(
     },
     summary_id:
       words < task.minWords
-        ? `Tulisanmu berjumlah ${words} kata (di bawah target minimal ${task.minWords} kata), sehingga skor dibatasi secara ketat sesuai rubrik IELTS. Kembangkan argumen/rincian data dan coba evaluasi ulang saat koneksi AI aktif.`
-        : `Tulisanmu berjumlah ${words} kata dan sudah memenuhi panjang minimal ${task.minWords} kata. Perkuat presisi kolokasi akademik dan variasi struktur kalimat kompleks untuk naik ke Band ${targetUpgradeBand.toFixed(1)}.`,
+        ? pick(
+            `Your response has ${words} words (below the ${task.minWords}-word minimum), which strictly caps your IELTS score under the rubric. Expand your supporting details and re-evaluate once AI connection is active.`,
+            `Tulisanmu berjumlah ${words} kata (di bawah target minimal ${task.minWords} kata), sehingga skor dibatasi secara ketat sesuai rubrik IELTS. Kembangkan argumen/rincian data dan coba evaluasi ulang saat koneksi AI aktif.`,
+            `В твоём ответе ${words} слов (ниже минимума в ${task.minWords} слов), что строго ограничивает балл по критериям IELTS. Разверни аргументы и детали, а затем проверь снова при активном ИИ.`
+          )
+        : pick(
+            `Your response has ${words} words and meets the ${task.minWords}-word minimum. Sharpen academic collocation precision and complex sentence variety to push toward Band ${targetUpgradeBand.toFixed(1)}.`,
+            `Tulisanmu berjumlah ${words} kata dan sudah memenuhi panjang minimal ${task.minWords} kata. Perkuat presisi kolokasi akademik dan variasi struktur kalimat kompleks untuk naik ke Band ${targetUpgradeBand.toFixed(1)}.`,
+            `В твоём ответе ${words} слов — минимальный объём в ${task.minWords} слов выполнен. Усиль точность академических сочетаний и разнообразие сложных конструкций, чтобы выйти на Band ${targetUpgradeBand.toFixed(1)}.`
+          ),
     inline_errors: [
       {
         original: firstSentence,
@@ -250,8 +279,11 @@ export function gradeWritingHeuristic(
           task.taskType === "task1"
             ? "Overall, the data reveals a pronounced divergence across the surveyed categories over the given period."
             : "While rapid technological adoption brings undeniable convenience, its long-term societal trade-offs warrant careful regulation.",
-        reason_id:
+        reason_id: pick(
+          "Uses tighter, more objective Band 8.0+ academic phrasing with complex clause structure.",
           "Menggunakan frasa akademik yang lebih ringkas, objektif, dan berstruktur klausa kompleks khas Band 8.0+.",
+          "Более точная и объективная академическая формулировка уровня Band 8.0+ со сложной структурой предложения."
+        ),
       },
     ],
     plus_one_band_rewrite:

@@ -23,15 +23,15 @@ interface LanguageContextValue {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<AppLanguage>("id");
+  const [lang, setLangState] = useState<AppLanguage>("en");
 
   useEffect(() => {
     const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    if (saved === "id" || saved === "en") {
+    if (saved === "en" || saved === "id" || saved === "ru") {
       setLangState(saved);
       document.documentElement.lang = saved;
     } else {
-      document.documentElement.lang = "id";
+      document.documentElement.lang = "en";
     }
   }, []);
 

@@ -222,27 +222,27 @@ export function getMasteryStageMeta(
 ): { label: string; badgeClass: string } {
   if (stage === "mastered") {
     return {
-      label: lang === "en" ? "Mastered" : "Dikuasai",
+      label: lang === "en" ? "Mastered" : lang === "ru" ? "Освоено" : "Dikuasai",
       badgeClass:
         "bg-[#BF5AF2]/18 border-[#BF5AF2]/40 text-[#E5B8FF]",
     };
   }
   if (stage === "solid") {
     return {
-      label: lang === "en" ? "Solid" : "Kuat",
+      label: lang === "en" ? "Solid" : lang === "ru" ? "Уверенно" : "Kuat",
       badgeClass:
         "bg-[#30D158]/16 border-[#30D158]/40 text-[#7CF099]",
     };
   }
   if (stage === "learning") {
     return {
-      label: lang === "en" ? "Learning" : "Belajar",
+      label: lang === "en" ? "Learning" : lang === "ru" ? "Изучается" : "Belajar",
       badgeClass:
         "bg-[#FF9F0A]/16 border-[#FF9F0A]/40 text-[#FFD18C]",
     };
   }
   return {
-    label: lang === "en" ? "New" : "Baru",
+    label: lang === "en" ? "New" : lang === "ru" ? "Новое" : "Baru",
     badgeClass:
       "bg-[#0A84FF]/16 border-[#0A84FF]/35 text-[#70BCFF]",
   };
@@ -263,6 +263,9 @@ export function previewSm2IntervalLabels(
           : res.interval_days === 1
             ? "1 day"
             : `${res.interval_days} days`;
+    } else if (lang === "ru") {
+      labels[r] =
+        res.interval_days === 0 ? "Эта сессия" : `${res.interval_days} дн.`;
     } else {
       labels[r] =
         res.interval_days === 0 ? "Sesi ini" : `${res.interval_days} hari`;

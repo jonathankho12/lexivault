@@ -17,6 +17,7 @@ import type { StudyLog } from "@/types/lexivault";
 
 const WEEKDAYS_ID = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
 function buildMonthKey(year: number, monthIndex: number): string {
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
@@ -26,8 +27,11 @@ export function StreakCalendar() {
   const { studyLogs, streak, todayStr, isHydrated } = useLexiVault();
   const { lang } = useLanguage();
   const isEn = lang === "en";
-  const locale = isEn ? "en-US" : "id-ID";
-  const weekdays = isEn ? WEEKDAYS_EN : WEEKDAYS_ID;
+  const isRu = lang === "ru";
+  const pick = (en: string, id: string, ru: string) =>
+    isEn ? en : isRu ? ru : id;
+  const locale = isEn ? "en-US" : isRu ? "ru-RU" : "id-ID";
+  const weekdays = isEn ? WEEKDAYS_EN : isRu ? WEEKDAYS_RU : WEEKDAYS_ID;
 
   const [todayYear, todayMonth] = useMemo(() => {
     const parts = todayStr.split("-").map(Number);
@@ -145,16 +149,24 @@ export function StreakCalendar() {
           </div>
           <div>
             <h3 className="text-base sm:text-lg font-bold text-white">
-              Monthly Streak Calendar
+              {pick(
+                "Monthly Streak Calendar",
+                "Kalender Streak Bulanan",
+                "Календарь серии"
+              )}
             </h3>
             <p className="text-xs text-[#8E8E93]">
               {isHydrated
-                ? isEn
-                  ? `${calendarData.activeDaysCount} active days this month`
-                  : `${calendarData.activeDaysCount} hari aktif di bulan ini`
-                : isEn
-                  ? "Loading calendar..."
-                  : "Memuat kalender..."}
+                ? pick(
+                    `${calendarData.activeDaysCount} active days this month`,
+                    `${calendarData.activeDaysCount} hari aktif di bulan ini`,
+                    `Активных дней в этом месяце: ${calendarData.activeDaysCount}`
+                  )
+                : pick(
+                    "Loading calendar...",
+                    "Memuat kalender...",
+                    "Загрузка календаря..."
+                  )}
             </p>
           </div>
         </div>
@@ -163,7 +175,11 @@ export function StreakCalendar() {
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#30D158]/15 border border-[#30D158]/35 px-3 py-1 text-xs font-bold text-[#7CF099]">
             <Flame className="h-3.5 w-3.5 text-[#30D158]" />
             {isHydrated
-              ? `${streak} ${isEn ? (streak === 1 ? "day" : "days") : "hari"}`
+              ? `${streak} ${pick(
+                  streak === 1 ? "day" : "days",
+                  "hari",
+                  "дн."
+                )}`
               : "—"}
           </span>
 
@@ -172,7 +188,11 @@ export function StreakCalendar() {
               type="button"
               whileTap={TAP_SCALE}
               onClick={() => handleShiftMonth(-1)}
-              aria-label={isEn ? "Previous month" : "Bulan sebelumnya"}
+              aria-label={pick(
+                "Previous month",
+                "Bulan sebelumnya",
+                "Предыдущий месяц"
+              )}
               className="flex h-7 w-7 items-center justify-center rounded-full text-[#8E8E93] hover:text-white hover:bg-white/[0.08] cursor-pointer"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -185,7 +205,11 @@ export function StreakCalendar() {
               whileTap={TAP_SCALE}
               disabled={isViewingCurrentMonth}
               onClick={() => handleShiftMonth(1)}
-              aria-label={isEn ? "Next month" : "Bulan berikutnya"}
+              aria-label={pick(
+                "Next month",
+                "Bulan berikutnya",
+                "Следующий месяц"
+              )}
               className="flex h-7 w-7 items-center justify-center rounded-full text-[#8E8E93] hover:text-white hover:bg-white/[0.08] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <ChevronRight className="h-4 w-4" />
@@ -250,9 +274,7 @@ export function StreakCalendar() {
         <span className="font-medium text-[#F5F5F7]">
           {formattedInspectedDate}
           {inspectedDate === todayStr
-            ? isEn
-              ? " (Today)"
-              : " (Hari Ini)"
+            ? pick(" (Today)", " (Hari Ini)", " (Сегодня)")
             : ""}
         </span>
 
@@ -260,18 +282,24 @@ export function StreakCalendar() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-[#30D158]/15 border border-[#30D158]/30 px-2.5 py-0.5 font-semibold text-[#7CF099]">
               {inspectedLog.reviews_count}{" "}
-              {isEn ? "reviews" : "review"} ({inspectedLog.correct_count}{" "}
-              {isEn ? "correct" : "benar"})
+              {pick("reviews", "review", "повторений")} (
+              {inspectedLog.correct_count}{" "}
+              {pick("correct", "benar", "верно")})
             </span>
             {inspectedLog.words_added > 0 && (
               <span className="rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/30 px-2.5 py-0.5 font-semibold text-[#70BCFF]">
-                +{inspectedLog.words_added} {isEn ? "new words" : "kata baru"}
+                +{inspectedLog.words_added}{" "}
+                {pick("new words", "kata baru", "новых слов")}
               </span>
             )}
           </div>
         ) : (
           <span className="text-[#8E8E93]">
-            {isEn ? "No study activity yet" : "Belum ada aktivitas belajar"}
+            {pick(
+              "No study activity yet",
+              "Belum ada aktivitas belajar",
+              "Пока нет активности"
+            )}
           </span>
         )}
       </div>

@@ -10,6 +10,7 @@ export interface DistractorCandidateItem {
   cefr?: string;
   meaning_id?: string | null;
   meaning_en?: string | null;
+  meaning_ru?: string | null;
 }
 
 export interface AiDistractorRequestTarget {
@@ -115,7 +116,7 @@ export function normalizeMeaningOption(raw: string): string {
   if (!strippedEdge) return "";
 
   const capitalized = strippedEdge.replace(
-    /^([^a-zA-ZÀ-ÿ]*)([a-zA-ZÀ-ÿ])/,
+    /^([^a-zA-ZÀ-ÿА-Яа-яЁё]*)([a-zA-ZÀ-ÿА-Яа-яЁё])/,
     (_, prefix: string, first: string) => `${prefix}${first.toUpperCase()}`
   );
 
@@ -154,7 +155,7 @@ export function normalizeUniformMcqOptions(
     const trimmed = raw.replace(/\s+/g, " ").trim();
     if (!trimmed) return "";
     const capitalized = trimmed.replace(
-      /^([^a-zA-ZÀ-ÿ]*)([a-zA-ZÀ-ÿ])/,
+      /^([^a-zA-ZÀ-ÿА-Яа-яЁё]*)([a-zA-ZÀ-ÿА-Яа-яЁё])/,
       (_, prefix: string, first: string) => `${prefix}${first.toUpperCase()}`
     );
     if (!hasSentenceStyle) {
@@ -212,6 +213,26 @@ const STATIC_MEANING_FALLBACKS: Record<
       "Menetapkan batasan yang jelas sebelum menginvestasikan sumber daya bersama.",
       "Memperkuat pernyataan awal dengan bukti kontekstual yang baru diverifikasi.",
       "Menyeimbangkan prioritas yang saling bertentangan tanpa memicu penolakan.",
+    ],
+  },
+  ru: {
+    vocab: [
+      "Сохранять спокойствие и сдержанность при внезапном внешнем давлении.",
+      "Постепенно размывать устоявшийся стандарт чередой мелких исключений.",
+      "Скрытое допущение, влияющее на решения, даже если его не озвучивают вслух.",
+      "Способный быстро подстраиваться под перемены, сохраняя основную структуру.",
+    ],
+    idiom: [
+      "Откладывать сложный разговор, пока обстоятельства не вынудят принять решение.",
+      "Полностью рискнуть и пойти ва-банк без запасного плана на случай провала.",
+      "Неверно истолковать тонкий намёк и ответить неожиданно резко.",
+      "Пойти на небольшую уступку сейчас ради сохранения более крупной выгоды.",
+    ],
+    collocation: [
+      "Постепенно сузить круг реальных вариантов в ходе долгих переговоров.",
+      "Установить чёткие границы до вложения ресурсов в совместный проект.",
+      "Подкрепить прежнее утверждение новыми проверенными фактами.",
+      "Найти баланс между конкурирующими приоритетами без ущерба для ключевых сторон.",
     ],
   },
 };

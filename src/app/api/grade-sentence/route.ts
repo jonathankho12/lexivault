@@ -14,7 +14,7 @@ import type {
   WordFamilyItem,
 } from "@/types/lexivault";
 
-type GradeLang = "en" | "id";
+type GradeLang = "en" | "id" | "ru";
 
 const VALID_VERDICTS_ID = new Set<SentenceGradeVerdict>([
   "Natural",
@@ -28,6 +28,13 @@ const VALID_VERDICTS_EN = new Set<SentenceGradeVerdict>([
   "Good",
   "Needs Work",
   "No Valid Attempt",
+]);
+
+const VALID_VERDICTS_RU = new Set<SentenceGradeVerdict>([
+  "Естественно",
+  "Хорошо",
+  "Нужно доработать",
+  "Нет попытки",
 ]);
 
 const NON_ATTEMPT_EXACT = new Set([
@@ -58,6 +65,15 @@ const NON_ATTEMPT_EXACT = new Set([
   "entah",
   "bingung",
   "lupa",
+  "не знаю",
+  "незнаю",
+  "хз",
+  "без понятия",
+  "пропуск",
+  "пропустить",
+  "дальше",
+  "непонятно",
+  "тест",
   "test",
   "testing",
   "tes",
@@ -100,6 +116,9 @@ const NON_ATTEMPT_SUBSTRINGS = [
   "belum paham",
   "tidak paham",
   "lupa artinya",
+  "не знаю",
+  "без понятия",
+  "не понимаю",
   "no idea",
 ];
 
@@ -253,6 +272,53 @@ function buildSampleNativeRewrite(
   return `In a real conversation, you can naturally include "${term}" when explaining a clear situation.`;
 }
 
+function getGradeVerdicts(lang: GradeLang): {
+  natural: SentenceGradeVerdict;
+  good: SentenceGradeVerdict;
+  weak: SentenceGradeVerdict;
+  invalid: SentenceGradeVerdict;
+  validSet: Set<SentenceGradeVerdict>;
+  verdictEnum: string[];
+} {
+  if (lang === "en") {
+    return {
+      natural: "Natural",
+      good: "Good",
+      weak: "Needs Work",
+      invalid: "No Valid Attempt",
+      validSet: VALID_VERDICTS_EN,
+      verdictEnum: ["Natural", "Good", "Needs Work", "No Valid Attempt"],
+    };
+  }
+  if (lang === "ru") {
+    return {
+      natural: "Естественно",
+      good: "Хорошо",
+      weak: "Нужно доработать",
+      invalid: "Нет попытки",
+      validSet: VALID_VERDICTS_RU,
+      verdictEnum: ["Естественно", "Хорошо", "Нужно доработать", "Нет попытки"],
+    };
+  }
+  return {
+    natural: "Natural",
+    good: "Cukup Baik",
+    weak: "Kurang Tepat",
+    invalid: "Belum Menjawab / Tidak Valid",
+    validSet: VALID_VERDICTS_ID,
+    verdictEnum: [
+      "Natural",
+      "Cukup Baik",
+      "Kurang Tepat",
+      "Belum Menjawab / Tidak Valid",
+    ],
+  };
+}
+
+function pickLangText(lang: GradeLang, en: string, ru: string, id: string): string {
+  return lang === "en" ? en : lang === "ru" ? ru : id;
+}
+
 function detectInvalidOrNonAttempt(
   sentence: string,
   term: string,
@@ -263,22 +329,25 @@ function detectInvalidOrNonAttempt(
 ): SentenceGradeResult | null {
   const trimmed = sentence.trim();
   const sampleRewrite = buildSampleNativeRewrite(term, exampleSentence);
-  const isEn = lang === "en";
-  const invalidVerdict: SentenceGradeVerdict = isEn
-    ? "No Valid Attempt"
-    : "Belum Menjawab / Tidak Valid";
-  const tip = isEn
-    ? `Keep the meaning in mind: ${meaning || `review how "${term}" works in context.`}`
-    : `Ingat maknanya: ${meaning || `pelajari konteks penggunaan "${term}".`}`;
+  const { invalid: invalidVerdict, weak: weakVerdict } = getGradeVerdicts(lang);
+  const tip = pickLangText(
+    lang,
+    `Keep the meaning in mind: ${meaning || `review how "${term}" works in context.`}`,
+    `Помни значение: ${meaning || `разбери, как «${term}» работает в контексте.`}`,
+    `Ingat maknanya: ${meaning || `pelajari konteks penggunaan "${term}".`}`
+  );
 
   if (!trimmed) {
     return {
       is_correct: false,
       verdict: invalidVerdict,
       score: 0,
-      feedback_id: isEn
-        ? `You haven't written a sentence yet. Write at least one complete English sentence using "${term}".`
-        : `Kamu belum menuliskan kalimat apa pun. Tulis minimal 1 kalimat bahasa Inggris utuh yang menggunakan "${term}".`,
+      feedback_id: pickLangText(
+        lang,
+        `You haven't written a sentence yet. Write at least one complete English sentence using "${term}".`,
+        `Ты пока не написал(а) предложение. Напиши хотя бы одно законченное английское предложение с выражением «${term}».`,
+        `Kamu belum menuliskan kalimat apa pun. Tulis minimal 1 kalimat bahasa Inggris utuh yang menggunakan "${term}".`
+      ),
       native_rewrite: sampleRewrite,
       tip,
     };
@@ -302,9 +371,12 @@ function detectInvalidOrNonAttempt(
       is_correct: false,
       verdict: invalidVerdict,
       score: 0,
-      feedback_id: isEn
-        ? `"${trimmed}" is not a valid English sentence attempt. Try writing one simple sentence (subject + verb + context) using "${term}"—mistakes are totally fine!`
-        : `Input "${trimmed}" bukan percobaan kalimat bahasa Inggris. Coba tulis 1 kalimat sederhana (subjek + kata kerja + konteks) memakai "${term}"—tidak apa-apa salah dulu!`,
+      feedback_id: pickLangText(
+        lang,
+        `"${trimmed}" is not a valid English sentence attempt. Try writing one simple sentence (subject + verb + context) using "${term}"—mistakes are totally fine!`,
+        `«${trimmed}» — это не попытка английского предложения. Попробуй написать одно простое предложение (подлежащее + глагол + контекст) с «${term}» — ошибаться нормально!`,
+        `Input "${trimmed}" bukan percobaan kalimat bahasa Inggris. Coba tulis 1 kalimat sederhana (subjek + kata kerja + konteks) memakai "${term}"—tidak apa-apa salah dulu!`
+      ),
       native_rewrite: sampleRewrite,
       tip,
     };
@@ -321,6 +393,33 @@ function detectInvalidOrNonAttempt(
 
   const lowerSentence = trimmed.toLowerCase();
   const usesTarget = matchesTargetExpression(lowerSentence, term, wordFamilies);
+
+  const cyrillicTokens = cleanedTokens.filter((w) =>
+    /[а-яА-ЯёЁ]{2,}/.test(w)
+  ).length;
+  if (
+    cyrillicTokens >= 2 ||
+    (cyrillicTokens >= 1 && alphaWords.length < 3)
+  ) {
+    return {
+      is_correct: false,
+      verdict: weakVerdict,
+      score: usesTarget ? 25 : 15,
+      feedback_id: pickLangText(
+        lang,
+        `Your sentence is written in Russian. Write a full English sentence incorporating "${term}" naturally.`,
+        `Предложение написано на русском. Напиши законченное предложение полностью на английском и органично включи туда «${term}».`,
+        `Kalimatmu masih memakai bahasa Rusia. Coba tulis kalimat penuh dalam bahasa Inggris dengan memakai "${term}".`
+      ),
+      native_rewrite: sampleRewrite,
+      tip: pickLangText(
+        lang,
+        `Use complete English sentence structure to actively practice "${term}".`,
+        `Потренируйся строить целую фразу на английском — так «${term}» быстрее запомнится в контексте.`,
+        `Gunakan struktur kalimat bahasa Inggris penuh untuk melatih "${term}".`
+      ),
+    };
+  }
 
   const hasCharSmash = cleanedTokens.some((w) => /(.)\1{3,}/i.test(w));
   const hasKeyboardMash = cleanedTokens.some((w) =>
@@ -341,9 +440,12 @@ function detectInvalidOrNonAttempt(
       is_correct: false,
       verdict: invalidVerdict,
       score: 0,
-      feedback_id: isEn
-        ? `Your input looks like random characters rather than a valid English sentence. Write a meaningful sentence using "${term}" for accurate feedback.`
-        : `Jawaban terdeteksi acak atau belum berupa kalimat bahasa Inggris yang valid. Susun kalimat bermakna menggunakan "${term}" agar bisa dinilai dengan akurat.`,
+      feedback_id: pickLangText(
+        lang,
+        `Your input looks like random characters rather than a valid English sentence. Write a meaningful sentence using "${term}" for accurate feedback.`,
+        `Похоже на случайный набор символов, а не на английское предложение. Напиши осмысленное предложение с «${term}», чтобы получить точный разбор.`,
+        `Jawaban terdeteksi acak atau belum berupa kalimat bahasa Inggris yang valid. Susun kalimat bermakna menggunakan "${term}" agar bisa dinilai dengan akurat.`
+      ),
       native_rewrite: sampleRewrite,
       tip,
     };
@@ -354,13 +456,19 @@ function detectInvalidOrNonAttempt(
       is_correct: false,
       verdict: invalidVerdict,
       score: usesTarget ? 10 : 5,
-      feedback_id: isEn
-        ? usesTarget
-          ? `You only wrote ${alphaWords.length} word(s)—"${term}" is included, but it isn't a full sentence yet. Add a subject and clear context.`
-          : `Your response is too short (${alphaWords.length} word(s)) to be a complete sentence. Write at least one full sentence using "${term}".`
-        : usesTarget
-          ? `Kamu baru menulis ${alphaWords.length} kata — "${term}" sudah muncul, tetapi belum membentuk kalimat utuh. Tambahkan subjek dan konteks kalimat lengkap.`
-          : `Jawabanmu terlalu pendek (${alphaWords.length} kata) dan belum membentuk kalimat utuh. Tulis minimal 1 kalimat lengkap menggunakan "${term}".`,
+      feedback_id: usesTarget
+        ? pickLangText(
+            lang,
+            `You only wrote ${alphaWords.length} word(s)—"${term}" is included, but it isn't a full sentence yet. Add a subject and clear context.`,
+            `Ты написал(а) всего ${alphaWords.length} сл. — «${term}» уже есть, но это ещё не целое предложение. Добавь подлежащее и понятный контекст.`,
+            `Kamu baru menulis ${alphaWords.length} kata — "${term}" sudah muncul, tetapi belum membentuk kalimat utuh. Tambahkan subjek dan konteks kalimat lengkap.`
+          )
+        : pickLangText(
+            lang,
+            `Your response is too short (${alphaWords.length} word(s)) to be a complete sentence. Write at least one full sentence using "${term}".`,
+            `Ответ слишком короткий (${alphaWords.length} сл.) для полноценного предложения. Напиши хотя бы одно законченное предложение с «${term}».`,
+            `Jawabanmu terlalu pendek (${alphaWords.length} kata) dan belum membentuk kalimat utuh. Tulis minimal 1 kalimat lengkap menggunakan "${term}".`
+          ),
       native_rewrite: sampleRewrite,
       tip,
     };
@@ -387,7 +495,8 @@ function buildFallbackGrade(
   );
   if (invalidCheck) return invalidCheck;
 
-  const isEn = lang === "en";
+  const { natural: naturalVerdict, good: goodVerdict, weak: weakVerdict } =
+    getGradeVerdicts(lang);
   const trimmed = sentence.trim();
   const words = trimmed.split(/\s+/).filter(Boolean);
   const lowerSentence = trimmed.toLowerCase();
@@ -401,15 +510,21 @@ function buildFallbackGrade(
   if (indonesianHits >= 2 && indonesianHits / words.length >= 0.3) {
     return {
       is_correct: false,
-      verdict: isEn ? "Needs Work" : "Kurang Tepat",
+      verdict: weakVerdict,
       score: usesTarget ? 28 : 20,
-      feedback_id: isEn
-        ? `Your sentence is mostly written in Indonesian. Write a full English sentence incorporating "${term}" naturally.`
-        : `Kalimatmu masih didominasi bahasa Indonesia. Coba tulis kalimat penuh dalam bahasa Inggris sambil memasukkan "${term}" secara alami.`,
+      feedback_id: pickLangText(
+        lang,
+        `Your sentence is mostly written in Indonesian. Write a full English sentence incorporating "${term}" naturally.`,
+        `Предложение в основном написано на индонезийском. Напиши законченную английскую фразу и естественно встрой в неё «${term}».`,
+        `Kalimatmu masih didominasi bahasa Indonesia. Coba tulis kalimat penuh dalam bahasa Inggris sambil memasukkan "${term}" secara alami.`
+      ),
       native_rewrite: sampleRewrite,
-      tip: isEn
-        ? `Use complete English sentence structure to actively practice "${term}".`
-        : `Gunakan struktur kalimat bahasa Inggris penuh untuk melatih "${term}".`,
+      tip: pickLangText(
+        lang,
+        `Use complete English sentence structure to actively practice "${term}".`,
+        `Используй законченную английскую конструкцию, чтобы отработать «${term}» на практике.`,
+        `Gunakan struktur kalimat bahasa Inggris penuh untuk melatih "${term}".`
+      ),
     };
   }
 
@@ -417,30 +532,42 @@ function buildFallbackGrade(
     const score = words.length >= 5 ? 32 : 24;
     return {
       is_correct: false,
-      verdict: isEn ? "Needs Work" : "Kurang Tepat",
+      verdict: weakVerdict,
       score,
-      feedback_id: isEn
-        ? `Your English sentence is taking shape, but it doesn't include the target expression "${term}". Include "${term}" (or one of its word-family forms) in context.`
-        : `Kalimat bahasa Inggrismu sudah mulai terbentuk, tetapi belum memakai kata atau frasa target "${term}". Masukkan "${term}" (atau bentuk turunannya) ke dalam konteks kalimat.`,
+      feedback_id: pickLangText(
+        lang,
+        `Your English sentence is taking shape, but it doesn't include the target expression "${term}". Include "${term}" (or one of its word-family forms) in context.`,
+        `Предложение на английском уже вырисовывается, но в нём нет целевого выражения «${term}». Обязательно вставь «${term}» (или однокоренную форму) в контекст.`,
+        `Kalimat bahasa Inggrismu sudah mulai terbentuk, tetapi belum memakai kata atau frasa target "${term}". Masukkan "${term}" (atau bentuk turunannya) ke dalam konteks kalimat.`
+      ),
       native_rewrite: sampleRewrite,
-      tip: isEn
-        ? `Keep the meaning in mind: ${meaning}`
-        : `Ingat maknanya: ${meaning}`,
+      tip: pickLangText(
+        lang,
+        `Keep the meaning in mind: ${meaning}`,
+        `Держи в голове значение: ${meaning}`,
+        `Ingat maknanya: ${meaning}`
+      ),
     };
   }
 
   if (words.length < 5) {
     return {
       is_correct: false,
-      verdict: isEn ? "Needs Work" : "Kurang Tepat",
+      verdict: weakVerdict,
       score: 45,
-      feedback_id: isEn
-        ? `You included "${term}", but the sentence is still too brief (${words.length} words). Add who, when, or why to make the context feel natural.`
-        : `Kamu sudah memasukkan "${term}", tetapi kalimat masih terlalu singkat (${words.length} kata). Tambahkan konteks siapa, kapan, atau mengapa agar kalimat terasa natural.`,
+      feedback_id: pickLangText(
+        lang,
+        `You included "${term}", but the sentence is still too brief (${words.length} words). Add who, when, or why to make the context feel natural.`,
+        `Ты использовал(а) «${term}», но фраза пока слишком короткая (${words.length} сл.). Добавь детали — кто, когда или почему, — чтобы контекст звучал живо.`,
+        `Kamu sudah memasukkan "${term}", tetapi kalimat masih terlalu singkat (${words.length} kata). Tambahkan konteks siapa, kapan, atau mengapa agar kalimat terasa natural.`
+      ),
       native_rewrite: sampleRewrite,
-      tip: isEn
-        ? "Add a brief clause explaining the reason or setting to sound more idiomatic."
-        : "Tambahkan keterangan konteks atau alasan agar penggunaan kata terdengar lebih idiomatik.",
+      tip: pickLangText(
+        lang,
+        "Add a brief clause explaining the reason or setting to sound more idiomatic.",
+        "Добавь небольшое придаточное с причиной или ситуацией — так выражение зазвучит естественно.",
+        "Tambahkan keterangan konteks atau alasan agar penggunaan kata terdengar lebih idiomatik."
+      ),
     };
   }
 
@@ -452,20 +579,21 @@ function buildFallbackGrade(
 
   return {
     is_correct: true,
-    verdict:
-      endsCleanly && words.length >= 7
-        ? "Natural"
-        : isEn
-          ? "Good"
-          : "Cukup Baik",
+    verdict: endsCleanly && words.length >= 7 ? naturalVerdict : goodVerdict,
     score: endsCleanly && words.length >= 7 ? 88 : 78,
-    feedback_id: isEn
-      ? `Well done! You built a complete English sentence using "${term}". Connect GEMINI_API_KEY for deeper grammar and register coaching.`
-      : `Bagus! Kamu berhasil menyusun kalimat bahasa Inggris yang utuh dengan "${term}". Sambungkan GEMINI_API_KEY untuk evaluasi tata bahasa & nuansa register secara mendalam.`,
+    feedback_id: pickLangText(
+      lang,
+      `Well done! You built a complete English sentence using "${term}". Connect GEMINI_API_KEY for deeper grammar and register coaching.`,
+      `Отлично! Ты составил(а) законченное английское предложение с «${term}». Подключи GEMINI_API_KEY для глубокого разбора грамматики и стиля.`,
+      `Bagus! Kamu berhasil menyusun kalimat bahasa Inggris yang utuh dengan "${term}". Sambungkan GEMINI_API_KEY untuk evaluasi tata bahasa & nuansa register secara mendalam.`
+    ),
     native_rewrite: cleanPunctuated,
-    tip: isEn
-      ? "Double-check tense agreement and final punctuation to sound even more natural."
-      : "Perhatikan kesesuaian tenses dan tanda baca di akhir kalimat agar terdengar semakin native.",
+    tip: pickLangText(
+      lang,
+      "Double-check tense agreement and final punctuation to sound even more natural.",
+      "Обрати внимание на согласование времён и финальную пунктуацию, чтобы звучать ещё ближе к носителю.",
+      "Perhatikan kesesuaian tenses dan tanda baca di akhir kalimat agar terdengar semakin native."
+    ),
   };
 }
 
@@ -482,6 +610,7 @@ export async function POST(request: Request) {
       term?: string;
       meaning_id?: string;
       meaning_en?: string;
+      meaning_ru?: string;
       register?: string;
       sentence?: string;
       word_families?: WordFamilyItem[];
@@ -489,13 +618,25 @@ export async function POST(request: Request) {
       lang?: GradeLang;
     };
 
-    const lang: GradeLang = body.lang === "en" ? "en" : "id";
-    const isEn = lang === "en";
+    const lang: GradeLang =
+      body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
     const term = body.term?.trim() ?? "";
     const sentence = body.sentence?.trim() ?? "";
-    const meaning = isEn
-      ? body.meaning_en?.trim() || body.meaning_id?.trim() || ""
-      : body.meaning_id?.trim() || body.meaning_en?.trim() || "";
+    const meaning =
+      lang === "en"
+        ? body.meaning_en?.trim() ||
+          body.meaning_id?.trim() ||
+          body.meaning_ru?.trim() ||
+          ""
+        : lang === "ru"
+          ? body.meaning_ru?.trim() ||
+            body.meaning_en?.trim() ||
+            body.meaning_id?.trim() ||
+            ""
+          : body.meaning_id?.trim() ||
+            body.meaning_en?.trim() ||
+            body.meaning_ru?.trim() ||
+            "";
     const register = body.register?.trim() ?? "Casual";
     const exampleSentence = body.example_sentence?.trim();
     const wordFamilies = Array.isArray(body.word_families)
@@ -524,14 +665,24 @@ export async function POST(request: Request) {
       });
     }
 
-    const verdictEnum = isEn
-      ? ["Natural", "Good", "Needs Work", "No Valid Attempt"]
-      : [
-          "Natural",
-          "Cukup Baik",
-          "Kurang Tepat",
-          "Belum Menjawab / Tidak Valid",
-        ];
+    const {
+      natural: naturalVerdict,
+      validSet,
+      invalidVerdict,
+      goodVerdict,
+      weakVerdict,
+      verdictEnum,
+    } = (() => {
+      const cfg = getGradeVerdicts(lang);
+      return {
+        natural: cfg.natural,
+        validSet: cfg.validSet,
+        invalidVerdict: cfg.invalid,
+        goodVerdict: cfg.good,
+        weakVerdict: cfg.weak,
+        verdictEnum: cfg.verdictEnum,
+      };
+    })();
 
     const prompt = buildSentenceGradingPrompt({
       term,
@@ -594,15 +745,6 @@ export async function POST(request: Request) {
         ? Math.max(0, Math.min(100, Math.round(parsed.score)))
         : 0;
 
-    const validSet = isEn ? VALID_VERDICTS_EN : VALID_VERDICTS_ID;
-    const invalidVerdict: SentenceGradeVerdict = isEn
-      ? "No Valid Attempt"
-      : "Belum Menjawab / Tidak Valid";
-    const goodVerdict: SentenceGradeVerdict = isEn ? "Good" : "Cukup Baik";
-    const weakVerdict: SentenceGradeVerdict = isEn
-      ? "Needs Work"
-      : "Kurang Tepat";
-
     let verdict: SentenceGradeVerdict =
       parsed.verdict && validSet.has(parsed.verdict)
         ? parsed.verdict
@@ -619,7 +761,7 @@ export async function POST(request: Request) {
     const clampedScore =
       verdict === invalidVerdict ? Math.min(10, rawScore) : rawScore;
     const isCorrect =
-      verdict === "Natural" || verdict === goodVerdict
+      verdict === naturalVerdict || verdict === goodVerdict
         ? Boolean(parsed.is_correct ?? true)
         : false;
 
@@ -630,15 +772,23 @@ export async function POST(request: Request) {
         score: clampedScore,
         feedback_id:
           parsed.feedback_id ||
-          (isEn ? "Sentence evaluated." : "Kalimat sudah dinilai."),
+          pickLangText(
+            lang,
+            "Sentence evaluated.",
+            "Предложение проверено.",
+            "Kalimat sudah dinilai."
+          ),
         native_rewrite:
           parsed.native_rewrite ||
           buildSampleNativeRewrite(term, exampleSentence),
         tip:
           parsed.tip ||
-          (isEn
-            ? "Keep practicing writing sentences in natural context!"
-            : "Pertahankan latihan menulis kalimat kontekstual!"),
+          pickLangText(
+            lang,
+            "Keep practicing writing sentences in natural context!",
+            "Продолжай тренировать составление предложений в живом контексте!",
+            "Pertahankan latihan menulis kalimat kontekstual!"
+          ),
       },
       source: "gemini",
     });

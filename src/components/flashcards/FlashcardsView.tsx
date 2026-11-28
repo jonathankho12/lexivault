@@ -89,27 +89,29 @@ function getMasteryStage(word: WordEntry): MasteryStage {
 
 function getMasteryBadgeMeta(
   stage: MasteryStage,
-  lang: "en" | "id"
+  lang: "en" | "id" | "ru"
 ): { label: string; className: string } {
+  const pick = (en: string, id: string, ru: string) =>
+    lang === "en" ? en : lang === "ru" ? ru : id;
   switch (stage) {
     case "new":
       return {
-        label: lang === "en" ? "New" : "Baru",
+        label: pick("New", "Baru", "Новое"),
         className: "bg-[#0A84FF]/20 border-[#0A84FF]/40 text-[#70BCFF]",
       };
     case "learning":
       return {
-        label: lang === "en" ? "Learning" : "Belajar",
+        label: pick("Learning", "Belajar", "Учу"),
         className: "bg-[#FF9F0A]/20 border-[#FF9F0A]/40 text-[#FFD18C]",
       };
     case "solid":
       return {
-        label: lang === "en" ? "Solid" : "Mantap",
+        label: pick("Solid", "Mantap", "Уверенно"),
         className: "bg-[#30D158]/20 border-[#30D158]/40 text-[#7CF099]",
       };
     case "mastered":
       return {
-        label: lang === "en" ? "Mastered" : "Mahir",
+        label: pick("Mastered", "Mahir", "Освоено"),
         className: "bg-[#5E5CE6]/22 border-[#5E5CE6]/45 text-[#D7D6FF]",
       };
   }

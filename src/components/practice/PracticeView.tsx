@@ -312,12 +312,16 @@ export function PracticeView() {
           <p className="text-base font-bold text-white">
             {lang === "en"
               ? "Crafting plausible quiz distractors..."
-              : "Menyiapkan opsi kuis pengecoh..."}
+              : lang === "ru"
+                ? "Подбираю правдоподобные варианты ответов..."
+                : "Menyiapkan opsi kuis pengecoh..."}
           </p>
           <p className="text-xs text-[#8E8E93]">
             {lang === "en"
               ? "Matching register, part of speech, and semantic nuance."
-              : "Menyelaraskan register, jenis kata, dan nuansa makna."}
+              : lang === "ru"
+                ? "Подбираю близкие по стилю, части речи и оттенку смысла."
+                : "Menyelaraskan register, jenis kata, dan nuansa makna."}
           </p>
         </div>
       </div>

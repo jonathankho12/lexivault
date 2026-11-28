@@ -1003,12 +1003,14 @@ export function LexiVaultProvider({
       const missingExamples = entry.examples_json.length < 2;
       const missingEn = !entry.meaning_en?.trim();
       const missingId = !entry.meaning_id?.trim();
+      const missingRu = lang === "ru" && !entry.meaning_ru?.trim();
       const missingPron = !entry.pronunciation?.trim();
       const missingChunks = !entry.chunks || entry.chunks.length === 0;
       if (
         !missingExamples &&
         !missingEn &&
         !missingId &&
+        !missingRu &&
         !missingPron &&
         !missingChunks
       ) {
@@ -1040,9 +1042,14 @@ export function LexiVaultProvider({
           cefr: latest.cefr || aiData.cefr,
           meaning_en: latest.meaning_en || aiData.meaning_en,
           meaning_id: latest.meaning_id || aiData.meaning_id,
+          meaning_ru: latest.meaning_ru || aiData.meaning_ru,
           examples_json:
             latest.examples_json.length >= 2
-              ? latest.examples_json
+              ? lang === "ru" &&
+                !latest.examples_json.some((ex) => ex.translation_ru?.trim()) &&
+                aiData.examples.some((ex) => ex.translation_ru?.trim())
+                ? aiData.examples
+                : latest.examples_json
               : aiData.examples.length > latest.examples_json.length
                 ? aiData.examples
                 : latest.examples_json,
@@ -1174,7 +1181,9 @@ export function LexiVaultProvider({
               apiErr ||
                 (lang === "en"
                   ? `Failed to load today's Daily Pack (HTTP ${res.status}).`
-                  : `Gagal memuat Target Harian hari ini (HTTP ${res.status}).`),
+                  : lang === "ru"
+                    ? `Не удалось загрузить Пак дня (HTTP ${res.status}).`
+                    : `Gagal memuat Target Harian hari ini (HTTP ${res.status}).`),
               lang
             );
             setDailyPackError(reason);
@@ -1215,7 +1224,9 @@ export function LexiVaultProvider({
             setDailyPackError(
               lang === "en"
                 ? "Daily Pack generation timed out while waiting for AI providers. Please try again."
-                : "Pembuatan Target Harian timeout saat menunggu server AI. Silakan coba lagi."
+                : lang === "ru"
+                  ? "Время ожидания генерации Пака дня истекло. Попробуй ещё раз."
+                  : "Pembuatan Target Harian timeout saat menunggu server AI. Silakan coba lagi."
             );
           } else {
             console.error("[LexiVault] Failed to load Daily Pack:", {
@@ -1227,7 +1238,9 @@ export function LexiVaultProvider({
             setDailyPackError(
               lang === "en"
                 ? "Failed to load today's Daily Pack. Please try again."
-                : "Gagal memuat Target Harian hari ini. Silakan coba lagi."
+                : lang === "ru"
+                  ? "Не удалось загрузить Пак дня. Попробуй ещё раз."
+                  : "Gagal memuat Target Harian hari ini. Silakan coba lagi."
             );
           }
           return null;
@@ -1393,6 +1406,7 @@ export function LexiVaultProvider({
             type: item.type,
             meaning_id: item.meaning_id,
             meaning_en: item.meaning_en,
+            meaning_ru: item.meaning_ru,
             examples_json: item.examples,
             synonyms: item.synonyms,
             antonyms: item.antonyms,
@@ -1878,11 +1892,15 @@ export function LexiVaultProvider({
           title:
             lang === "en"
               ? `Leveled Up to ${nextCefr}!`
-              : `Naik ke Level ${nextCefr}!`,
+              : lang === "ru"
+                ? `Новый уровень ${nextCefr}!`
+                : `Naik ke Level ${nextCefr}!`,
           message:
             lang === "en"
               ? `Your CEFR profile is now ${nextCefr} · Daily Pack target synced to ${tierLabel}.`
-              : `Profil CEFR kamu sekarang ${nextCefr} · Target Harian disesuaikan ke ${tierLabel}.`,
+              : lang === "ru"
+                ? `Твой уровень CEFR теперь ${nextCefr} · Пак дня настроен под ${tierLabel}.`
+                : `Profil CEFR kamu sekarang ${nextCefr} · Target Harian disesuaikan ke ${tierLabel}.`,
         });
       }
 
@@ -1924,12 +1942,15 @@ export function LexiVaultProvider({
   const addWordViaAI = useCallback(
     async (rawTerm: string, sourceTag: string): Promise<AddWordResult> => {
       const isEn = lang === "en";
+      const isRu = lang === "ru";
       if (!user) {
         return {
           ok: false,
           error: isEn
             ? "Please sign in first."
-            : "Silakan login terlebih dahulu.",
+            : isRu
+              ? "Сначала войди в аккаунт."
+              : "Silakan login terlebih dahulu.",
         };
       }
 
@@ -1939,7 +1960,9 @@ export function LexiVaultProvider({
           ok: false,
           error: isEn
             ? "Please enter a word or idiom first."
-            : "Masukkan kata atau idiom terlebih dahulu.",
+            : isRu
+              ? "Сначала введи слово или идиому."
+              : "Masukkan kata atau idiom terlebih dahulu.",
         };
       }
 
@@ -1950,7 +1973,9 @@ export function LexiVaultProvider({
           type: "duplicate",
           message: isEn
             ? `Already registered in your Vault: "${existing.term}"`
-            : `Sudah terdaftar di Vault: "${existing.term}"`,
+            : isRu
+              ? `Уже есть в словаре: «${existing.term}»`
+              : `Sudah terdaftar di Vault: "${existing.term}"`,
           matchedWord: existing,
         });
         return { ok: false, duplicate: true, word: existing };
@@ -2011,7 +2036,9 @@ export function LexiVaultProvider({
             apiMessage ||
               (isEn
                 ? `Failed to save word. Please try again. (HTTP ${res.status})`
-                : `Gagal menyimpan kata. Coba lagi. (HTTP ${res.status})`),
+                : isRu
+                  ? `Не удалось сохранить слово. Попробуй ещё раз. (HTTP ${res.status})`
+                  : `Gagal menyimpan kata. Coba lagi. (HTTP ${res.status})`),
             lang
           );
           setCaptureToast({ type: "error", message: errMsg });
@@ -2039,7 +2066,9 @@ export function LexiVaultProvider({
             type: "duplicate",
             message: isEn
               ? `Already in Vault as "${displayTerm}"`
-              : `Sudah terdaftar di Vault sebagai "${displayTerm}"`,
+              : isRu
+                ? `Уже в словаре как «${displayTerm}»`
+                : `Sudah terdaftar di Vault sebagai "${displayTerm}"`,
             matchedWord: matchedEntry,
           });
           return { ok: false, duplicate: true, word: matchedEntry };
@@ -2053,14 +2082,16 @@ export function LexiVaultProvider({
         // Defensive completeness guard: never save a hollow or broken card to the Vault
         const hasRealMeaning =
           Boolean(aiData.meaning_en?.trim()) &&
-          Boolean(aiData.meaning_id?.trim());
+          Boolean(aiData.meaning_id?.trim() || aiData.meaning_ru?.trim());
         const hasRealExamples =
           Array.isArray(aiData.examples) &&
           aiData.examples.some((ex) => Boolean(ex?.sentence?.trim()));
         if (!hasRealMeaning || !hasRealExamples) {
           const incompleteMsg = isEn
             ? "Gemini AI returned incomplete word details. Please try again."
-            : "Detail kata dari Gemini AI tidak lengkap. Silakan coba lagi.";
+            : isRu
+              ? "Gemini AI вернул неполное описание слова. Попробуй ещё раз."
+              : "Detail kata dari Gemini AI tidak lengkap. Silakan coba lagi.";
           setCaptureToast({ type: "error", message: incompleteMsg });
           return { ok: false, error: incompleteMsg };
         }
@@ -2074,7 +2105,9 @@ export function LexiVaultProvider({
             type: "duplicate",
             message: isEn
               ? `Already in Vault as "${canonicalDup.term}"`
-              : `Sudah terdaftar di Vault sebagai "${canonicalDup.term}"`,
+              : isRu
+                ? `Уже в словаре как «${canonicalDup.term}»`
+                : `Sudah terdaftar di Vault sebagai "${canonicalDup.term}"`,
             matchedWord: canonicalDup,
           });
           return { ok: false, duplicate: true, word: canonicalDup };
@@ -2094,6 +2127,7 @@ export function LexiVaultProvider({
           type: aiData.type,
           meaning_id: aiData.meaning_id,
           meaning_en: aiData.meaning_en,
+          meaning_ru: aiData.meaning_ru,
           examples_json: aiData.examples,
           synonyms: aiData.synonyms,
           antonyms: aiData.antonyms,
@@ -2125,7 +2159,9 @@ export function LexiVaultProvider({
           type: "success",
           message: isEn
             ? `"${draft.term}" saved (${draft.type} · ${draft.register})`
-            : `"${draft.term}" tersimpan (${draft.type} · ${draft.register})`,
+            : isRu
+              ? `«${draft.term}» сохранено (${draft.type} · ${draft.register})`
+              : `"${draft.term}" tersimpan (${draft.type} · ${draft.register})`,
         });
 
         const targetUserId = user.id;
@@ -2150,7 +2186,9 @@ export function LexiVaultProvider({
         console.error("[LexiVault] addWordViaAI network/client error:", err);
         const errMsg = isEn
           ? "Failed to save word. Please try again."
-          : "Gagal menyimpan kata. Coba lagi.";
+          : isRu
+            ? "Не удалось сохранить слово. Попробуй ещё раз."
+            : "Gagal menyimpan kata. Coba lagi.";
         setCaptureToast({ type: "error", message: errMsg });
         return { ok: false, error: errMsg };
       } finally {
@@ -2165,6 +2203,7 @@ export function LexiVaultProvider({
     async (items: ExtractedVocabItem[], sourceTag: string): Promise<number> => {
       if (!user || items.length === 0) return 0;
       const isEn = lang === "en";
+      const isRu = lang === "ru";
       const canonicalSource = normalizeSourceTag(sourceTag || "article");
 
       const existingKeys = new Set(
@@ -2191,6 +2230,7 @@ export function LexiVaultProvider({
           type: item.type,
           meaning_id: item.meaning_id,
           meaning_en: item.meaning_en,
+          meaning_ru: item.meaning_ru,
           examples_json: item.examples,
           synonyms: item.synonyms,
           antonyms: item.antonyms,
@@ -2227,7 +2267,9 @@ export function LexiVaultProvider({
           type: "success",
           message: isEn
             ? `${drafts.length} new expression(s) extracted to Vault`
-            : `${drafts.length} kosakata baru diekstrak ke Vault`,
+            : isRu
+              ? `Сохранено новых выражений: ${drafts.length}`
+              : `${drafts.length} kosakata baru diekstrak ke Vault`,
         });
 
         const targetUserId = user.id;
@@ -2256,6 +2298,7 @@ export function LexiVaultProvider({
     async (item: SuggestedWordItem): Promise<WordEntry | null> => {
       if (!user) return null;
       const isEn = lang === "en";
+      const isRu = lang === "ru";
       const existing = findLocalDuplicateWord(item.term, wordsRef.current);
       if (existing) {
         return existing;
@@ -2275,6 +2318,7 @@ export function LexiVaultProvider({
         type: item.type,
         meaning_id: item.meaning_id,
         meaning_en: item.meaning_en,
+        meaning_ru: item.meaning_ru,
         examples_json: item.examples,
         synonyms: item.synonyms,
         antonyms: item.antonyms,
@@ -2306,7 +2350,9 @@ export function LexiVaultProvider({
         type: "success",
         message: isEn
           ? `"${draft.term}" added to your Vault`
-          : `"${draft.term}" ditambahkan ke Vault`,
+          : isRu
+            ? `«${draft.term}» добавлено в словарь`
+            : `"${draft.term}" ditambahkan ke Vault`,
       });
 
       // Background persistence + silent optional-field enrichment
@@ -2345,20 +2391,29 @@ export function LexiVaultProvider({
       options?: { signal?: AbortSignal }
     ): Promise<RefreshWordResult> => {
       const isEn = lang === "en";
+      const isRu = lang === "ru";
       if (options?.signal?.aborted) {
         return { ok: false, aborted: true };
       }
       if (!user) {
         return {
           ok: false,
-          error: isEn ? "Not signed in." : "Belum login.",
+          error: isEn
+            ? "Not signed in."
+            : isRu
+              ? "Вход не выполнен."
+              : "Belum login.",
         };
       }
       const target = wordsRef.current.find((w) => w.id === wordId);
       if (!target) {
         return {
           ok: false,
-          error: isEn ? "Word not found." : "Kata tidak ditemukan.",
+          error: isEn
+            ? "Word not found."
+            : isRu
+              ? "Слово не найдено."
+              : "Kata tidak ditemukan.",
         };
       }
 
@@ -2415,7 +2470,9 @@ export function LexiVaultProvider({
                 apiError ||
                 (isEn
                   ? `Failed to refresh details with AI (HTTP ${res.status}).`
-                  : `Gagal memperbarui dengan AI (HTTP ${res.status}).`),
+                  : isRu
+                    ? `Не удалось обновить карточку через ИИ (HTTP ${res.status}).`
+                    : `Gagal memperbarui dengan AI (HTTP ${res.status}).`),
               lang
             ),
           };
@@ -2439,8 +2496,9 @@ export function LexiVaultProvider({
           ipa: aiData.ipa || latestTarget.ipa,
           cefr: aiData.cefr || latestTarget.cefr,
           type: aiData.type,
-          meaning_id: aiData.meaning_id,
+          meaning_id: aiData.meaning_id || latestTarget.meaning_id,
           meaning_en: aiData.meaning_en || latestTarget.meaning_en,
+          meaning_ru: aiData.meaning_ru || latestTarget.meaning_ru,
           examples_json: aiData.examples,
           synonyms: aiData.synonyms,
           antonyms: aiData.antonyms,
@@ -2482,7 +2540,9 @@ export function LexiVaultProvider({
           ok: false,
           error: isEn
             ? "Failed to refresh details with AI."
-            : "Gagal memperbarui dengan AI.",
+            : isRu
+              ? "Не удалось обновить карточку через ИИ."
+              : "Gagal memperbarui dengan AI.",
         };
       }
     },
@@ -2624,6 +2684,7 @@ export function LexiVaultProvider({
         type: item.type,
         meaning_id: item.meaning_id,
         meaning_en: item.meaning_en,
+        meaning_ru: item.meaning_ru,
         examples_json: item.examples_json,
         synonyms: item.synonyms,
         antonyms: item.antonyms,
@@ -2944,7 +3005,11 @@ export function LexiVaultProvider({
         return {
           ok: false,
           error:
-            lang === "en" ? "User is not signed in." : "Pengguna belum masuk.",
+            lang === "en"
+              ? "User is not signed in."
+              : lang === "ru"
+                ? "Пользователь не вошёл в аккаунт."
+                : "Pengguna belum masuk.",
         };
       }
       return changeUserPassword(user, newPassword, lang);
@@ -2974,7 +3039,9 @@ export function LexiVaultProvider({
         error:
           lang === "en"
             ? "Sign in with a Cloud account to sync with Supabase."
-            : "Masuk dengan akun Cloud untuk menyinkronkan ke Supabase.",
+            : lang === "ru"
+              ? "Войди в облачный аккаунт для синхронизации с Supabase."
+              : "Masuk dengan akun Cloud untuk menyinkronkan ke Supabase.",
       };
     }
 

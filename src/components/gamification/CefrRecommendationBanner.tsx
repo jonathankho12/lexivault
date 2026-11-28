@@ -35,6 +35,9 @@ export function CefrRecommendationBanner({
   } = useLexiVault();
   const { lang } = useLanguage();
   const isEn = lang === "en";
+  const isRu = lang === "ru";
+  const pick = (en: string, id: string, ru: string) =>
+    isEn ? en : isRu ? ru : id;
   const [upgrading, setUpgrading] = useState(false);
 
   if (!isHydrated) return null;
@@ -116,9 +119,11 @@ export function CefrRecommendationBanner({
             </div>
             <div className="min-w-0 space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#7CF099]">
-                {isEn
-                  ? "Ready for Next CEFR Level"
-                  : "Siap Naik ke Level CEFR Berikutnya"}
+                {pick(
+                  "Ready for Next CEFR Level",
+                  "Siap Naik ke Level CEFR Berikutnya",
+                  "Готов переход на новый CEFR"
+                )}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <span
@@ -136,13 +141,16 @@ export function CefrRecommendationBanner({
                     formatCefrBadgeClass(nextLevel)
                   )}
                 >
-                  {nextLevel} · {isEn ? nextMeta.titleEn : nextMeta.titleId}
+                  {nextLevel} ·{" "}
+                  {pick(nextMeta.titleEn, nextMeta.titleId, nextMeta.titleRu)}
                 </span>
               </div>
               <p className="text-xs text-[#D1D1D6]">
-                {isEn
-                  ? `You've met all readiness milestones to advance from ${currentLevel} to ${nextLevel}.`
-                  : `Semua target kesiapan untuk naik dari ${currentLevel} ke ${nextLevel} sudah terpenuhi.`}
+                {pick(
+                  `You've met all readiness milestones to advance from ${currentLevel} to ${nextLevel}.`,
+                  `Semua target kesiapan untuk naik dari ${currentLevel} ke ${nextLevel} sudah terpenuhi.`,
+                  `Все цели для перехода с ${currentLevel} на ${nextLevel} выполнены.`
+                )}
               </p>
             </div>
           </div>
@@ -158,27 +166,33 @@ export function CefrRecommendationBanner({
           <div className="flex items-center gap-2 rounded-2xl bg-white/[0.05] border border-[#30D158]/30 px-3 py-2 text-xs">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
             <span className="text-[#E5E5EA] truncate tabular-nums">
-              {isEn
-                ? `${masteredAtOrAboveCount}/${requiredMasteredCount} ${currentLevel}+ mastered`
-                : `${masteredAtOrAboveCount}/${requiredMasteredCount} kata ${currentLevel}+ dikuasai`}
+              {pick(
+                `${masteredAtOrAboveCount}/${requiredMasteredCount} ${currentLevel}+ mastered`,
+                `${masteredAtOrAboveCount}/${requiredMasteredCount} kata ${currentLevel}+ dikuasai`,
+                `${masteredAtOrAboveCount}/${requiredMasteredCount} (${currentLevel}+) освоено`
+              )}
             </span>
           </div>
 
           <div className="flex items-center gap-2 rounded-2xl bg-white/[0.05] border border-[#30D158]/30 px-3 py-2 text-xs">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
             <span className="text-[#E5E5EA] truncate tabular-nums">
-              {isEn
-                ? `${accuracyPct}% recall accuracy (≥${requiredAccuracyPct}%)`
-                : `Akurasi recall ${accuracyPct}% (≥${requiredAccuracyPct}%)`}
+              {pick(
+                `${accuracyPct}% recall accuracy (≥${requiredAccuracyPct}%)`,
+                `Akurasi recall ${accuracyPct}% (≥${requiredAccuracyPct}%)`,
+                `Точность ${accuracyPct}% (≥${requiredAccuracyPct}%)`
+              )}
             </span>
           </div>
 
           <div className="flex items-center gap-2 rounded-2xl bg-white/[0.05] border border-[#30D158]/30 px-3 py-2 text-xs">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
             <span className="text-[#E5E5EA] truncate tabular-nums">
-              {isEn
-                ? `${consistencyCount}/${requiredConsistencyCount} streak/sessions`
-                : `${consistencyCount}/${requiredConsistencyCount} streak/sesi`}
+              {pick(
+                `${consistencyCount}/${requiredConsistencyCount} streak/sessions`,
+                `${consistencyCount}/${requiredConsistencyCount} streak/sesi`,
+                `${consistencyCount}/${requiredConsistencyCount} серия/сессии`
+              )}
             </span>
           </div>
         </div>
@@ -198,9 +212,11 @@ export function CefrRecommendationBanner({
               <Sparkles className="h-3.5 w-3.5" />
             )}
             <span>
-              {isEn
-                ? `Level Up to ${nextLevel}`
-                : `Naik ke Level ${nextLevel}`}
+              {pick(
+                `Level Up to ${nextLevel}`,
+                `Naik ke Level ${nextLevel}`,
+                `Повысить до ${nextLevel}`
+              )}
             </span>
           </motion.button>
 
@@ -212,9 +228,11 @@ export function CefrRecommendationBanner({
           >
             <Compass className="h-3.5 w-3.5 text-[#70BCFF]" />
             <span>
-              {isEn
-                ? "Verify with Placement Test"
-                : "Verifikasi lewat Placement Test"}
+              {pick(
+                "Verify with Placement Test",
+                "Verifikasi lewat Placement Test",
+                "Проверить тестом уровня"
+              )}
             </span>
           </motion.button>
         </div>
@@ -238,12 +256,16 @@ export function CefrRecommendationBanner({
           <div className="min-w-0 space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF]">
               {isMaxLevel
-                ? isEn
-                  ? "Top CEFR Tier Reached"
-                  : "Level CEFR Tertinggi Tercapai"
-                : isEn
-                  ? "Next CEFR Level Readiness"
-                  : "Kesiapan Level CEFR Berikutnya"}
+                ? pick(
+                    "Top CEFR Tier Reached",
+                    "Level CEFR Tertinggi Tercapai",
+                    "Достигнут максимальный уровень"
+                  )
+                : pick(
+                    "Next CEFR Level Readiness",
+                    "Kesiapan Level CEFR Berikutnya",
+                    "Готовность к следующему CEFR"
+                  )}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -253,7 +275,11 @@ export function CefrRecommendationBanner({
                 )}
               >
                 {currentLevel} ·{" "}
-                {isEn ? currentMeta.titleEn : currentMeta.titleId}
+                {pick(
+                  currentMeta.titleEn,
+                  currentMeta.titleId,
+                  currentMeta.titleRu
+                )}
               </span>
               {nextLevel && (
                 <>
@@ -270,7 +296,13 @@ export function CefrRecommendationBanner({
               )}
               {!userCefr && variant === "settings" && (
                 <span className="text-[10px] text-[#8E8E93]">
-                  ({isEn ? "Estimated baseline" : "Estimasi awal"})
+                  (
+                  {pick(
+                    "Estimated baseline",
+                    "Estimasi awal",
+                    "Базовая оценка"
+                  )}
+                  )
                 </span>
               )}
             </div>
@@ -291,9 +323,11 @@ export function CefrRecommendationBanner({
           >
             <Compass className="h-3 w-3 text-[#70BCFF]" />
             <span>
-              {isEn
-                ? "Verify with Placement Test"
-                : "Verifikasi lewat Placement Test"}
+              {pick(
+                "Verify with Placement Test",
+                "Verifikasi lewat Placement Test",
+                "Пройти тест уровня"
+              )}
             </span>
           </motion.button>
         </div>
@@ -323,7 +357,11 @@ export function CefrRecommendationBanner({
               )}
             >
               <span>
-                {isEn ? `${currentLevel}+ Mastered` : `Dikuasai ${currentLevel}+`}
+                {pick(
+                  `${currentLevel}+ Mastered`,
+                  `Dikuasai ${currentLevel}+`,
+                  `Освоено ${currentLevel}+`
+                )}
               </span>
               <span className="font-bold tabular-nums">
                 {masteredAtOrAboveCount}/{requiredMasteredCount}
@@ -339,9 +377,11 @@ export function CefrRecommendationBanner({
               )}
             >
               <span>
-                {isEn
-                  ? `Accuracy (≥${requiredAccuracyPct}%)`
-                  : `Akurasi (≥${requiredAccuracyPct}%)`}
+                {pick(
+                  `Accuracy (≥${requiredAccuracyPct}%)`,
+                  `Akurasi (≥${requiredAccuracyPct}%)`,
+                  `Точность (≥${requiredAccuracyPct}%)`
+                )}
               </span>
               <span className="font-bold tabular-nums">
                 {totalReviews > 0 ? `${accuracyPct}%` : "—"} (
@@ -358,7 +398,9 @@ export function CefrRecommendationBanner({
                   : "bg-white/[0.03] border-white/[0.08] text-[#D1D1D6]"
               )}
             >
-              <span>{isEn ? "Streak / Sessions" : "Streak / Sesi"}</span>
+              <span>
+                {pick("Streak / Sessions", "Streak / Sesi", "Серия / Сессии")}
+              </span>
               <span className="font-bold tabular-nums">
                 {consistencyCount}/{requiredConsistencyCount}
               </span>
@@ -371,7 +413,11 @@ export function CefrRecommendationBanner({
         <div className="pt-2 border-t border-white/[0.07] space-y-2">
           <div className="flex items-center justify-between text-[11px]">
             <span className="text-[#8E8E93]">
-              {isEn ? "Personal CEFR Profile" : "Profil CEFR Pribadi"}
+              {pick(
+                "Personal CEFR Profile",
+                "Profil CEFR Pribadi",
+                "Личный профиль CEFR"
+              )}
             </span>
             <span className="text-[#70BCFF] font-semibold">
               {currentLevel} · {currentMeta.dailyPackPreviewLabel}

@@ -94,8 +94,10 @@ export interface PlacementWritingGradeResult {
   has_basic_a1_a2_errors: boolean;
   weaknesses_en: string[];
   weaknesses_id: string[];
+  weaknesses_ru?: string[];
   summary_en: string;
   summary_id: string;
+  summary_ru?: string;
   modelUsed: string;
 }
 
@@ -110,10 +112,13 @@ export interface PlacementDiagnosticSummary {
   };
   weaknessesEn: string[];
   weaknessesId: string[];
+  weaknessesRu?: string[];
   capReasonEn: string | null;
   capReasonId: string | null;
+  capReasonRu?: string | null;
   writingSummaryEn: string;
   writingSummaryId: string;
+  writingSummaryRu?: string;
 }
 
 export interface IeltsVocabItem {
@@ -140,6 +145,7 @@ export interface ReadingQuestion {
   paragraphRef?: string;
   explanation_id: string;
   explanation_en?: string;
+  explanation_ru?: string;
   evidence_quote: string;
 }
 
@@ -172,6 +178,7 @@ export interface ListeningQuestion {
   wordLimit?: string;
   explanation_id: string;
   explanation_en?: string;
+  explanation_ru?: string;
 }
 
 export interface ListeningSectionPack {

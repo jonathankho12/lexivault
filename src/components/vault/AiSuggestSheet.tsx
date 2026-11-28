@@ -28,6 +28,7 @@ import {
   formatRegisterBadgeClass,
   formatSourceTagLabel,
   formatTypeLabel,
+  getLocalizedExampleTranslation,
   getLocalizedMeaning,
   normalizeDuplicateKey,
 } from "@/lib/utils";
@@ -582,13 +583,17 @@ export function AiSuggestSheet({
                             <p className="text-xs leading-relaxed text-[#D1D1D6]">
                               <HighlightedText text={firstEx.sentence} />
                             </p>
-                            {lang === "id" && firstEx.translation_id && (
-                              <p className="text-[11px] leading-relaxed text-[#8E8E93]">
-                                <HighlightedText
-                                  text={firstEx.translation_id}
-                                />
-                              </p>
-                            )}
+                            {(() => {
+                              const translated = getLocalizedExampleTranslation(
+                                firstEx,
+                                lang
+                              );
+                              return translated ? (
+                                <p className="text-[11px] leading-relaxed text-[#8E8E93]">
+                                  <HighlightedText text={translated} />
+                                </p>
+                              ) : null;
+                            })()}
                           </div>
                         )}
 

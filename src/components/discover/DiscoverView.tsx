@@ -36,6 +36,7 @@ import {
   formatGeminiClientError,
   formatRegisterBadgeClass,
   formatTypeLabel,
+  getLocalizedExampleTranslation,
   getLocalizedMeaning,
   normalizeDuplicateKey,
 } from "@/lib/utils";
@@ -553,7 +554,9 @@ export function DiscoverView() {
               </h3>
               <span className="rounded-full bg-[#5E5CE6]/25 border border-[#5E5CE6]/40 px-2.5 py-0.5 text-[10px] font-semibold text-[#C4C2FF]">
                 {totalItems > 0
-                  ? `${unsavedCount} ${lang === "en" ? "New" : "Baru"} · ${totalItems} Total`
+                  ? `${unsavedCount} ${
+                      lang === "en" ? "New" : lang === "ru" ? "Новых" : "Baru"
+                    } · ${totalItems} ${lang === "ru" ? "всего" : "Total"}`
                   : "3 Vocab · 2 Idioms · 2 Collocations"}
               </span>
             </div>
@@ -739,11 +742,17 @@ export function DiscoverView() {
                         <p className="text-xs sm:text-[13px] leading-relaxed text-[#F5F5F7]">
                           <HighlightedText text={ex.sentence} />
                         </p>
-                        {lang === "id" && ex.translation_id && (
-                          <p className="text-[11px] leading-relaxed text-[#8E8E93]">
-                            <HighlightedText text={ex.translation_id} />
-                          </p>
-                        )}
+                        {(() => {
+                          const translated = getLocalizedExampleTranslation(
+                            ex,
+                            lang
+                          );
+                          return translated ? (
+                            <p className="text-[11px] leading-relaxed text-[#8E8E93]">
+                              <HighlightedText text={translated} />
+                            </p>
+                          ) : null;
+                        })()}
                       </div>
                     ))}
                   </div>

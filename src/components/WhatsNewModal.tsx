@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 function formatReleaseDate(isoDate: string, lang: AppLanguage): string {
   const parsed = Date.parse(isoDate);
   if (!Number.isFinite(parsed)) return isoDate;
-  return new Intl.DateTimeFormat(lang === "id" ? "id-ID" : "en-US", {
+  const locale = lang === "id" ? "id-ID" : lang === "ru" ? "ru-RU" : "en-US";
+  return new Intl.DateTimeFormat(locale, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -89,7 +90,8 @@ export function WhatsNewModal() {
     activeWhatsNewRelease?.featureToggleKey === "lexiEnabled";
 
   const localizedRelease = activeWhatsNewRelease
-    ? t.whatsNew.releases[activeWhatsNewRelease.id]
+    ? (t.whatsNew.releases[activeWhatsNewRelease.id] ??
+        activeWhatsNewRelease.translations?.[lang])
     : undefined;
   const releaseBadge =
     localizedRelease?.badge ?? activeWhatsNewRelease?.badge ?? "";

@@ -27,9 +27,13 @@ import type {
   WordType,
 } from "@/types/lexivault";
 
+type ApiLang = "en" | "id" | "ru";
+
 const VALID_TYPES = new Set<WordType>(["vocab", "idiom", "collocation"]);
 const NOT_ENGLISH_MESSAGE =
   "Please enter a valid English word, idiom, or collocation.";
+const NOT_ENGLISH_MESSAGE_RU =
+  "Введи корректное английское слово, идиому или словосочетание.";
 
 interface AutofillModelOutput extends Partial<AutofillPayload> {
   is_valid_english?: boolean;
@@ -39,10 +43,10 @@ interface AutofillModelOutput extends Partial<AutofillPayload> {
   definition?: string;
 }
 
-function notEnglishResponse() {
+function notEnglishResponse(lang: ApiLang = "en") {
   return NextResponse.json(
     {
-      error: NOT_ENGLISH_MESSAGE,
+      error: lang === "ru" ? NOT_ENGLISH_MESSAGE_RU : NOT_ENGLISH_MESSAGE,
       code: "NOT_ENGLISH",
     },
     { status: 400 }
@@ -90,77 +94,91 @@ function isObviouslyNonEnglishOrGibberish(term: string): boolean {
   return false;
 }
 
-const CORE_ENTRY_PROPERTIES: Record<string, Schema> = {
-  term: { type: Type.STRING },
-  pronunciation: { type: Type.STRING },
-  ipa: { type: Type.STRING },
-  cefr: { type: Type.STRING, enum: ["A1", "A2", "B1", "B2", "C1", "C2"] },
-  type: {
-    type: Type.STRING,
-    enum: ["vocab", "idiom", "collocation"],
-  },
-  register: {
-    type: Type.STRING,
-    enum: ["Formal", "Academic", "Casual", "Slang"],
-  },
-  meaning_en: { type: Type.STRING },
-  meaning_id: { type: Type.STRING },
-  examples: {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        sentence: { type: Type.STRING },
-        translation_id: { type: Type.STRING },
-        context: { type: Type.STRING },
+function getCoreSchemaConfig(lang: ApiLang): {
+  properties: Record<string, Schema>;
+  required: string[];
+} {
+  const isRu = lang === "ru";
+  return {
+    properties: {
+      term: { type: Type.STRING },
+      pronunciation: { type: Type.STRING },
+      ipa: { type: Type.STRING },
+      cefr: { type: Type.STRING, enum: ["A1", "A2", "B1", "B2", "C1", "C2"] },
+      type: {
+        type: Type.STRING,
+        enum: ["vocab", "idiom", "collocation"],
       },
-      required: ["sentence", "translation_id", "context"],
-    },
-  },
-  synonyms: {
-    type: Type.ARRAY,
-    items: { type: Type.STRING },
-  },
-  antonyms: {
-    type: Type.ARRAY,
-    items: { type: Type.STRING },
-  },
-  word_families: {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        word: { type: Type.STRING },
-        pos: { type: Type.STRING },
+      register: {
+        type: Type.STRING,
+        enum: ["Formal", "Academic", "Casual", "Slang"],
       },
-      required: ["word", "pos"],
+      meaning_en: { type: Type.STRING },
+      ...(isRu
+        ? { meaning_ru: { type: Type.STRING } }
+        : { meaning_id: { type: Type.STRING } }),
+      examples: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            sentence: { type: Type.STRING },
+            ...(isRu
+              ? { translation_ru: { type: Type.STRING } }
+              : { translation_id: { type: Type.STRING } }),
+            context: { type: Type.STRING },
+          },
+          required: isRu
+            ? ["sentence", "translation_ru", "context"]
+            : ["sentence", "translation_id", "context"],
+        },
+      },
+      synonyms: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+      antonyms: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+      word_families: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            word: { type: Type.STRING },
+            pos: { type: Type.STRING },
+          },
+          required: ["word", "pos"],
+        },
+      },
+      chunks: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
     },
-  },
-  chunks: {
-    type: Type.ARRAY,
-    items: { type: Type.STRING },
-  },
-};
-
-const CORE_REQUIRED_FIELDS = [
-  "term",
-  "pronunciation",
-  "ipa",
-  "cefr",
-  "type",
-  "register",
-  "meaning_en",
-  "meaning_id",
-  "examples",
-  "synonyms",
-  "antonyms",
-  "word_families",
-  "chunks",
-];
+    required: [
+      "term",
+      "pronunciation",
+      "ipa",
+      "cefr",
+      "type",
+      "register",
+      "meaning_en",
+      isRu ? "meaning_ru" : "meaning_id",
+      "examples",
+      "synonyms",
+      "antonyms",
+      "word_families",
+      "chunks",
+    ],
+  };
+}
 
 function validateAndNormalizeAutofillPayload(
   raw: AutofillModelOutput,
-  fallbackTerm: string
+  fallbackTerm: string,
+  lang: ApiLang
 ): { ok: true; data: AutofillPayload } | { ok: false; missing: string[] } {
   const cleanTerm = (raw.term || fallbackTerm).trim();
   const key = normalizeTermKey(cleanTerm);
@@ -181,7 +199,10 @@ function validateAndNormalizeAutofillPayload(
     (raw.meaning_en || raw.definition || "").trim() ||
     builtInBilingual?.meaning_en ||
     "";
-  const meaning_id = (raw.meaning_id || "").trim();
+  const meaning_ru = (raw.meaning_ru || "").trim() || undefined;
+  const rawMeaningId = (raw.meaning_id || "").trim();
+  const meaning_id =
+    rawMeaningId || (lang === "ru" ? meaning_ru || meaning_en : "");
 
   const examples: WordExample[] = Array.isArray(raw.examples)
     ? raw.examples
@@ -192,16 +213,25 @@ function validateAndNormalizeAutofillPayload(
             ex.sentence.trim().length >= 8
         )
         .slice(0, 2)
-        .map((ex, idx) => ({
-          sentence: ex.sentence.trim(),
-          translation_id: (ex.translation_id || "").trim(),
-          context: (ex.context || "").trim() || (idx === 0 ? "Daily" : "Academic"),
-        }))
+        .map((ex, idx) => {
+          const translationRu = (ex.translation_ru || "").trim();
+          return {
+            sentence: ex.sentence.trim(),
+            translation_id: (ex.translation_id || "").trim(),
+            ...(translationRu ? { translation_ru: translationRu } : {}),
+            context:
+              (ex.context || "").trim() || (idx === 0 ? "Daily" : "Academic"),
+          };
+        })
     : [];
 
   const missing: string[] = [];
   if (meaning_en.length < 4) missing.push("meaning_en");
-  if (meaning_id.length < 4) missing.push("meaning_id");
+  if (lang === "ru") {
+    if (!meaning_ru || meaning_ru.length < 4) missing.push("meaning_ru");
+  } else if (meaning_id.length < 4) {
+    missing.push("meaning_id");
+  }
   if (examples.length === 0) missing.push("examples");
   if (!pronunciation && !ipa) missing.push("pronunciation/ipa");
 
@@ -244,6 +274,7 @@ function validateAndNormalizeAutofillPayload(
       cefr,
       type,
       meaning_id,
+      ...(meaning_ru ? { meaning_ru } : {}),
       meaning_en,
       examples,
       synonyms: Array.isArray(raw.synonyms)
@@ -264,22 +295,27 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       term?: string;
       sourceTag?: string;
-      lang?: "en" | "id";
+      lang?: ApiLang;
       existingTerms?: string[];
       skipDuplicateCheck?: boolean;
     };
     const term = body.term?.trim() ?? "";
-    const lang = body.lang === "en" ? "en" : "id";
+    const lang: ApiLang =
+      body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
 
     if (!term) {
       return NextResponse.json(
-        { error: "Term is required", code: "invalid_input" },
+        {
+          error:
+            lang === "ru" ? "Введи слово или выражение." : "Term is required",
+          code: "invalid_input",
+        },
         { status: 400 }
       );
     }
 
     if (isObviouslyNonEnglishOrGibberish(term)) {
-      return notEnglishResponse();
+      return notEnglishResponse(lang);
     }
 
     const existingList =
@@ -316,13 +352,22 @@ export async function POST(request: Request) {
     const existingCsv = formatCompactExistingTerms(existingList, 140);
     const hasExisting = existingCsv !== "none";
 
-    const systemInstruction = AUTOFILL_SYSTEM_INSTRUCTION;
+    const systemInstruction =
+      lang === "ru"
+        ? AUTOFILL_SYSTEM_INSTRUCTION.replace(
+            "English-Indonesian",
+            "English-Russian"
+          )
+        : AUTOFILL_SYSTEM_INSTRUCTION;
     const prompt = buildAutofillPrompt({
       term,
       sourceTag: body.sourceTag,
       lang,
       existingCsv,
     });
+
+    const { properties: coreProperties, required: coreRequired } =
+      getCoreSchemaConfig(lang);
 
     const responseSchema: Schema = hasExisting
       ? {
@@ -331,22 +376,22 @@ export async function POST(request: Request) {
             is_valid_english: { type: Type.BOOLEAN },
             duplicate: { type: Type.BOOLEAN },
             existing_term: { type: Type.STRING },
-            ...CORE_ENTRY_PROPERTIES,
+            ...coreProperties,
           },
           required: [
             "is_valid_english",
             "duplicate",
             "existing_term",
-            ...CORE_REQUIRED_FIELDS,
+            ...coreRequired,
           ],
         }
       : {
           type: Type.OBJECT,
           properties: {
             is_valid_english: { type: Type.BOOLEAN },
-            ...CORE_ENTRY_PROPERTIES,
+            ...coreProperties,
           },
-          required: ["is_valid_english", ...CORE_REQUIRED_FIELDS],
+          required: ["is_valid_english", ...coreRequired],
         };
 
     const aiRes = await generateStructuredWithHybridModel<AutofillModelOutput>({
@@ -369,7 +414,7 @@ export async function POST(request: Request) {
         if (hasExisting && raw.duplicate === true) {
           return null;
         }
-        const checked = validateAndNormalizeAutofillPayload(raw, term);
+        const checked = validateAndNormalizeAutofillPayload(raw, term, lang);
         return checked.ok ? null : `missing ${checked.missing.join(", ")}`;
       },
     });
@@ -388,7 +433,7 @@ export async function POST(request: Request) {
 
     // Strict English-only gate: reject non-English words, foreign slang, and gibberish
     if (aiRes.data.is_valid_english === false) {
-      return notEnglishResponse();
+      return notEnglishResponse(lang);
     }
 
     // Layer 2 AI semantic/variant duplicate detection
@@ -410,7 +455,11 @@ export async function POST(request: Request) {
       });
     }
 
-    const validated = validateAndNormalizeAutofillPayload(aiRes.data, term);
+    const validated = validateAndNormalizeAutofillPayload(
+      aiRes.data,
+      term,
+      lang
+    );
     if (!validated.ok) {
       const incompleteErr = incompleteGeminiResponseError(
         aiRes.modelUsed,
@@ -437,7 +486,9 @@ export async function POST(request: Request) {
       meaning:
         lang === "en"
           ? normalized.meaning_en || normalized.meaning_id
-          : normalized.meaning_id,
+          : lang === "ru"
+            ? normalized.meaning_ru || normalized.meaning_en
+            : normalized.meaning_id,
       source: "gemini",
       modelUsed: aiRes.modelUsed,
     });

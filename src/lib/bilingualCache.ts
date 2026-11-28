@@ -4,6 +4,7 @@ import type { CefrLevel } from "@/types/lexivault";
 export interface BilingualMeaningInfo {
   meaning_en: string;
   meaning_id?: string;
+  meaning_ru?: string;
   cefr?: CefrLevel;
 }
 
@@ -389,12 +390,14 @@ export function cacheWordMeanings(
   term: string,
   meaningEn?: string | null,
   meaningId?: string | null,
-  cefr?: CefrLevel | string | null
+  cefr?: CefrLevel | string | null,
+  meaningRu?: string | null
 ): void {
   if (typeof window === "undefined") return;
   const cleanEn = meaningEn?.trim();
   const cleanId = meaningId?.trim();
-  if (!cleanEn && !cleanId) return;
+  const cleanRu = meaningRu?.trim();
+  if (!cleanEn && !cleanId && !cleanRu) return;
 
   const key = normalizeTermKey(term);
   if (!key) return;
@@ -405,6 +408,7 @@ export function cacheWordMeanings(
     cache[key] = {
       meaning_en: cleanEn || existing?.meaning_en || "",
       meaning_id: cleanId || existing?.meaning_id,
+      meaning_ru: cleanRu || existing?.meaning_ru,
       cefr: normalizeCefrLevel(cefr) || existing?.cefr,
     };
     window.localStorage.setItem(BILINGUAL_CACHE_KEY, JSON.stringify(cache));
@@ -417,10 +421,12 @@ export function resolveWordMeanings(
   term: string,
   explicitMeaningId?: string | null,
   explicitMeaningEn?: string | null,
-  explicitCefr?: string | null
+  explicitCefr?: string | null,
+  explicitMeaningRu?: string | null
 ): {
   meaning_id: string;
   meaning_en?: string;
+  meaning_ru?: string;
   cefr?: CefrLevel;
 } {
   const key = normalizeTermKey(term);
@@ -434,9 +440,15 @@ export function resolveWordMeanings(
     builtIn?.meaning_en ||
     undefined;
 
+  const meaning_ru =
+    explicitMeaningRu?.trim() ||
+    cached?.meaning_ru?.trim() ||
+    undefined;
+
   const meaning_id =
     explicitMeaningId?.trim() ||
     cached?.meaning_id?.trim() ||
+    meaning_ru ||
     meaning_en ||
     "";
 
@@ -446,5 +458,5 @@ export function resolveWordMeanings(
     builtIn?.cefr ||
     undefined;
 
-  return { meaning_id, meaning_en, cefr };
+  return { meaning_id, meaning_en, meaning_ru, cefr };
 }

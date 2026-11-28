@@ -180,7 +180,9 @@ export function IeltsSpeakingPanel({
       setMicError(
         isEn
           ? "This browser does not support the Web Speech API yet. You can type or dictate your response directly below."
-          : "Browser ini belum mendukung Web Speech API. Kamu bisa langsung mengetik atau mendikte jawaban di kolom teks."
+          : lang === "ru"
+            ? "Этот браузер пока не поддерживает Web Speech API. Ты можешь ввести ответ текстом ниже."
+            : "Browser ini belum mendukung Web Speech API. Kamu bisa langsung mengetik atau mendikte jawaban di kolom teks."
       );
       return;
     }
@@ -217,13 +219,17 @@ export function IeltsSpeakingPanel({
           setMicError(
             isEn
               ? "Microphone permission was denied. Enable mic access in your browser or type your answer below."
-              : "Izin mikrofon ditolak. Aktifkan izin mic di browser atau ketik jawaban di bawah."
+              : lang === "ru"
+                ? "Доступ к микрофону запрещён. Разреши его в настройках браузера или введи ответ ниже."
+                : "Izin mikrofon ditolak. Aktifkan izin mic di browser atau ketik jawaban di bawah."
           );
         } else {
           setMicError(
             isEn
               ? "Voice recording paused. You can resume or edit the transcript."
-              : "Perekaman suara berhenti sementara. Silakan lanjutkan atau edit teks."
+              : lang === "ru"
+                ? "Запись голоса приостановлена. Можешь продолжить или отредактировать текст."
+                : "Perekaman suara berhenti sementara. Silakan lanjutkan atau edit teks."
           );
         }
         setIsRecording(false);
@@ -242,7 +248,9 @@ export function IeltsSpeakingPanel({
       setMicError(
         isEn
           ? "Unable to start microphone on this device."
-          : "Tidak dapat memulai mikrofon pada perangkat ini."
+          : lang === "ru"
+            ? "Не удалось запустить микрофон на этом устройстве."
+            : "Tidak dapat memulai mikrofon pada perangkat ini."
       );
       setIsRecording(false);
     }
@@ -279,6 +287,7 @@ export function IeltsSpeakingPanel({
           speakingPart: part,
           cefrLevel,
           excludeIds: seenIds,
+          lang,
         }),
       });
       if (res.ok) {
@@ -317,6 +326,7 @@ export function IeltsSpeakingPanel({
           transcript: combined,
           durationSec: speakElapsed,
           cefrLevel,
+          lang,
         }),
       });
       if (!res.ok) throw new Error("Speaking grade failed");
@@ -347,7 +357,9 @@ export function IeltsSpeakingPanel({
       setMicError(
         isEn
           ? "Failed to evaluate Speaking response. Please try again."
-          : "Gagal menilai jawaban Speaking. Silakan coba lagi."
+          : lang === "ru"
+            ? "Не удалось оценить ответ Speaking. Попробуй ещё раз."
+            : "Gagal menilai jawaban Speaking. Silakan coba lagi."
       );
     } finally {
       setGrading(false);
@@ -401,10 +413,14 @@ export function IeltsSpeakingPanel({
             {generating
               ? isEn
                 ? "Generating..."
-                : "Membuat..."
+                : lang === "ru"
+                  ? "Генерирую..."
+                  : "Membuat..."
               : isEn
                 ? "Generate New Topic (AI)"
-                : "Generate Topik Baru (AI)"}
+                : lang === "ru"
+                  ? "Новая тема (ИИ)"
+                  : "Generate Topik Baru (AI)"}
           </span>
         </motion.button>
       </div>
@@ -443,7 +459,9 @@ export function IeltsSpeakingPanel({
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
                 {isEn
                   ? "Examiner Follow-Up Questions:"
-                  : "Pertanyaan Lanjutan Examiner:"}
+                  : lang === "ru"
+                    ? "Дополнительные вопросы экзаменатора:"
+                    : "Pertanyaan Lanjutan Examiner:"}
               </p>
               <ul className="space-y-1 text-xs text-[#D1D1D6]">
                 {pack.followUpQuestions.map((fq, idx) => (
@@ -460,7 +478,11 @@ export function IeltsSpeakingPanel({
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFD18C]">
                   <Clock className="h-3.5 w-3.5" />
                   <span>
-                    {isEn ? "1-Min Prep: " : "Prep 1 Menit: "}
+                    {isEn
+                      ? "1-Min Prep: "
+                      : lang === "ru"
+                        ? "Подготовка 1 мин: "
+                        : "Prep 1 Menit: "}
                     {formatSec(prepLeft)}
                   </span>
                 </div>
@@ -475,10 +497,14 @@ export function IeltsSpeakingPanel({
                   {prepActive
                     ? isEn
                       ? "Pause Prep"
-                      : "Jeda Prep"
+                      : lang === "ru"
+                        ? "Пауза"
+                        : "Jeda Prep"
                     : isEn
                       ? "Start 1m Prep"
-                      : "Mulai Prep 1m"}
+                      : lang === "ru"
+                        ? "Таймер 1м"
+                        : "Mulai Prep 1m"}
                 </button>
               </div>
               <textarea
@@ -488,7 +514,9 @@ export function IeltsSpeakingPanel({
                 placeholder={
                   isEn
                     ? "Jot down quick bullet points during 1-minute prep..."
-                    : "Catatan poin cepat selama 1 menit persiapan..."
+                    : lang === "ru"
+                      ? "Набросай краткие тезисы за 1 минуту подготовки..."
+                      : "Catatan poin cepat selama 1 menit persiapan..."
                 }
                 className="w-full rounded-xl bg-black/30 border border-white/[0.08] p-2.5 text-xs text-[#F5F5F7] placeholder:text-[#8E8E93] focus:outline-none"
               />
@@ -498,7 +526,11 @@ export function IeltsSpeakingPanel({
           {/* Target C1/C2 Phrases */}
           <div className="space-y-1.5">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-              {isEn ? "Bonus Target Phrases:" : "Target Frasa Bonus:"}
+              {isEn
+                ? "Bonus Target Phrases:"
+                : lang === "ru"
+                  ? "Бонусные фразы (C1–C2):"
+                  : "Target Frasa Bonus:"}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {pack.targetPhrases.map((phr) => (
@@ -539,10 +571,14 @@ export function IeltsSpeakingPanel({
                   isRecording
                     ? isEn
                       ? "Stop recording"
-                      : "Stop merekam"
+                      : lang === "ru"
+                        ? "Остановить запись"
+                        : "Stop merekam"
                     : isEn
                       ? "Start voice recording"
-                      : "Mulai rekam suara"
+                      : lang === "ru"
+                        ? "Начать запись голоса"
+                        : "Mulai rekam suara"
                 }
               >
                 {isRecording ? (
@@ -559,17 +595,27 @@ export function IeltsSpeakingPanel({
                   {isRecording
                     ? isEn
                       ? "Recording & Transcribing..."
-                      : "Merekam & Mentranskrip..."
+                      : lang === "ru"
+                        ? "Запись и расшифровка..."
+                        : "Merekam & Mentranskrip..."
                     : speechSupported
                       ? isEn
                         ? "Tap Mic to Start Speaking"
-                        : "Tekan Mic untuk Berbicara"
+                        : lang === "ru"
+                          ? "Нажми на микрофон и говори"
+                          : "Tekan Mic untuk Berbicara"
                       : isEn
                         ? "Text Mode (Speech API unavailable)"
-                        : "Mode Teks (Speech API tidak tersedia)"}
+                        : lang === "ru"
+                          ? "Текстовый режим (Speech API недоступен)"
+                          : "Mode Teks (Speech API tidak tersedia)"}
                 </p>
                 <p className="text-xs text-[#8E8E93] tabular-nums">
-                  {isEn ? "Time left: " : "Sisa waktu: "}
+                  {isEn
+                    ? "Time left: "
+                    : lang === "ru"
+                      ? "Осталось: "
+                      : "Sisa waktu: "}
                   <span
                     className={cn(
                       "font-semibold",
@@ -583,7 +629,7 @@ export function IeltsSpeakingPanel({
                     {formatSec(speakRemaining)}
                   </span>{" "}
                   / {formatSec(speakTargetSeconds)} · {wordCount}{" "}
-                  {isEn ? "words" : "kata"}
+                  {isEn ? "words" : lang === "ru" ? "слов" : "kata"}
                 </p>
               </div>
             </div>
@@ -609,7 +655,9 @@ export function IeltsSpeakingPanel({
                     ? formatSec(speakRemaining)
                     : isEn
                       ? `Start ${Math.round(speakTargetSeconds / 60)}m Timer`
-                      : `Mulai Timer ${Math.round(speakTargetSeconds / 60)}m`}
+                      : lang === "ru"
+                        ? `Таймер ${Math.round(speakTargetSeconds / 60)}м`
+                        : `Mulai Timer ${Math.round(speakTargetSeconds / 60)}m`}
                 </span>
               </button>
 
@@ -660,7 +708,9 @@ export function IeltsSpeakingPanel({
             >
               {isEn
                 ? "Response Transcript (auto-transcribed from mic, or type/edit directly):"
-                : "Transkrip Jawaban (otomatis terisi dari suara, atau ketik/edit langsung):"}
+                : lang === "ru"
+                  ? "Расшифровка ответа (диктуй в микрофон или введи вручную):"
+                  : "Transkrip Jawaban (otomatis terisi dari suara, atau ketik/edit langsung):"}
             </label>
             <textarea
               id="ielts-speaking-transcript"
@@ -677,7 +727,9 @@ export function IeltsSpeakingPanel({
               placeholder={
                 isEn
                   ? "Tap the mic button above to speak, or type your IELTS Speaking response here..."
-                  : "Mulai berbicara dengan tombol mic di atas, atau ketik jawaban Speaking kamu di sini..."
+                  : lang === "ru"
+                    ? "Нажми на микрофон выше, чтобы говорить, или введи ответ на IELTS Speaking здесь..."
+                    : "Mulai berbicara dengan tombol mic di atas, atau ketik jawaban Speaking kamu di sini..."
               }
               className="w-full resize-y rounded-2xl bg-black/35 border border-white/[0.1] p-4 text-base leading-relaxed text-[#F5F5F7] placeholder:text-[#8E8E93]/70 focus:outline-none focus:border-[#0A84FF]/60"
             />
@@ -695,7 +747,11 @@ export function IeltsSpeakingPanel({
               }}
               className="text-xs font-medium text-[#8E8E93] hover:text-white cursor-pointer"
             >
-              {isEn ? "Reset Transcript" : "Reset Transkrip"}
+              {isEn
+                ? "Reset Transcript"
+                : lang === "ru"
+                  ? "Очистить ответ"
+                  : "Reset Transkrip"}
             </button>
 
             <motion.button
@@ -709,7 +765,11 @@ export function IeltsSpeakingPanel({
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>
-                    {isEn ? "Examiner Evaluating..." : "Examiner Menilai..."}
+                    {isEn
+                      ? "Examiner Evaluating..."
+                      : lang === "ru"
+                        ? "Экзаменатор оценивает..."
+                        : "Examiner Menilai..."}
                   </span>
                 </>
               ) : (
@@ -718,7 +778,9 @@ export function IeltsSpeakingPanel({
                   <span>
                     {isEn
                       ? "Evaluate Speaking (AI Examiner)"
-                      : "Nilai Speaking (AI Examiner)"}
+                      : lang === "ru"
+                        ? "Оценить Speaking (ИИ)"
+                        : "Nilai Speaking (AI Examiner)"}
                   </span>
                 </>
               )}
@@ -825,7 +887,11 @@ export function IeltsSpeakingPanel({
 
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-4 space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-              {isEn ? "Examiner Feedback" : "Feedback Examiner"}
+              {isEn
+                ? "Examiner Feedback"
+                : lang === "ru"
+                  ? "Комментарий экзаменатора"
+                  : "Feedback Examiner"}
             </p>
             <p className="text-sm leading-relaxed text-[#F5F5F7]">
               {grade.summary_id}
@@ -837,7 +903,9 @@ export function IeltsSpeakingPanel({
               <p className="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">
                 {isEn
                   ? "Awkward → Natural Phrase Upgrades"
-                  : "Koreksi Frasa Kaku → Natural"}
+                  : lang === "ru"
+                    ? "Как звучать естественнее"
+                    : "Koreksi Frasa Kaku → Natural"}
               </p>
               {grade.phrase_upgrades.map((up, idx) => (
                 <div
@@ -883,10 +951,14 @@ export function IeltsSpeakingPanel({
                 {showSample
                   ? isEn
                     ? "Hide Band 8.5+ Model Answer"
-                    : "Sembunyikan Contoh Band 8.5+"
+                    : lang === "ru"
+                      ? "Скрыть пример Band 8.5+"
+                      : "Sembunyikan Contoh Band 8.5+"
                   : isEn
                     ? "View Band 8.5+ Model Answer"
-                    : "Lihat Contoh Jawaban Band 8.5+"}
+                    : lang === "ru"
+                      ? "Пример ответа Band 8.5+"
+                      : "Lihat Contoh Jawaban Band 8.5+"}
               </span>
               {showSample ? (
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -901,7 +973,9 @@ export function IeltsSpeakingPanel({
                   <AudioButton
                     text={grade.band_85_sample}
                     size="sm"
-                    label={isEn ? "Listen" : "Dengar"}
+                    label={
+                      isEn ? "Listen" : lang === "ru" ? "Слушать" : "Dengar"
+                    }
                   />
                 </div>
                 <p className="text-xs sm:text-sm leading-relaxed text-[#F5F5F7]">

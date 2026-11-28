@@ -15,8 +15,10 @@ export interface CefrLevelMeta {
   level: CefrLevel;
   titleEn: string;
   titleId: string;
+  titleRu: string;
   canDoEn: string;
   canDoId: string;
+  canDoRu: string;
   dailyPackTier: DailyPackTargetTier;
   dailyPackPreviewLabel: string;
   ieltsBandRange: string;
@@ -28,10 +30,13 @@ export const CEFR_LEVEL_META: readonly CefrLevelMeta[] = [
     level: "A1",
     titleEn: "Beginner",
     titleId: "Pemula",
+    titleRu: "Начальный",
     canDoEn:
       "Understand familiar everyday phrases, basic greetings, and simple personal questions.",
     canDoId:
       "Memahami frasa sehari-hari yang familier, sapaan dasar, dan kalimat perkenalan sederhana.",
+    canDoRu:
+      "Понимать знакомые повседневные фразы, базовые приветствия и простые личные вопросы.",
     dailyPackTier: mapCefrToDailyPackTier("A1"),
     dailyPackPreviewLabel: getDailyPackTierMeta(mapCefrToDailyPackTier("A1"))
       .displayLabel,
@@ -42,10 +47,13 @@ export const CEFR_LEVEL_META: readonly CefrLevelMeta[] = [
     level: "A2",
     titleEn: "Elementary",
     titleId: "Dasar",
+    titleRu: "Элементарный",
     canDoEn:
       "Handle routine daily conversations, short messages, and straightforward travel or work tasks.",
     canDoId:
       "Menangani percakapan rutin harian, pesan singkat, dan situasi kerja atau perjalanan sederhana.",
+    canDoRu:
+      "Вести простые бытовые диалоги, понимать короткие сообщения и базовые рабочие или дорожные ситуации.",
     dailyPackTier: mapCefrToDailyPackTier("A2"),
     dailyPackPreviewLabel: getDailyPackTierMeta(mapCefrToDailyPackTier("A2"))
       .displayLabel,
@@ -56,10 +64,13 @@ export const CEFR_LEVEL_META: readonly CefrLevelMeta[] = [
     level: "B1",
     titleEn: "Intermediate",
     titleId: "Menengah",
+    titleRu: "Средний",
     canDoEn:
       "Express opinions clearly on work, study, and familiar topics and follow main points in articles.",
     canDoId:
       "Menyampaikan opini secara jelas tentang pekerjaan, studi, serta memahami inti artikel umum.",
+    canDoRu:
+      "Чётко выражать мнение о работе, учёбе и знакомых темах, улавливая главную мысль статей.",
     dailyPackTier: mapCefrToDailyPackTier("B1"),
     dailyPackPreviewLabel: getDailyPackTierMeta(mapCefrToDailyPackTier("B1"))
       .displayLabel,
@@ -70,10 +81,13 @@ export const CEFR_LEVEL_META: readonly CefrLevelMeta[] = [
     level: "B2",
     titleEn: "Upper-Intermediate",
     titleId: "Menengah Atas",
+    titleRu: "Выше среднего",
     canDoEn:
       "Interact fluently with native-level clarity, debate complex viewpoints, and write structured arguments.",
     canDoId:
       "Berkomunikasi lancar, berdiskusi tentang ide kompleks, dan menyusun argumen terstruktur.",
+    canDoRu:
+      "Свободно общаться, аргументированно спорить на сложные темы и писать связные рассуждения.",
     dailyPackTier: mapCefrToDailyPackTier("B2"),
     dailyPackPreviewLabel: getDailyPackTierMeta(mapCefrToDailyPackTier("B2"))
       .displayLabel,
@@ -84,10 +98,13 @@ export const CEFR_LEVEL_META: readonly CefrLevelMeta[] = [
     level: "C1",
     titleEn: "Advanced",
     titleId: "Mahir",
+    titleRu: "Продвинутый",
     canDoEn:
       "Use idiomatic, nuanced academic and professional English naturally across demanding contexts.",
     canDoId:
       "Menggunakan bahasa Inggris akademik & profesional bernuansa idiomatik secara alami dan presisi.",
+    canDoRu:
+      "Естественно и точно использовать идиомы, нюансы и академический английский в сложных ситуациях.",
     dailyPackTier: mapCefrToDailyPackTier("C1"),
     dailyPackPreviewLabel: getDailyPackTierMeta(mapCefrToDailyPackTier("C1"))
       .displayLabel,
@@ -98,10 +115,13 @@ export const CEFR_LEVEL_META: readonly CefrLevelMeta[] = [
     level: "C2",
     titleEn: "Proficiency",
     titleId: "Profisiensi",
+    titleRu: "Владение в совершенстве",
     canDoEn:
       "Command near-native precision, subtle rhetoric, rare idioms, and effortless high-register synthesis.",
     canDoId:
       "Menguasai presisi setara penutur asli, retorika halus, idiom langka, dan register tinggi.",
+    canDoRu:
+      "Владеть точностью на уровне носителя, тонкой риторикой, редкими идиомами и высоким стилем.",
     dailyPackTier: mapCefrToDailyPackTier("C2"),
     dailyPackPreviewLabel: getDailyPackTierMeta(mapCefrToDailyPackTier("C2"))
       .displayLabel,

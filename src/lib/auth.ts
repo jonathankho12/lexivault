@@ -43,12 +43,16 @@ export function validateUsername(
   if (clean.length < 3 || clean.length > 24) {
     return lang === "en"
       ? "Username must be 3–24 characters."
-      : "Username harus 3–24 karakter.";
+      : lang === "ru"
+        ? "Имя пользователя должно быть от 3 до 24 символов."
+        : "Username harus 3–24 karakter.";
   }
   if (!/^[a-z0-9._-]+$/.test(clean)) {
     return lang === "en"
       ? "Username may only contain lowercase letters, numbers, dots, underscores, or hyphens."
-      : "Username hanya boleh berisi huruf kecil, angka, titik, underscore, atau strip.";
+      : lang === "ru"
+        ? "Имя пользователя может содержать только строчные латинские буквы, цифры, точки, _ и -."
+        : "Username hanya boleh berisi huruf kecil, angka, titik, underscore, atau strip.";
   }
   return null;
 }
@@ -197,14 +201,17 @@ export async function signInWithUsername(
   rememberMe: boolean,
   lang: AppLanguage = "id"
 ): Promise<{ user?: AuthUser; error?: string }> {
-  const isEn = lang === "en";
+  const pick = (en: string, id: string, ru: string) =>
+    lang === "en" ? en : lang === "ru" ? ru : id;
   const usernameErr = validateUsername(rawUsername, lang);
   if (usernameErr) return { error: usernameErr };
   if (password.length < 6) {
     return {
-      error: isEn
-        ? "Password must be at least 6 characters."
-        : "Password minimal 6 karakter.",
+      error: pick(
+        "Password must be at least 6 characters.",
+        "Password minimal 6 karakter.",
+        "Пароль должен быть не менее 6 символов."
+      ),
     };
   }
 
@@ -222,9 +229,11 @@ export async function signInWithUsername(
     if (error) {
       if (error.message.toLowerCase().includes("invalid login")) {
         return {
-          error: isEn
-            ? "Invalid username or password."
-            : "Username atau password salah.",
+          error: pick(
+            "Invalid username or password.",
+            "Username atau password salah.",
+            "Неверный логин или пароль."
+          ),
         };
       }
       return { error: error.message };
@@ -232,9 +241,11 @@ export async function signInWithUsername(
 
     if (!data.user) {
       return {
-        error: isEn
-          ? "Failed to load user session."
-          : "Gagal memuat sesi pengguna.",
+        error: pick(
+          "Failed to load user session.",
+          "Gagal memuat sesi pengguna.",
+          "Не удалось загрузить сессию пользователя."
+        ),
       };
     }
 
@@ -247,15 +258,23 @@ export async function signInWithUsername(
   const target = users.find((u) => u.username === username);
   if (!target) {
     return {
-      error: isEn
-        ? `Account @${username} is not registered on this device yet. Switch to the Create Account tab.`
-        : `Akun @${username} belum terdaftar di perangkat ini. Silakan buka tab Daftar Akun.`,
+      error: pick(
+        `Account @${username} is not registered on this device yet. Switch to the Create Account tab.`,
+        `Akun @${username} belum terdaftar di perangkat ini. Silakan buka tab Daftar Akun.`,
+        `Аккаунт @${username} ещё не зарегистрирован на этом устройстве. Открой вкладку Регистрация.`
+      ),
     };
   }
 
   const candidateHash = await hashPassword(password);
   if (candidateHash !== target.passwordHash) {
-    return { error: isEn ? "Incorrect password." : "Password salah." };
+    return {
+      error: pick(
+        "Incorrect password.",
+        "Password salah.",
+        "Неверный пароль."
+      ),
+    };
   }
 
   const authUser: AuthUser = {
@@ -274,14 +293,17 @@ export async function signUpWithUsername(
   rememberMe: boolean,
   lang: AppLanguage = "id"
 ): Promise<{ user?: AuthUser; error?: string }> {
-  const isEn = lang === "en";
+  const pick = (en: string, id: string, ru: string) =>
+    lang === "en" ? en : lang === "ru" ? ru : id;
   const usernameErr = validateUsername(rawUsername, lang);
   if (usernameErr) return { error: usernameErr };
   if (password.length < 6) {
     return {
-      error: isEn
-        ? "Password must be at least 6 characters."
-        : "Password minimal 6 karakter.",
+      error: pick(
+        "Password must be at least 6 characters.",
+        "Password minimal 6 karakter.",
+        "Пароль должен быть не менее 6 символов."
+      ),
     };
   }
 
@@ -302,9 +324,11 @@ export async function signUpWithUsername(
     if (error) {
       if (error.message.toLowerCase().includes("already registered")) {
         return {
-          error: isEn
-            ? `Username @${username} is already taken.`
-            : `Username @${username} sudah digunakan.`,
+          error: pick(
+            `Username @${username} is already taken.`,
+            `Username @${username} sudah digunakan.`,
+            `Имя пользователя @${username} уже занято.`
+          ),
         };
       }
       return { error: error.message };
@@ -312,17 +336,21 @@ export async function signUpWithUsername(
 
     if (data.user && !data.session) {
       return {
-        error: isEn
-          ? "Account created, but Supabase Auth still has 'Confirm email' enabled. Disable 'Confirm email' in Supabase Dashboard → Authentication → Providers → Email to allow instant sign-in."
-          : "Akun dibuat, namun Supabase Auth masih mengaktifkan 'Confirm email'. Matikan 'Confirm email' di Supabase Dashboard → Authentication → Providers → Email agar login langsung aktif tanpa verifikasi email.",
+        error: pick(
+          "Account created, but Supabase Auth still has 'Confirm email' enabled. Disable 'Confirm email' in Supabase Dashboard → Authentication → Providers → Email to allow instant sign-in.",
+          "Akun dibuat, namun Supabase Auth masih mengaktifkan 'Confirm email'. Matikan 'Confirm email' di Supabase Dashboard → Authentication → Providers → Email agar login langsung aktif tanpa verifikasi email.",
+          "Аккаунт создан, но в Supabase Auth всё ещё включён «Confirm email». Отключи его в Supabase Dashboard → Authentication → Providers → Email для мгновенного входа."
+        ),
       };
     }
 
     if (!data.user) {
       return {
-        error: isEn
-          ? "Failed to create a new account."
-          : "Gagal membuat akun baru.",
+        error: pick(
+          "Failed to create a new account.",
+          "Gagal membuat akun baru.",
+          "Не удалось создать новый аккаунт."
+        ),
       };
     }
 
@@ -334,9 +362,11 @@ export async function signUpWithUsername(
   const users = readLocalUsers();
   if (users.some((u) => u.username === username)) {
     return {
-      error: isEn
-        ? `Username @${username} is already registered.`
-        : `Username @${username} sudah terdaftar.`,
+      error: pick(
+        `Username @${username} is already registered.`,
+        `Username @${username} sudah terdaftar.`,
+        `Имя пользователя @${username} уже зарегистрировано.`
+      ),
     };
   }
 
@@ -368,21 +398,26 @@ export async function changeUserPassword(
   newPassword: string,
   lang: AppLanguage = "id"
 ): Promise<{ ok: boolean; error?: string }> {
-  const isEn = lang === "en";
+  const pick = (en: string, id: string, ru: string) =>
+    lang === "en" ? en : lang === "ru" ? ru : id;
   if (user.provider === "guest") {
     return {
       ok: false,
-      error: isEn
-        ? "Guest Mode does not use a password."
-        : "Mode Tamu tidak menggunakan password.",
+      error: pick(
+        "Guest Mode does not use a password.",
+        "Mode Tamu tidak menggunakan password.",
+        "В гостевом режиме пароль не используется."
+      ),
     };
   }
   if (newPassword.length < 6) {
     return {
       ok: false,
-      error: isEn
-        ? "New password must be at least 6 characters."
-        : "Password baru minimal 6 karakter.",
+      error: pick(
+        "New password must be at least 6 characters.",
+        "Password baru minimal 6 karakter.",
+        "Новый пароль должен быть не менее 6 символов."
+      ),
     };
   }
 
@@ -391,9 +426,11 @@ export async function changeUserPassword(
     if (!supabase || !isSupabaseConfigured()) {
       return {
         ok: false,
-        error: isEn
-          ? "Supabase Auth is unavailable."
-          : "Supabase Auth tidak tersedia.",
+        error: pick(
+          "Supabase Auth is unavailable.",
+          "Supabase Auth tidak tersedia.",
+          "Сервис Supabase Auth недоступен."
+        ),
       };
     }
     try {
@@ -407,9 +444,11 @@ export async function changeUserPassword(
     } catch {
       return {
         ok: false,
-        error: isEn
-          ? "Failed to update Cloud password."
-          : "Gagal mengubah password Cloud.",
+        error: pick(
+          "Failed to update Cloud password.",
+          "Gagal mengubah password Cloud.",
+          "Не удалось обновить облачный пароль."
+        ),
       };
     }
   }
@@ -418,9 +457,11 @@ export async function changeUserPassword(
   if (typeof window === "undefined") {
     return {
       ok: false,
-      error: isEn
-        ? "Local storage is unavailable."
-        : "Penyimpanan lokal tidak tersedia.",
+      error: pick(
+        "Local storage is unavailable.",
+        "Penyimpanan lokal tidak tersedia.",
+        "Локальное хранилище недоступно."
+      ),
     };
   }
   const users = readLocalUsers();
@@ -430,9 +471,11 @@ export async function changeUserPassword(
   if (idx === -1) {
     return {
       ok: false,
-      error: isEn
-        ? "Local account not found on this device."
-        : "Akun lokal tidak ditemukan di perangkat ini.",
+      error: pick(
+        "Local account not found on this device.",
+        "Akun lokal tidak ditemukan di perangkat ini.",
+        "Локальный аккаунт на этом устройстве не найден."
+      ),
     };
   }
 

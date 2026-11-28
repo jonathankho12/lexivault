@@ -64,6 +64,7 @@ export function SentenceMakerCard({
           term: word.term,
           meaning_id: word.meaning_id,
           meaning_en: word.meaning_en,
+          meaning_ru: word.meaning_ru,
           register: word.register,
           sentence: sentence.trim(),
           word_families: word.word_families_json,
@@ -79,7 +80,9 @@ export function SentenceMakerCard({
       setErrorMsg(
         isEn
           ? "Failed to evaluate sentence. Please try submitting again."
-          : "Gagal mengevaluasi kalimat. Coba kirim ulang."
+          : lang === "ru"
+            ? "Не удалось проверить предложение. Отправь ещё раз."
+            : "Gagal mengevaluasi kalimat. Coba kirim ulang."
       );
     } finally {
       setIsGrading(false);
@@ -87,7 +90,9 @@ export function SentenceMakerCard({
   };
 
   const isGoodVerdict =
-    grade?.verdict === "Cukup Baik" || grade?.verdict === "Good";
+    grade?.verdict === "Cukup Baik" ||
+    grade?.verdict === "Good" ||
+    grade?.verdict === "Хорошо";
 
   return (
     <div className="space-y-5">
@@ -160,6 +165,11 @@ export function SentenceMakerCard({
                 Write 1 original English sentence using{" "}
                 <span className="text-white font-semibold">{word.term}</span>:
               </>
+            ) : lang === "ru" ? (
+              <>
+                Составь 1 своё предложение на английском со словом{" "}
+                <span className="text-white font-semibold">{word.term}</span>:
+              </>
             ) : (
               <>
                 Tulis 1 kalimat bahasa Inggris asli buatanmu menggunakan{" "}
@@ -176,7 +186,9 @@ export function SentenceMakerCard({
             placeholder={
               isEn
                 ? `e.g. Write a natural sentence using "${word.term}"...`
-                : `Contoh: Write a natural sentence using "${word.term}"...`
+                : lang === "ru"
+                  ? `Напр.: составь естественное предложение с «${word.term}»...`
+                  : `Contoh: Write a natural sentence using "${word.term}"...`
             }
             className="w-full resize-none bg-transparent text-base text-[#F5F5F7] placeholder:text-[#8E8E93]/70 focus:outline-none"
           />
@@ -209,14 +221,22 @@ export function SentenceMakerCard({
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>
-                    {isEn ? "Evaluating with AI..." : "Menilai dengan AI..."}
+                    {isEn
+                      ? "Evaluating with AI..."
+                      : lang === "ru"
+                        ? "ИИ проверяет..."
+                        : "Menilai dengan AI..."}
                   </span>
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
                   <span>
-                    {isEn ? "Check Sentence Quality" : "Cek Kualitas Kalimat"}
+                    {isEn
+                      ? "Check Sentence Quality"
+                      : lang === "ru"
+                        ? "Проверить предложение"
+                        : "Cek Kualitas Kalimat"}
                   </span>
                 </>
               )}
@@ -243,7 +263,8 @@ export function SentenceMakerCard({
               <span
                 className={cn(
                   "rounded-full px-3 py-1 text-xs font-bold border",
-                  grade.verdict === "Natural"
+                  grade.verdict === "Natural" ||
+                    grade.verdict === "Естественно"
                     ? "bg-[#30D158]/20 border-[#30D158]/40 text-[#7CF099]"
                     : isGoodVerdict
                       ? "bg-[#FF9F0A]/20 border-[#FF9F0A]/40 text-[#FFD18C]"
@@ -262,7 +283,11 @@ export function SentenceMakerCard({
           <div className="rounded-2xl bg-[#0A84FF]/10 border border-[#0A84FF]/25 p-4 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF]">
-                {isEn ? "More Native Rewrite" : "Versi Lebih Native"}
+                {isEn
+                  ? "More Native Rewrite"
+                  : lang === "ru"
+                    ? "Как скажет носитель"
+                    : "Versi Lebih Native"}
               </span>
               <AudioButton text={grade.native_rewrite} size="sm" />
             </div>
@@ -274,7 +299,7 @@ export function SentenceMakerCard({
           {grade.tip && (
             <p className="text-xs text-[#8E8E93]">
               <span className="font-semibold text-[#F5F5F7]">
-                {isEn ? "Tip: " : "Tips: "}
+                {isEn ? "Tip: " : lang === "ru" ? "Совет: " : "Tips: "}
               </span>
               {grade.tip}
             </p>
@@ -288,7 +313,7 @@ export function SentenceMakerCard({
               onClick={handleNext}
               className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>{isEn ? "Next" : "Lanjut"}</span>
+              <span>{isEn ? "Next" : lang === "ru" ? "Дальше" : "Lanjut"}</span>
               <ArrowRight className="h-4 w-4" />
             </motion.button>
           </div>

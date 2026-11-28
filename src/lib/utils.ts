@@ -126,34 +126,59 @@ export function formatSourceTagLabel(
   lang: AppLanguage
 ): string {
   const key = normalizeSourceTag(raw);
-  const labels: Record<string, { en: string; id: string }> = {
-    film: { en: "Film", id: "Film" },
-    book: { en: "Book", id: "Buku" },
-    lecture: { en: "Lecture", id: "Kuliah" },
-    article: { en: "Article", id: "Artikel" },
-    general: { en: "General", id: "Umum" },
-    discover: { en: "Discover", id: "Discover" },
-    ai_suggest: { en: "AI Suggest", id: "Saran AI" },
-    daily_pack: { en: "Daily Pack", id: "Target Harian" },
+  const labels: Record<string, { en: string; id: string; ru: string }> = {
+    film: { en: "Film", id: "Film", ru: "Фильм" },
+    book: { en: "Book", id: "Buku", ru: "Книга" },
+    lecture: { en: "Lecture", id: "Kuliah", ru: "Лекция" },
+    article: { en: "Article", id: "Artikel", ru: "Статья" },
+    general: { en: "General", id: "Umum", ru: "Общее" },
+    discover: { en: "Discover", id: "Discover", ru: "Обзор" },
+    ai_suggest: { en: "AI Suggest", id: "Saran AI", ru: "ИИ-подбор" },
+    daily_pack: { en: "Daily Pack", id: "Target Harian", ru: "Пак дня" },
   };
   const match = labels[key];
   if (match) return match[lang];
-  return raw?.trim() || (lang === "en" ? "General" : "Umum");
+  return (
+    raw?.trim() ||
+    (lang === "en" ? "General" : lang === "ru" ? "Общее" : "Umum")
+  );
 }
 
 export function getLocalizedMeaning(
   item: {
     meaning_id?: string | null;
     meaning_en?: string | null;
+    meaning_ru?: string | null;
   },
   lang: AppLanguage
 ): string {
   const en = item.meaning_en?.trim();
   const id = item.meaning_id?.trim();
+  const ru = item.meaning_ru?.trim();
   if (lang === "en") {
-    return en || id || "";
+    return en || id || ru || "";
   }
-  return id || en || "";
+  if (lang === "ru") {
+    return ru || en || id || "";
+  }
+  return id || en || ru || "";
+}
+
+export function getLocalizedExampleTranslation(
+  example:
+    | {
+        translation_id?: string | null;
+        translation_ru?: string | null;
+      }
+    | null
+    | undefined,
+  lang: AppLanguage
+): string {
+  if (!example || lang === "en") return "";
+  if (lang === "ru") {
+    return example.translation_ru?.trim() || "";
+  }
+  return example.translation_id?.trim() || "";
 }
 
 export function cn(...classes: Array<string | false | null | undefined>): string {
@@ -181,10 +206,14 @@ export function getLastNDays(n: number, todayStr: string): string[] {
   return days;
 }
 
-export function formatShortDayLabel(dateStr: string): string {
+export function formatShortDayLabel(
+  dateStr: string,
+  lang: AppLanguage = "en"
+): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   const dt = new Date(y, (m || 1) - 1, d || 1);
-  return dt.toLocaleDateString("en-US", { weekday: "short" });
+  const locale = lang === "ru" ? "ru-RU" : lang === "id" ? "id-ID" : "en-US";
+  return dt.toLocaleDateString(locale, { weekday: "short" });
 }
 
 export function calculateStreak(logs: StudyLog[], todayStr: string): number {
@@ -320,60 +349,88 @@ export function formatGeminiClientError(
   fallbackMessage: string,
   lang: AppLanguage
 ): string {
-  const isEn = lang === "en";
+  const pick = (en: string, id: string, ru: string) =>
+    lang === "en" ? en : lang === "ru" ? ru : id;
+
   switch (code) {
     case "NOT_ENGLISH":
       return (
         fallbackMessage ||
-        "Please enter a valid English word, idiom, or collocation."
+        pick(
+          "Please enter a valid English word, idiom, or collocation.",
+          "Masukkan kata, idiom, atau kolokasi bahasa Inggris yang valid.",
+          "Введи корректное английское слово, идиому или словосочетание."
+        )
       );
     case "overload":
-      return isEn
-        ? "Gemini AI is experiencing high demand right now. Please try again in a moment."
-        : "Server Gemini AI sedang sibuk. Silakan coba lagi sebentar.";
+      return pick(
+        "Gemini AI is experiencing high demand right now. Please try again in a moment.",
+        "Server Gemini AI sedang sibuk. Silakan coba lagi sebentar.",
+        "Сервер Gemini AI сейчас перегружен. Попробуй снова через пару секунд."
+      );
     case "rate_limit":
     case "quota":
-      return isEn
-        ? "Gemini AI rate limit reached right now. Please try again in a moment."
-        : "Batas permintaan Gemini AI sedang penuh. Silakan coba lagi sebentar.";
+      return pick(
+        "Gemini AI rate limit reached right now. Please try again in a moment.",
+        "Batas permintaan Gemini AI sedang penuh. Silakan coba lagi sebentar.",
+        "Достигнут лимит запросов Gemini AI. Попробуй снова чуть позже."
+      );
     case "network":
-      return isEn
-        ? "Unable to reach Gemini AI right now (network timeout). Please try again."
-        : "Koneksi ke server Gemini AI timeout. Silakan coba lagi.";
+      return pick(
+        "Unable to reach Gemini AI right now (network timeout). Please try again.",
+        "Koneksi ke server Gemini AI timeout. Silakan coba lagi.",
+        "Не удалось подключиться к Gemini AI (тайм-аут сети). Попробуй ещё раз."
+      );
     case "missing_key":
-      return isEn
-        ? "GEMINI_API_KEY is not configured on the server."
-        : "GEMINI_API_KEY belum terkonfigurasi di server.";
+      return pick(
+        "GEMINI_API_KEY is not configured on the server.",
+        "GEMINI_API_KEY belum terkonfigurasi di server.",
+        "GEMINI_API_KEY не настроен на сервере."
+      );
     case "auth":
-      return isEn
-        ? "Gemini API key authentication failed."
-        : "Autentikasi Gemini API key gagal.";
+      return pick(
+        "Gemini API key authentication failed.",
+        "Autentikasi Gemini API key gagal.",
+        "Ошибка проверки ключа Gemini API."
+      );
     case "model":
-      return isEn
-        ? "Configured Gemini model is unavailable or rejected the request."
-        : "Model Gemini yang dikonfigurasi tidak tersedia atau menolak permintaan.";
+      return pick(
+        "Configured Gemini model is unavailable or rejected the request.",
+        "Model Gemini yang dikonfigurasi tidak tersedia atau menolak permintaan.",
+        "Выбранная модель Gemini недоступна или отклонила запрос."
+      );
     case "empty_response":
-      return isEn
-        ? "Gemini AI returned an empty response. Please try again."
-        : "Server Gemini AI mengembalikan respons kosong. Silakan coba lagi.";
+      return pick(
+        "Gemini AI returned an empty response. Please try again.",
+        "Server Gemini AI mengembalikan respons kosong. Silakan coba lagi.",
+        "Gemini AI вернул пустой ответ. Попробуй ещё раз."
+      );
     case "parse_error":
-      return isEn
-        ? "Gemini AI response was cut off before finishing. Please try again."
-        : "Respons Gemini AI terpotong sebelum selesai. Silakan coba lagi.";
+      return pick(
+        "Gemini AI response was cut off before finishing. Please try again.",
+        "Respons Gemini AI terpotong sebelum selesai. Silakan coba lagi.",
+        "Ответ Gemini AI оборвался на полуслове. Попробуй ещё раз."
+      );
     case "incomplete_response":
-      return isEn
-        ? "Gemini AI returned incomplete word details. Please try again."
-        : "Detail kata dari Gemini AI tidak lengkap. Silakan coba lagi.";
+      return pick(
+        "Gemini AI returned incomplete word details. Please try again.",
+        "Detail kata dari Gemini AI tidak lengkap. Silakan coba lagi.",
+        "Gemini AI вернул неполное описание слова. Попробуй ещё раз."
+      );
     default:
       if (httpStatus === 503) {
-        return isEn
-          ? "Gemini AI is experiencing high demand right now. Please try again in a moment."
-          : "Server Gemini AI sedang sibuk. Silakan coba lagi sebentar.";
+        return pick(
+          "Gemini AI is experiencing high demand right now. Please try again in a moment.",
+          "Server Gemini AI sedang sibuk. Silakan coba lagi sebentar.",
+          "Сервер Gemini AI сейчас перегружен. Попробуй снова через пару секунд."
+        );
       }
       if (httpStatus === 429) {
-        return isEn
-          ? "Gemini AI rate limit reached right now. Please try again in a moment."
-          : "Batas permintaan Gemini AI sedang penuh. Silakan coba lagi sebentar.";
+        return pick(
+          "Gemini AI rate limit reached right now. Please try again in a moment.",
+          "Batas permintaan Gemini AI sedang penuh. Silakan coba lagi sebentar.",
+          "Достигнут лимит запросов Gemini AI. Попробуй снова чуть позже."
+        );
       }
       return fallbackMessage;
   }

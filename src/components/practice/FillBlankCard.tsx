@@ -39,9 +39,9 @@ export function FillBlankCard({
   } = question;
 
   const meaningHint =
-    isEn
+    lang === "en"
       ? getLocalizedMeaning(word, "en")
-      : blankTranslation || getLocalizedMeaning(word, "id");
+      : blankTranslation || getLocalizedMeaning(word, lang);
 
   const remoteUrl = accent === "UK" ? word.audio_uk_url : word.audio_us_url;
 
@@ -87,7 +87,13 @@ export function FillBlankCard({
             remoteUrl={remoteUrl}
             wordId={word.id}
             label={
-              submitted ? word.term : isEn ? "Hear Target" : "Dengar Target"
+              submitted
+                ? word.term
+                : isEn
+                  ? "Hear Target"
+                  : lang === "ru"
+                    ? "Озвучить"
+                    : "Dengar Target"
             }
             size="sm"
           />
@@ -119,7 +125,11 @@ export function FillBlankCard({
         <div className="flex items-start gap-2 rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 text-xs text-[#8E8E93]">
           <HelpCircle className="h-4 w-4 shrink-0 text-[#0A84FF] mt-0.5" />
           <span className="leading-relaxed">
-            {isEn ? "Meaning hint: " : "Petunjuk makna: "}
+            {isEn
+              ? "Meaning hint: "
+              : lang === "ru"
+                ? "Подсказка: "
+                : "Petunjuk makna: "}
             {meaningHint}
           </span>
         </div>
@@ -135,7 +145,9 @@ export function FillBlankCard({
           placeholder={
             isEn
               ? "Type the expression or pick below..."
-              : "Ketik kata/frasa atau pilih di bawah..."
+              : lang === "ru"
+                ? "Введи слово или выбери ниже..."
+                : "Ketik kata/frasa atau pilih di bawah..."
           }
           className="liquid-glass-pill min-w-0 flex-1 rounded-full px-4 py-3 text-base text-[#F5F5F7] placeholder:text-[#8E8E93] focus:outline-none focus:border-[#0A84FF]/55"
         />
@@ -150,7 +162,7 @@ export function FillBlankCard({
               : "bg-white/[0.08] text-[#8E8E93] cursor-not-allowed"
           )}
         >
-          {isEn ? "Check" : "Cek"}
+          {isEn ? "Check" : lang === "ru" ? "Проверить" : "Cek"}
         </motion.button>
       </form>
 
@@ -159,7 +171,9 @@ export function FillBlankCard({
         <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93] px-1">
           {isEn
             ? "Or pick quickly from the Word Bank:"
-            : "Atau pilih cepat dari Word Bank:"}
+            : lang === "ru"
+              ? "Или выбери вариант ниже:"
+              : "Atau pilih cepat dari Word Bank:"}
         </p>
         <div className="grid grid-cols-2 gap-2.5">
           {choices.map((choice, idx) => {
@@ -224,10 +238,14 @@ export function FillBlankCard({
                 {isCorrect
                   ? isEn
                     ? "Correct! Accurate contextual usage."
-                    : "Benar! Penggunaan kontekstual tepat."
+                    : lang === "ru"
+                      ? "Верно! Отличное попадание в контекст."
+                      : "Benar! Penggunaan kontekstual tepat."
                   : isEn
                     ? `Correct answer: "${blankTarget}"`
-                    : `Jawaban yang tepat: "${blankTarget}"`}
+                    : lang === "ru"
+                      ? `Правильный ответ: «${blankTarget}»`
+                      : `Jawaban yang tepat: "${blankTarget}"`}
               </span>
             </div>
           </div>
@@ -254,7 +272,9 @@ export function FillBlankCard({
               onClick={handleNext}
               className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>{isEn ? "Next" : "Lanjut"}</span>
+              <span>
+                {isEn ? "Next" : lang === "ru" ? "Дальше" : "Lanjut"}
+              </span>
               <ArrowRight className="h-4 w-4" />
             </motion.button>
           </div>

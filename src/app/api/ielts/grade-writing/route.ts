@@ -31,14 +31,20 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       prompt?: WritingTaskPack;
       essay?: string;
-      lang?: "en" | "id";
+      lang?: "en" | "id" | "ru";
       cefrLevel?: CefrLevel;
     };
 
     const task = body.prompt;
     const essay = body.essay?.trim() ?? "";
     const words = countWords(essay);
-    const feedbackLang = body.lang === "en" ? "English" : "Indonesian";
+    const lang = body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
+    const feedbackLang =
+      lang === "en"
+        ? "English"
+        : lang === "ru"
+          ? 'natural Russian (casual "ты" study-buddy tone)'
+          : "Indonesian";
 
     if (!task || !essay) {
       return NextResponse.json(
@@ -241,7 +247,7 @@ Return strictly valid JSON:
     }
 
     return NextResponse.json({
-      result: gradeWritingHeuristic(task, essay),
+      result: gradeWritingHeuristic(task, essay, lang),
       source: "fallback",
     });
   } catch {

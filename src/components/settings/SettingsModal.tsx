@@ -35,7 +35,7 @@ import { CefrRecommendationBanner } from "@/components/gamification/CefrRecommen
 import { LexiAvatar } from "@/components/LexiAvatar";
 import { GetAndroidAppPill } from "@/components/pwa/AndroidAppModal";
 import { SettingsDeveloperCard } from "@/components/ui/DeveloperCredits";
-import { FlagEnIcon, FlagIdIcon } from "@/components/ui/FlagIcons";
+import { FlagEnIcon, FlagIdIcon, FlagRuIcon } from "@/components/ui/FlagIcons";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePwaInstall } from "@/context/PwaInstallContext";
@@ -164,7 +164,9 @@ export function SettingsModal({
             ? `Cloud sync complete — ${res.totalWords} Vault ${
                 res.totalWords === 1 ? "item" : "items"
               } synced to Supabase.`
-            : `Sinkronisasi Cloud selesai — ${res.totalWords} item Vault tersinkron ke Supabase.`,
+            : lang === "ru"
+              ? `Облачная синхронизация завершена — синхронизировано записей: ${res.totalWords}.`
+              : `Sinkronisasi Cloud selesai — ${res.totalWords} item Vault tersinkron ke Supabase.`,
       });
     } else {
       setForceSyncFeedback({
@@ -173,7 +175,9 @@ export function SettingsModal({
           res.error ||
           (lang === "en"
             ? "Failed to sync with Supabase Cloud."
-            : "Gagal menyinkronkan ke Supabase Cloud."),
+            : lang === "ru"
+              ? "Не удалось синхронизировать с облаком Supabase."
+              : "Gagal menyinkronkan ke Supabase Cloud."),
       });
     }
   };
@@ -217,7 +221,9 @@ export function SettingsModal({
             res.error ||
             (lang === "en"
               ? "Failed to update password."
-              : "Gagal memperbarui password."),
+              : lang === "ru"
+                ? "Не удалось обновить пароль."
+                : "Gagal memperbarui password."),
         });
       }
     } finally {
@@ -531,9 +537,15 @@ export function SettingsModal({
                 {t.settings.sections.language}
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 {(
                   [
+                    {
+                      id: "en",
+                      label: t.settings.language.english,
+                      sub: t.settings.language.englishSub,
+                      Flag: FlagEnIcon,
+                    },
                     {
                       id: "id",
                       label: t.settings.language.indonesia,
@@ -541,10 +553,10 @@ export function SettingsModal({
                       Flag: FlagIdIcon,
                     },
                     {
-                      id: "en",
-                      label: t.settings.language.english,
-                      sub: t.settings.language.englishSub,
-                      Flag: FlagEnIcon,
+                      id: "ru",
+                      label: t.settings.language.russian,
+                      sub: t.settings.language.russianSub,
+                      Flag: FlagRuIcon,
                     },
                   ] as const
                 ).map((item) => {
@@ -567,7 +579,7 @@ export function SettingsModal({
                       )}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <Flag className="h-4.5 w-6" />
+                        <Flag className="h-5 w-5 shrink-0" />
                         <div className="min-w-0">
                           <p className="text-xs sm:text-sm font-semibold truncate">
                             {item.label}
@@ -597,27 +609,51 @@ export function SettingsModal({
             <section className="space-y-2">
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-                  {lang === "en" ? "Appearance" : "Tampilan"}
+                  {lang === "en"
+                    ? "Appearance"
+                    : lang === "ru"
+                      ? "Оформление"
+                      : "Tampilan"}
                 </h3>
                 {theme === "system" && (
                   <span className="text-[10px] font-medium text-[#70BCFF]">
                     {lang === "en"
                       ? `Following System (${resolvedTheme === "light" ? "Light" : "Dark"})`
-                      : `Mengikuti Sistem (${resolvedTheme === "light" ? "Terang" : "Gelap"})`}
+                      : lang === "ru"
+                        ? `Как в системе (${resolvedTheme === "light" ? "Светлая" : "Тёмная"})`
+                        : `Mengikuti Sistem (${resolvedTheme === "light" ? "Terang" : "Gelap"})`}
                   </span>
                 )}
               </div>
 
               <div
                 role="radiogroup"
-                aria-label={lang === "en" ? "Theme" : "Tema"}
+                aria-label={
+                  lang === "en"
+                    ? "Theme"
+                    : lang === "ru"
+                      ? "Тема"
+                      : "Tema"
+                }
                 className="grid grid-cols-3 gap-1 rounded-2xl bg-white/[0.04] border border-white/[0.08] p-1"
               >
                 {(
                   [
-                    { id: "dark", label: "Dark", Icon: Moon },
-                    { id: "light", label: "Light", Icon: Sun },
-                    { id: "system", label: "System", Icon: Monitor },
+                    {
+                      id: "dark",
+                      label: lang === "ru" ? "Тёмная" : "Dark",
+                      Icon: Moon,
+                    },
+                    {
+                      id: "light",
+                      label: lang === "ru" ? "Светлая" : "Light",
+                      Icon: Sun,
+                    },
+                    {
+                      id: "system",
+                      label: lang === "ru" ? "Система" : "System",
+                      Icon: Monitor,
+                    },
                   ] as const
                 ).map(({ id, label, Icon }) => {
                   const active = theme === id;
@@ -830,12 +866,18 @@ export function SettingsModal({
                         {placementCefr
                           ? lang === "en"
                             ? `From Placement (${placementCefr})`
-                            : `Dari Placement (${placementCefr})`
+                            : lang === "ru"
+                              ? `По тесту (${placementCefr})`
+                              : `Dari Placement (${placementCefr})`
                           : userCefr
                             ? lang === "en"
                               ? `From CEFR (${userCefr})`
-                              : `Dari CEFR (${userCefr})`
-                            : "Default B1–B2"}
+                              : lang === "ru"
+                                ? `По CEFR (${userCefr})`
+                                : `Dari CEFR (${userCefr})`
+                            : lang === "ru"
+                              ? "По умолчанию B1–B2"
+                              : "Default B1–B2"}
                       </p>
                     </motion.button>
 
@@ -860,7 +902,11 @@ export function SettingsModal({
                         >
                           <p className="text-xs font-bold">{tier.displayLabel}</p>
                           <p className="text-[10px] text-[#8E8E93] truncate">
-                            {lang === "en" ? tier.nameEn : tier.nameId}
+                            {lang === "en"
+                              ? tier.nameEn
+                              : lang === "ru"
+                                ? tier.nameRu
+                                : tier.nameId}
                           </p>
                         </motion.button>
                       );
@@ -1478,7 +1524,9 @@ export function SettingsModal({
                         <span>
                           {lang === "en"
                             ? `Updated: ${batchRefresh.updatedCount} · Failed: ${batchRefresh.failedCount}`
-                            : `Diperbarui: ${batchRefresh.updatedCount} · Gagal: ${batchRefresh.failedCount}`}
+                            : lang === "ru"
+                              ? `Обновлено: ${batchRefresh.updatedCount} · Ошибок: ${batchRefresh.failedCount}`
+                              : `Diperbarui: ${batchRefresh.updatedCount} · Gagal: ${batchRefresh.failedCount}`}
                         </span>
                         <span>
                           {Math.round(
@@ -1512,12 +1560,16 @@ export function SettingsModal({
                             ? `Cancelled — updated ${batchRefresh.updatedCount} ${
                                 batchRefresh.updatedCount === 1 ? "word" : "words"
                               }, ${batchRefresh.failedCount} failed`
-                            : `Dibatalkan — diperbarui ${batchRefresh.updatedCount} kata, ${batchRefresh.failedCount} gagal`
+                            : lang === "ru"
+                              ? `Отменено — обновлено слов: ${batchRefresh.updatedCount}, ошибок: ${batchRefresh.failedCount}`
+                              : `Dibatalkan — diperbarui ${batchRefresh.updatedCount} kata, ${batchRefresh.failedCount} gagal`
                           : lang === "en"
                             ? `Updated ${batchRefresh.updatedCount} ${
                                 batchRefresh.updatedCount === 1 ? "word" : "words"
                               }, ${batchRefresh.failedCount} failed`
-                            : `Diperbarui ${batchRefresh.updatedCount} kata, ${batchRefresh.failedCount} gagal`}
+                            : lang === "ru"
+                              ? `Обновлено слов: ${batchRefresh.updatedCount}, ошибок: ${batchRefresh.failedCount}`
+                              : `Diperbarui ${batchRefresh.updatedCount} kata, ${batchRefresh.failedCount} gagal`}
                       </span>
                       <Check className="h-3.5 w-3.5 shrink-0" />
                     </div>

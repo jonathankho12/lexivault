@@ -26,6 +26,7 @@ import {
   formatRegisterBadgeClass,
   formatSourceTagLabel,
   formatTypeLabel,
+  getLocalizedExampleTranslation,
   getLocalizedMeaning,
   getWordAccuracy,
 } from "@/lib/utils";
@@ -82,7 +83,9 @@ export function WordDetailSheet() {
             aria-label={
               lang === "en"
                 ? `Details for ${selectedWord.term}`
-                : `Detail untuk ${selectedWord.term}`
+                : lang === "ru"
+                  ? `Подробнее о «${selectedWord.term}»`
+                  : `Detail untuk ${selectedWord.term}`
             }
             initial={{ opacity: 0, y: 48 }}
             animate={{ opacity: 1, y: 0 }}
@@ -182,10 +185,14 @@ export function WordDetailSheet() {
                         res.source === "gemini"
                           ? lang === "en"
                             ? "Updated by Gemini AI"
-                            : "Diperbarui oleh Gemini AI"
+                            : lang === "ru"
+                              ? "Обновлено с Gemini AI"
+                              : "Diperbarui oleh Gemini AI"
                           : lang === "en"
                             ? "Updated from offline dictionary"
-                            : "Diperbarui dari kamus fallback",
+                            : lang === "ru"
+                              ? "Обновлено из офлайн-словаря"
+                              : "Diperbarui dari kamus fallback",
                     });
                   } else {
                     setAiStatusMsg({
@@ -194,7 +201,9 @@ export function WordDetailSheet() {
                         res.error ||
                         (lang === "en"
                           ? "Failed to refresh details."
-                          : "Gagal memperbarui detail."),
+                          : lang === "ru"
+                            ? "Не удалось обновить карточку."
+                            : "Gagal memperbarui detail."),
                     });
                   }
                 }}
@@ -283,11 +292,14 @@ export function WordDetailSheet() {
                     <p className="text-sm leading-relaxed text-[#F5F5F7]">
                       <HighlightedText text={ex.sentence} />
                     </p>
-                    {lang === "id" && ex.translation_id && (
-                      <p className="text-xs leading-relaxed text-[#8E8E93]">
-                        <HighlightedText text={ex.translation_id} />
-                      </p>
-                    )}
+                    {(() => {
+                      const translated = getLocalizedExampleTranslation(ex, lang);
+                      return translated ? (
+                        <p className="text-xs leading-relaxed text-[#8E8E93]">
+                          <HighlightedText text={translated} />
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                 ))}
               </div>

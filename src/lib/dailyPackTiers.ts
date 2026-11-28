@@ -9,6 +9,7 @@ export interface DailyPackTierMeta {
   displayLabel: string;
   nameEn: string;
   nameId: string;
+  nameRu: string;
   cefrPair: [CefrLevel, CefrLevel];
   badgeClass: string;
 }
@@ -19,6 +20,7 @@ export const DAILY_PACK_TIER_LIST: DailyPackTierMeta[] = [
     displayLabel: "A1–A2",
     nameEn: "Foundation",
     nameId: "Dasar (Foundation)",
+    nameRu: "Базовый",
     cefrPair: ["A1", "A2"],
     badgeClass: "bg-[#30D158]/15 border-[#30D158]/35 text-[#7CF099]",
   },
@@ -27,6 +29,7 @@ export const DAILY_PACK_TIER_LIST: DailyPackTierMeta[] = [
     displayLabel: "A2–B1",
     nameEn: "Elementary–Pre-Intermediate",
     nameId: "Dasar–Pra-Menengah",
+    nameRu: "Начальный–Ниже среднего",
     cefrPair: ["A2", "B1"],
     badgeClass: "bg-[#32ADE6]/15 border-[#32ADE6]/35 text-[#7DD3FC]",
   },
@@ -35,6 +38,7 @@ export const DAILY_PACK_TIER_LIST: DailyPackTierMeta[] = [
     displayLabel: "B1–B2",
     nameEn: "Intermediate–Upper-Intermediate",
     nameId: "Menengah–Menengah Atas",
+    nameRu: "Средний–Выше среднего",
     cefrPair: ["B1", "B2"],
     badgeClass: "bg-[#0A84FF]/15 border-[#0A84FF]/35 text-[#70BCFF]",
   },
@@ -43,6 +47,7 @@ export const DAILY_PACK_TIER_LIST: DailyPackTierMeta[] = [
     displayLabel: "B2–C1",
     nameEn: "Upper-Intermediate–Advanced",
     nameId: "Menengah Atas–Mahir",
+    nameRu: "Выше среднего–Продвинутый",
     cefrPair: ["B2", "C1"],
     badgeClass: "bg-[#5E5CE6]/20 border-[#5E5CE6]/40 text-[#C4C2FF]",
   },
@@ -51,6 +56,7 @@ export const DAILY_PACK_TIER_LIST: DailyPackTierMeta[] = [
     displayLabel: "C1–C2",
     nameEn: "Advanced–Proficiency",
     nameId: "Mahir–Profisiensi",
+    nameRu: "Продвинутый–Свободный",
     cefrPair: ["C1", "C2"],
     badgeClass: "bg-[#FF9F0A]/15 border-[#FF9F0A]/35 text-[#FFD18C]",
   },

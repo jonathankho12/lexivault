@@ -14,10 +14,10 @@ import {
   User,
   UserRound,
 } from "lucide-react";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { GetAndroidAppPill } from "@/components/pwa/AndroidAppModal";
 import { AuthDeveloperFooter } from "@/components/ui/DeveloperCredits";
-import { LanguageFlagPill } from "@/components/ui/FlagIcons";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePwaInstall } from "@/context/PwaInstallContext";
@@ -87,12 +87,9 @@ export function AuthView() {
     <div className="relative min-h-dvh w-full flex items-center justify-center px-4 pt-16 pb-8 sm:py-10 overflow-x-hidden">
       <AmbientBackground />
 
-      {/* Floating Top-Right Minimalist Language Switcher */}
+      {/* Floating Top-Right Compact Flag + Language Dropdown */}
       <div className="fixed top-[max(1.25rem,env(safe-area-inset-top))] right-5 sm:top-6 sm:right-6 z-30">
-        <LanguageFlagPill
-          instanceId="auth"
-          className="backdrop-blur-md bg-[#0E101A]/75 border-white/[0.14] shadow-[0_8px_24px_rgba(0,0,0,0.45),inset_0_1px_0.5px_rgba(255,255,255,0.18)]"
-        />
+        <LanguageSwitcher align="right" direction="down" />
       </div>
 
       <motion.div

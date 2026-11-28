@@ -231,7 +231,9 @@ export function IeltsReadingPanel({
       setVaultSavedMsg(
         isEn
           ? `"${selectedPhrase}" saved to Vault ✓`
-          : `"${selectedPhrase}" disimpan ke Vault ✓`
+          : lang === "ru"
+            ? `«${selectedPhrase}» сохранено в словарь ✓`
+            : `"${selectedPhrase}" disimpan ke Vault ✓`
       );
       setSelectedPhrase("");
     }
@@ -249,6 +251,7 @@ export function IeltsReadingPanel({
           skill: "reading",
           cefrLevel: levelToUse,
           excludeIds: seenIds,
+          lang,
         }),
       });
       if (res.ok) {
@@ -385,10 +388,14 @@ export function IeltsReadingPanel({
                 timerActive
                   ? isEn
                     ? "Pause timer"
-                    : "Jeda timer"
+                    : lang === "ru"
+                      ? "Пауза таймера"
+                      : "Jeda timer"
                   : isEn
                     ? "Start timer"
-                    : "Mulai timer"
+                    : lang === "ru"
+                      ? "Запустить таймер"
+                      : "Mulai timer"
               }
               className="ml-1 text-[#70BCFF] hover:text-white cursor-pointer"
             >
@@ -404,7 +411,7 @@ export function IeltsReadingPanel({
                 setTimerActive(false);
                 setSecondsLeft(pack.recommendedMinutes * 60);
               }}
-              aria-label="Reset timer"
+              aria-label={lang === "ru" ? "Сбросить таймер" : "Reset timer"}
               className="text-[#8E8E93] hover:text-white cursor-pointer"
             >
               <RotateCcw className="h-3 w-3" />
@@ -427,10 +434,14 @@ export function IeltsReadingPanel({
               {generating
                 ? isEn
                   ? "Generating..."
-                  : "Membuat..."
+                  : lang === "ru"
+                    ? "Генерирую..."
+                    : "Membuat..."
                 : isEn
                   ? `New ${targetLevel} Passage (AI)`
-                  : `Soal ${targetLevel} Baru (AI)`}
+                  : lang === "ru"
+                    ? `Новый текст ${targetLevel} (ИИ)`
+                    : `Soal ${targetLevel} Baru (AI)`}
             </span>
           </motion.button>
         </div>
@@ -440,12 +451,17 @@ export function IeltsReadingPanel({
       <div className="lg:hidden grid grid-cols-2 rounded-full bg-white/[0.06] border border-white/[0.1] p-1">
         {(
           [
-            { id: "passage", label: isEn ? "Passage" : "Teks Bacaan" },
+            {
+              id: "passage",
+              label: isEn ? "Passage" : lang === "ru" ? "Текст" : "Teks Bacaan",
+            },
             {
               id: "questions",
               label: isEn
                 ? `Questions (${pack.questions.length})`
-                : `Soal (${pack.questions.length})`,
+                : lang === "ru"
+                  ? `Вопросы (${pack.questions.length})`
+                  : `Soal (${pack.questions.length})`,
             },
           ] as const
         ).map((tab) => (
@@ -481,10 +497,14 @@ export function IeltsReadingPanel({
                 {submitted
                   ? isEn
                     ? "Highlighted sentences show exact evidence for each question"
-                    : "Kalimat yang disorot menunjukkan bukti jawaban tiap soal"
+                    : lang === "ru"
+                      ? "Выделенные предложения показывают точное доказательство в тексте"
+                      : "Kalimat yang disorot menunjukkan bukti jawaban tiap soal"
                   : isEn
                     ? "Highlight any unfamiliar phrase to save it to your Vault"
-                    : "Blok kata sulit di teks untuk simpan ke Vault"}
+                    : lang === "ru"
+                      ? "Выдели незнакомую фразу в тексте, чтобы сохранить в словарь"
+                      : "Blok kata sulit di teks untuk simpan ke Vault"}
               </span>
             </div>
 
@@ -548,11 +568,16 @@ export function IeltsReadingPanel({
             <div className="liquid-glass-elevated rounded-3xl p-5 flex items-center justify-between gap-3 border-[#30D158]/35">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
-                  {isEn ? "IELTS Reading Result" : "Hasil Reading IELTS"}
+                  {isEn
+                    ? "IELTS Reading Result"
+                    : lang === "ru"
+                      ? "Результат IELTS Reading"
+                      : "Hasil Reading IELTS"}
                 </p>
                 <p className="text-xl font-bold text-white">
                   Est. Band {resultBand.toFixed(1)} ({correctCount}/
-                  {pack.questions.length} {isEn ? "correct" : "benar"})
+                  {pack.questions.length}{" "}
+                  {isEn ? "correct" : lang === "ru" ? "верно" : "benar"})
                 </p>
               </div>
               <CheckCircle2 className="h-7 w-7 text-[#30D158] shrink-0" />
@@ -562,9 +587,12 @@ export function IeltsReadingPanel({
           {pack.questions.map((q, qIdx) => {
             const userAns = answers[q.id] ?? "";
             const correct = submitted ? isQuestionCorrect(q, userAns) : false;
-            const explanationText = isEn
-              ? q.explanation_en || q.explanation_id
-              : q.explanation_id || q.explanation_en;
+            const explanationText =
+              lang === "en"
+                ? q.explanation_en || q.explanation_id
+                : lang === "ru"
+                  ? q.explanation_ru || q.explanation_id || q.explanation_en
+                  : q.explanation_id || q.explanation_en;
 
             return (
               <div
@@ -615,10 +643,14 @@ export function IeltsReadingPanel({
                       q.wordLimit
                         ? isEn
                           ? `Write ${q.wordLimit.toLowerCase()} from the passage...`
-                          : `Tulis ${q.wordLimit.toLowerCase()} dari teks...`
+                          : lang === "ru"
+                            ? `Выпиши из текста (${q.wordLimit.toLowerCase()})...`
+                            : `Tulis ${q.wordLimit.toLowerCase()} dari teks...`
                         : isEn
                           ? "Type 1–2 words from the passage..."
-                          : "Ketik 1–2 kata dari teks..."
+                          : lang === "ru"
+                            ? "Введи 1–2 слова из текста..."
+                            : "Ketik 1–2 kata dari teks..."
                     }
                     className="w-full rounded-2xl bg-white/[0.05] border border-white/[0.12] px-3.5 py-2.5 text-base sm:text-sm text-white placeholder:text-[#8E8E93] focus:outline-none focus:border-[#0A84FF]/60"
                   />
@@ -665,7 +697,7 @@ export function IeltsReadingPanel({
                   <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-2 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-semibold text-[#7CF099]">
-                        {isEn ? "Answer: " : "Jawaban: "}
+                        {isEn ? "Answer: " : lang === "ru" ? "Ответ: " : "Jawaban: "}
                         {q.answer}
                       </p>
                       {q.evidence_quote && (
@@ -676,7 +708,11 @@ export function IeltsReadingPanel({
                         >
                           <Highlighter className="h-3 w-3" />
                           <span>
-                            {isEn ? "Highlight in Passage" : "Sorot di Teks"}
+                            {isEn
+                              ? "Highlight in Passage"
+                              : lang === "ru"
+                                ? "Найти в тексте"
+                                : "Sorot di Teks"}
                           </span>
                         </button>
                       )}
@@ -688,7 +724,11 @@ export function IeltsReadingPanel({
                     )}
                     {q.evidence_quote && (
                       <p className="text-[11px] italic text-[#70BCFF] pt-1 border-t border-white/[0.07]">
-                        {isEn ? "Evidence: " : "Bukti teks: "}
+                        {isEn
+                          ? "Evidence: "
+                          : lang === "ru"
+                            ? "Цитата: "
+                            : "Bukti teks: "}
                         &ldquo;{q.evidence_quote}&rdquo;
                       </p>
                     )}
@@ -704,7 +744,9 @@ export function IeltsReadingPanel({
               title={
                 isEn
                   ? "Key Reading Vocabulary (Save to Vault)"
-                  : "Kosakata Penting Bacaan (Simpan ke Vault)"
+                  : lang === "ru"
+                    ? "Ключевая лексика (сохрани в словарь)"
+                    : "Kosakata Penting Bacaan (Simpan ke Vault)"
               }
               sourceTag="ielts"
             />
@@ -717,7 +759,11 @@ export function IeltsReadingPanel({
               onClick={() => void handleSubmit()}
               className="w-full rounded-full bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] py-3 text-sm font-semibold text-white cursor-pointer"
             >
-              {isEn ? "Submit Reading Answers" : "Submit Jawaban Reading"}
+              {isEn
+                ? "Submit Reading Answers"
+                : lang === "ru"
+                  ? "Проверить Reading"
+                  : "Submit Jawaban Reading"}
             </motion.button>
           )}
         </div>

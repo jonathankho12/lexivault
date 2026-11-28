@@ -50,7 +50,8 @@ function normalizeSuggestedItem(
     phonetic?: string;
     example?: string;
     source?: string;
-  }
+  },
+  lang: "en" | "id" | "ru" = "id"
 ): SuggestedWordItem | null {
   const term = (raw.term || "").trim();
   if (!term) return null;
@@ -85,11 +86,16 @@ function normalizeSuggestedItem(
             ex.sentence.trim().length >= 8
         )
         .slice(0, 2)
-        .map((ex, idx) => ({
-          sentence: ex.sentence.trim(),
-          translation_id: (ex.translation_id || "").trim(),
-          context: (ex.context || "").trim() || (idx === 0 ? "Daily" : "Academic"),
-        }))
+        .map((ex, idx) => {
+          const translationRu = (ex.translation_ru || "").trim();
+          return {
+            sentence: ex.sentence.trim(),
+            translation_id: (ex.translation_id || "").trim(),
+            ...(translationRu ? { translation_ru: translationRu } : {}),
+            context:
+              (ex.context || "").trim() || (idx === 0 ? "Daily" : "Academic"),
+          };
+        })
     : [];
 
   if (
@@ -106,10 +112,19 @@ function normalizeSuggestedItem(
 
   const meaning_en =
     (raw.meaning_en || "").trim() || builtInBilingual?.meaning_en || "";
-  const meaning_id = (raw.meaning_id || "").trim();
+  const meaning_ru = (raw.meaning_ru || "").trim() || undefined;
+  const rawMeaningId = (raw.meaning_id || "").trim();
+  const meaning_id =
+    rawMeaningId || (lang === "ru" ? meaning_ru || meaning_en : "");
 
   // Never emit placeholder definitions or dummy examples
-  if (meaning_en.length < 4 || meaning_id.length < 4 || examples.length === 0) {
+  if (
+    meaning_en.length < 4 ||
+    (lang === "ru"
+      ? !meaning_ru || meaning_ru.length < 4
+      : meaning_id.length < 4) ||
+    examples.length === 0
+  ) {
     return null;
   }
 
@@ -137,6 +152,7 @@ function normalizeSuggestedItem(
     type,
     meaning_en,
     meaning_id,
+    ...(meaning_ru ? { meaning_ru } : {}),
     examples,
     synonyms: Array.isArray(raw.synonyms)
       ? raw.synonyms.map((s) => String(s).trim()).filter(Boolean).slice(0, 4)
@@ -241,7 +257,7 @@ export async function POST(request: Request) {
       existingTerms?: string[];
       category?: SuggestCategory;
       register?: SuggestRegister;
-      lang?: "en" | "id";
+      lang?: "en" | "id" | "ru";
     };
 
     const category: SuggestCategory =
@@ -256,7 +272,9 @@ export async function POST(request: Request) {
       body.register === "Casual"
         ? body.register
         : "any";
-    const lang = body.lang === "en" ? "en" : "id";
+    const lang =
+      body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
+    const isRu = lang === "ru";
 
     const rateLimit = checkAiRateLimit(request, lang, {
       bucket: "suggest-words",
@@ -285,7 +303,17 @@ export async function POST(request: Request) {
         ? "Balance Academic, Formal, and Casual registers."
         : `ALL 4 items must fit register "${register}".`;
 
-    const prompt = `Generate 4 fresh C1–C2 English expressions (ui: ${lang}).
+    const prompt = isRu
+      ? `Generate 4 fresh C1–C2 English expressions (ui: ru).
+${categoryInstruction} ${registerInstruction}
+EXCLUDE (no exact or variant matches): ${existingCsv}
+${CEFR_CALIBRATION_RULE}
+${REGISTER_CLASSIFICATION_RULE}
+${IDIOM_WORD_FAMILY_RULE}
+
+Concise complete JSON per item:
+term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Casual), pronunciation ("·" dots + ALL CAPS stress), ipa (/.../), meaning_en (1 concise English sentence), meaning_ru (1 natural Russian sentence capturing figurative meaning in casual "ты" tone), examples (2 short English sentences — 1 Daily, 1 Academic — wrapping target in **bold**, with natural Russian translation_ru & context), synonyms (2-3 English), antonyms (1-2 English), word_families (1-2 real English {word,pos} for vocab/collocation ONLY; [] for idioms), source_tag (film|book|lecture|article|general).`
+      : `Generate 4 fresh C1–C2 English expressions (ui: ${lang}).
 ${categoryInstruction} ${registerInstruction}
 EXCLUDE (no exact or variant matches): ${existingCsv}
 ${CEFR_CALIBRATION_RULE}
@@ -300,8 +328,9 @@ term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Ca
     }>({
       tier: "flash",
       routeName: "api/suggest-words",
-      systemInstruction:
-        "Fast C1-C2 English lexicographer. Output complete, compact valid JSON only with zero duplicates.",
+      systemInstruction: isRu
+        ? "Fast C1-C2 English-Russian lexicographer. Output complete, compact valid JSON only with zero duplicates."
+        : "Fast C1-C2 English lexicographer. Output complete, compact valid JSON only with zero duplicates.",
       contents: prompt,
       maxOutputTokens: 3072,
       fallbackMaxTokens: 1800,
@@ -312,7 +341,7 @@ term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Ca
           return "empty items array";
         }
         const validCount = parsed.items.filter(
-          (it) => normalizeSuggestedItem(it) !== null
+          (it) => normalizeSuggestedItem(it, lang) !== null
         ).length;
         return validCount === 0 ? "no valid complete items" : null;
       },
@@ -337,17 +366,23 @@ term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Ca
                   enum: ["Academic", "Formal", "Casual"],
                 },
                 meaning_en: { type: Type.STRING },
-                meaning_id: { type: Type.STRING },
+                ...(isRu
+                  ? { meaning_ru: { type: Type.STRING } }
+                  : { meaning_id: { type: Type.STRING } }),
                 examples: {
                   type: Type.ARRAY,
                   items: {
                     type: Type.OBJECT,
                     properties: {
                       sentence: { type: Type.STRING },
-                      translation_id: { type: Type.STRING },
+                      ...(isRu
+                        ? { translation_ru: { type: Type.STRING } }
+                        : { translation_id: { type: Type.STRING } }),
                       context: { type: Type.STRING },
                     },
-                    required: ["sentence", "translation_id", "context"],
+                    required: isRu
+                      ? ["sentence", "translation_ru", "context"]
+                      : ["sentence", "translation_id", "context"],
                   },
                 },
                 synonyms: {
@@ -382,7 +417,7 @@ term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Ca
                 "type",
                 "register",
                 "meaning_en",
-                "meaning_id",
+                isRu ? "meaning_ru" : "meaning_id",
                 "examples",
                 "synonyms",
                 "antonyms",
@@ -413,7 +448,7 @@ term, type (vocab|idiom|collocation), cefr (C1|C2), register (Academic|Formal|Ca
 
     if (Array.isArray(aiRes.data.items)) {
       for (const rawItem of aiRes.data.items) {
-        const normalized = normalizeSuggestedItem(rawItem);
+        const normalized = normalizeSuggestedItem(rawItem, lang);
         if (!normalized) continue;
         const key = normalizeDuplicateKey(normalized.term);
         if (seenBatch.has(key)) continue;

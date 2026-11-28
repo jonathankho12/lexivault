@@ -24,6 +24,9 @@ export function SaveToVaultButton({
   const { words, addWordViaAI } = useLexiVault();
   const { lang } = useLanguage();
   const isEn = lang === "en";
+  const isRu = lang === "ru";
+  const pick = (en: string, id: string, ru: string) =>
+    isEn ? en : isRu ? ru : id;
 
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -59,12 +62,16 @@ export function SaveToVaultButton({
       onClick={() => void handleSave()}
       title={
         saved
-          ? isEn
-            ? "Already saved in your Vault"
-            : "Sudah tersimpan di Vault"
-          : isEn
-            ? `Save "${cleanTerm}" to Vault`
-            : `Simpan "${cleanTerm}" ke Vault`
+          ? pick(
+              "Already saved in your Vault",
+              "Sudah tersimpan di Vault",
+              "Уже в словаре"
+            )
+          : pick(
+              `Save "${cleanTerm}" to Vault`,
+              `Simpan "${cleanTerm}" ke Vault`,
+              `Сохранить «${cleanTerm}» в словарь`
+            )
       }
       className={cn(
         "inline-flex items-center gap-1 rounded-full border font-semibold transition-colors shrink-0",
@@ -84,16 +91,10 @@ export function SaveToVaultButton({
       )}
       <span>
         {saving
-          ? isEn
-            ? "Saving..."
-            : "Menyimpan..."
+          ? pick("Saving...", "Menyimpan...", "Сохраняю...")
           : saved
-            ? isEn
-              ? "Saved ✓"
-              : "Tersimpan ✓"
-            : isEn
-              ? "+ Save to Vault"
-              : "+ Simpan ke Vault"}
+            ? pick("Saved ✓", "Tersimpan ✓", "Сохранено ✓")
+            : pick("+ Save to Vault", "+ Simpan ke Vault", "+ В словарь")}
       </span>
     </motion.button>
   );
@@ -110,6 +111,9 @@ export function IeltsVocabStrip({
 }) {
   const { lang } = useLanguage();
   const isEn = lang === "en";
+  const isRu = lang === "ru";
+  const pick = (en: string, id: string, ru: string) =>
+    isEn ? en : isRu ? ru : id;
 
   const uniqueItems = useMemo(() => {
     const seen = new Set<string>();
@@ -134,13 +138,19 @@ export function IeltsVocabStrip({
           <Sparkles className="h-3.5 w-3.5 text-[#70BCFF]" />
           <p className="text-xs font-semibold uppercase tracking-wider text-[#D1D1D6]">
             {title ||
-              (isEn
-                ? "Upgraded Vocabulary & Collocations"
-                : "Kosakata & Kolokasi Upgrade")}
+              pick(
+                "Upgraded Vocabulary & Collocations",
+                "Kosakata & Kolokasi Upgrade",
+                "Лексика и сочетания для апгрейда"
+              )}
           </p>
         </div>
         <span className="text-[11px] text-[#8E8E93]">
-          {isEn ? "1-click save to Vault" : "1-klik simpan ke Vault"}
+          {pick(
+            "1-click save to Vault",
+            "1-klik simpan ke Vault",
+            "В 1 клик в словарь"
+          )}
         </span>
       </div>
 

@@ -5,6 +5,7 @@ import {
   generateStructuredWithHybridModel,
   logGeminiRouteError,
 } from "@/lib/gemini";
+import type { AppLanguage } from "@/lib/i18n";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import type {
   GrammarCheckAlternative,
@@ -30,11 +31,28 @@ const VALID_VERDICTS = new Set<GrammarCheckVerdict>([
   "incorrect",
 ]);
 
-const DEFAULT_VERDICT_LABELS: Record<GrammarCheckVerdict, string> = {
-  correct: "Natural & Correct",
-  fragment: "Sentence Fragment",
-  unnatural: "Awkward / Unnatural",
-  incorrect: "Grammar Issue",
+const DEFAULT_VERDICT_LABELS: Record<
+  AppLanguage,
+  Record<GrammarCheckVerdict, string>
+> = {
+  en: {
+    correct: "Natural & Correct",
+    fragment: "Sentence Fragment",
+    unnatural: "Awkward / Unnatural",
+    incorrect: "Grammar Issue",
+  },
+  id: {
+    correct: "Natural & Tepat",
+    fragment: "Potongan Kalimat",
+    unnatural: "Kurang Natural",
+    incorrect: "Perlu Perbaikan Grammar",
+  },
+  ru: {
+    correct: "Естественно и верно",
+    fragment: "Неполная фраза",
+    unnatural: "Звучит неестественно",
+    incorrect: "Есть ошибка",
+  },
 };
 
 const CONTEXT_GUIDANCE: Record<GrammarCheckContext, string> = {
@@ -107,8 +125,14 @@ function normalizeVerdict(raw: unknown): GrammarCheckVerdict {
   return "correct";
 }
 
-function normalizeIssues(raw: unknown): GrammarCheckIssue[] {
+function normalizeIssues(raw: unknown, lang: AppLanguage): GrammarCheckIssue[] {
   if (!Array.isArray(raw)) return [];
+  const defaultReason =
+    lang === "ru"
+      ? "Корректировка грамматики или формулировки."
+      : lang === "id"
+        ? "Penyesuaian tata bahasa atau diksi."
+        : "Grammar or phrasing adjustment.";
   const list: GrammarCheckIssue[] = [];
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
@@ -123,7 +147,7 @@ function normalizeIssues(raw: unknown): GrammarCheckIssue[] {
     list.push({
       original: original || "—",
       correction: correction || "—",
-      reason: reason || "Grammar or phrasing adjustment.",
+      reason: reason || defaultReason,
     });
     if (list.length >= 8) break;
   }
@@ -132,8 +156,15 @@ function normalizeIssues(raw: unknown): GrammarCheckIssue[] {
 
 function normalizeAlternatives(
   raw: unknown,
-  fallbackText: string
+  fallbackText: string,
+  lang: AppLanguage
 ): GrammarCheckAlternative[] {
+  const defaultNote =
+    lang === "ru"
+      ? "Естественная формулировка для этого контекста."
+      : lang === "id"
+        ? "Ungkapan alami untuk situasi ini."
+        : "Natural phrasing for this situation.";
   const list: GrammarCheckAlternative[] = [];
   if (Array.isArray(raw)) {
     for (const item of raw) {
@@ -148,7 +179,7 @@ function normalizeAlternatives(
       list.push({
         context: context || "Natural",
         example,
-        note: note || "Natural phrasing for this situation.",
+        note: note || defaultNote,
       });
       if (list.length >= 3) break;
     }
@@ -160,7 +191,12 @@ function normalizeAlternatives(
     list.push({
       context: label,
       example: fallbackText,
-      note: `Polished phrasing suitable for ${label.toLowerCase()} communication.`,
+      note:
+        lang === "ru"
+          ? `Уместный вариант для стиля: ${label}.`
+          : lang === "id"
+            ? `Gaya kalimat yang pas untuk konteks ${label.toLowerCase()}.`
+            : `Polished phrasing suitable for ${label.toLowerCase()} communication.`,
     });
   }
 
@@ -204,15 +240,22 @@ export async function POST(request: Request) {
   if (limited) return limited;
 
   try {
-    let body: { text?: unknown; context?: unknown };
+    let body: { text?: unknown; context?: unknown; lang?: unknown };
     try {
-      body = (await request.json()) as { text?: unknown; context?: unknown };
+      body = (await request.json()) as {
+        text?: unknown;
+        context?: unknown;
+        lang?: unknown;
+      };
     } catch {
       return NextResponse.json(
         { error: "Invalid JSON request body." },
         { status: 400 }
       );
     }
+
+    const lang: AppLanguage =
+      body.lang === "id" ? "id" : body.lang === "ru" ? "ru" : "en";
 
     if (typeof body.text !== "string") {
       return NextResponse.json(
@@ -244,6 +287,13 @@ export async function POST(request: Request) {
       ? (rawContext as GrammarCheckContext)
       : "auto";
 
+    const feedbackLangRule =
+      lang === "ru"
+        ? 'Write verdictLabel, explanation, issues[].reason, and alternatives[].note in natural, friendly Russian (casual "ты" tone). Keep correctedText, issues[].original, issues[].correction, alternatives[].example, and alternatives[].context ("Casual", "Work", "Academic / IELTS") in English.'
+        : lang === "id"
+          ? 'Write verdictLabel, explanation, issues[].reason, and alternatives[].note in natural Indonesian ("kamu" tone). Keep correctedText, issues[].original, issues[].correction, alternatives[].example, and alternatives[].context ("Casual", "Work", "Academic / IELTS") in English.'
+          : 'Write all explanations, labels, reasons, and notes in natural English.';
+
     const systemInstruction =
       "Fast English grammar, naturalness, and register checker. Return concise valid JSON matching the schema.";
 
@@ -252,11 +302,12 @@ export async function POST(request: Request) {
 ${text}
 """
 
+Language rule: ${feedbackLangRule}
 Verdict: "correct" (sound & natural), "fragment" (incomplete clause), "unnatural" (grammatical but awkward/wrong register), "incorrect" (grammar/spelling/punctuation error).
 Return JSON:
-- verdict, verdictLabel (2-4 words), correctedText (cleanest natural version), explanation (1-2 concise sentences)
+- verdict, verdictLabel (2-4 words), correctedText (cleanest natural English version), explanation (1-2 concise sentences)
 - issues: [{original, correction, reason}] ([] if none)
-- alternatives: 3 concise rewrites [{context, example, note}] for Casual, Work, Academic (put target context first).`;
+- alternatives: 3 concise English rewrites [{context, example, note}] for Casual, Work, Academic (put target context first).`;
 
     const aiRes = await generateStructuredWithHybridModel<
       Partial<GrammarCheckResult>
@@ -295,19 +346,23 @@ Return JSON:
     const verdictLabel =
       typeof raw.verdictLabel === "string" && raw.verdictLabel.trim()
         ? raw.verdictLabel.trim()
-        : DEFAULT_VERDICT_LABELS[verdict];
+        : DEFAULT_VERDICT_LABELS[lang][verdict];
     const explanation =
       typeof raw.explanation === "string" && raw.explanation.trim()
         ? raw.explanation.trim()
-        : "Grammar and phrasing evaluation completed.";
+        : lang === "ru"
+          ? "Проверка грамматики и стиля завершена."
+          : lang === "id"
+            ? "Evaluasi tata bahasa dan gaya kalimat selesai."
+            : "Grammar and phrasing evaluation completed.";
 
     const normalizedResult: GrammarCheckResult = {
       verdict,
       verdictLabel,
       correctedText,
       explanation,
-      issues: normalizeIssues(raw.issues),
-      alternatives: normalizeAlternatives(raw.alternatives, correctedText),
+      issues: normalizeIssues(raw.issues, lang),
+      alternatives: normalizeAlternatives(raw.alternatives, correctedText, lang),
     };
 
     return NextResponse.json(normalizedResult);

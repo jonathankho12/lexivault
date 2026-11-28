@@ -30,7 +30,11 @@ export default function HomePage() {
             <LexiLogo size="lg" showAmbientGlow />
           </div>
           <p className="text-xs font-medium text-[#8E8E93]">
-            {lang === "en" ? "Loading LexiVault..." : "Memuat LexiVault..."}
+            {lang === "en"
+              ? "Loading LexiVault..."
+              : lang === "ru"
+                ? "Загрузка LexiVault..."
+                : "Memuat LexiVault..."}
           </p>
         </div>
       </div>

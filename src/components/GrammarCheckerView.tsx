@@ -18,6 +18,8 @@ import {
   Trash2,
   Wand2,
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import type { AppLanguage } from "@/lib/i18n";
 import { IOS_EASE, IOS_SPRING, TAP_SCALE } from "@/lib/motion";
 import { playGlassClick } from "@/lib/soundEffects";
 import { cn } from "@/lib/utils";
@@ -41,32 +43,76 @@ interface RecentGrammarCheck {
 
 const CONTEXT_OPTIONS: Array<{
   id: GrammarCheckContext;
-  label: string;
-  hint: string;
+  label: Record<AppLanguage, string>;
+  hint: Record<AppLanguage, string>;
 }> = [
-  { id: "auto", label: "Auto", hint: "Smart register detection" },
-  { id: "casual", label: "Casual", hint: "Everyday conversation" },
-  { id: "academic", label: "Academic / IELTS", hint: "Formal & scholarly" },
-  { id: "work", label: "Work", hint: "Professional & email" },
+  {
+    id: "auto",
+    label: { en: "Auto", id: "Auto", ru: "Авто" },
+    hint: {
+      en: "Smart register detection",
+      id: "Deteksi register otomatis",
+      ru: "Автоопределение стиля",
+    },
+  },
+  {
+    id: "casual",
+    label: { en: "Casual", id: "Kasual", ru: "Разговорный" },
+    hint: {
+      en: "Everyday conversation",
+      id: "Percakapan sehari-hari",
+      ru: "Живое общение",
+    },
+  },
+  {
+    id: "academic",
+    label: { en: "Academic / IELTS", id: "Akademik / IELTS", ru: "Академический" },
+    hint: {
+      en: "Formal & scholarly",
+      id: "Formal & ilmiah",
+      ru: "Для эссе и IELTS",
+    },
+  },
+  {
+    id: "work",
+    label: { en: "Work", id: "Kerja", ru: "Деловой" },
+    hint: {
+      en: "Professional & email",
+      id: "Profesional & email",
+      ru: "Письма и работа",
+    },
+  },
 ];
 
 const QUICK_SAMPLES: Array<{
-  label: string;
+  label: Record<AppLanguage, string>;
   text: string;
   context: GrammarCheckContext;
 }> = [
   {
-    label: "Fragment fix",
+    label: {
+      en: "Fragment fix",
+      id: "Perbaiki fragmen",
+      ru: "Обрыв фразы",
+    },
     text: "Because I was stuck in heavy traffic on my way to the office.",
     context: "work",
   },
   {
-    label: "Academic polish",
+    label: {
+      en: "Academic polish",
+      id: "Polesan akademik",
+      ru: "Академ. стиль",
+    },
     text: "Nowadays, many people thinks technology make life more easy.",
     context: "academic",
   },
   {
-    label: "Natural phrasing",
+    label: {
+      en: "Natural phrasing",
+      id: "Frasa natural",
+      ru: "Естественнее",
+    },
     text: "I am looking forward to meet you next Monday for discuss the project.",
     context: "work",
   },
@@ -111,22 +157,47 @@ const VERDICT_META: Record<
   },
 };
 
-function getContextLabel(ctx: GrammarCheckContext): string {
-  return CONTEXT_OPTIONS.find((opt) => opt.id === ctx)?.label ?? "Auto";
+function getContextLabel(
+  ctx: GrammarCheckContext,
+  lang: AppLanguage
+): string {
+  const opt = CONTEXT_OPTIONS.find((item) => item.id === ctx);
+  return opt ? opt.label[lang] : CONTEXT_OPTIONS[0].label[lang];
 }
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(iso: string, lang: AppLanguage): string {
   const ts = Date.parse(iso);
   if (!Number.isFinite(ts)) return "";
   const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (diffSec < 60) return "Just now";
+  if (diffSec < 60) {
+    return lang === "ru" ? "Только что" : lang === "id" ? "Baru saja" : "Just now";
+  }
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 60) {
+    return lang === "ru"
+      ? `${diffMin} мин. назад`
+      : lang === "id"
+        ? `${diffMin}m lalu`
+        : `${diffMin}m ago`;
+  }
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffHr < 24) {
+    return lang === "ru"
+      ? `${diffHr} ч. назад`
+      : lang === "id"
+        ? `${diffHr}j lalu`
+        : `${diffHr}h ago`;
+  }
   const diffDays = Math.floor(diffHr / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return new Date(ts).toLocaleDateString(undefined, {
+  if (diffDays < 7) {
+    return lang === "ru"
+      ? `${diffDays} дн. назад`
+      : lang === "id"
+        ? `${diffDays}h lalu`
+        : `${diffDays}d ago`;
+  }
+  const locale = lang === "ru" ? "ru-RU" : lang === "id" ? "id-ID" : undefined;
+  return new Date(ts).toLocaleDateString(locale, {
     month: "short",
     day: "numeric",
   });
@@ -195,6 +266,15 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
 }
 
 export function GrammarCheckerView() {
+  const { lang } = useLanguage();
+  const isRu = lang === "ru";
+  const isId = lang === "id";
+  const pick = useCallback(
+    (en: string, id: string, ru: string) =>
+      isRu ? ru : isId ? id : en,
+    [isId, isRu]
+  );
+
   const [text, setText] = useState("");
   const [context, setContext] = useState<GrammarCheckContext>("auto");
   const [isChecking, setIsChecking] = useState(false);
@@ -275,6 +355,7 @@ export function GrammarCheckerView() {
         body: JSON.stringify({
           text: trimmed.slice(0, MAX_CHARS),
           context,
+          lang,
         }),
       });
 
@@ -284,15 +365,24 @@ export function GrammarCheckerView() {
 
       if (!response.ok) {
         throw new Error(
-          payload.error || "Unable to analyze grammar right now. Please try again."
+          payload.error ||
+            pick(
+              "Unable to analyze grammar right now. Please try again.",
+              "Tidak dapat menganalisis tata bahasa saat ini. Coba lagi.",
+              "Не удалось проверить грамматику. Попробуй ещё раз."
+            )
         );
       }
 
       const normalized: GrammarCheckResult = {
         verdict: payload.verdict ?? "correct",
-        verdictLabel: payload.verdictLabel || "Checked",
+        verdictLabel:
+          payload.verdictLabel ||
+          pick("Checked", "Diperiksa", "Проверено"),
         correctedText: payload.correctedText || trimmed,
-        explanation: payload.explanation || "Evaluation complete.",
+        explanation:
+          payload.explanation ||
+          pick("Evaluation complete.", "Evaluasi selesai.", "Проверка завершена."),
         issues: Array.isArray(payload.issues) ? payload.issues : [],
         alternatives: Array.isArray(payload.alternatives)
           ? payload.alternatives
@@ -309,7 +399,11 @@ export function GrammarCheckerView() {
       setError(
         err instanceof Error
           ? err.message
-          : "Something went wrong while checking grammar."
+          : pick(
+              "Something went wrong while checking grammar.",
+              "Terjadi kesalahan saat memeriksa tata bahasa.",
+              "Произошла ошибка при проверке грамматики."
+            )
       );
     } finally {
       if (abortRef.current === controller) {
@@ -317,7 +411,7 @@ export function GrammarCheckerView() {
       }
       setIsChecking(false);
     }
-  }, [context, isChecking, pushRecentCheck, text]);
+  }, [context, isChecking, lang, pick, pushRecentCheck, text]);
 
   const handleClear = useCallback(() => {
     playGlassClick();
@@ -365,13 +459,27 @@ export function GrammarCheckerView() {
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF] mb-2">
             <SpellCheck className="h-3.5 w-3.5" />
-            <span>AI Grammar &amp; Phrasing Checker</span>
+            <span>
+              {pick(
+                "AI Grammar & Phrasing Checker",
+                "Pemeriksa Grammar & Frasa AI",
+                "ИИ-проверка грамматики и стиля"
+              )}
+            </span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            Grammar &amp; Phrasing
+            {pick(
+              "Grammar & Phrasing",
+              "Tata Bahasa & Gaya Kalimat",
+              "Грамматика и стиль"
+            )}
           </h2>
           <p className="mt-1 text-sm text-[#8E8E93] max-w-2xl">
-            Paste any sentence, phrase, or short paragraph to catch grammar errors, sentence fragments, and awkward wording—with 3 context-aware native rewrites.
+            {pick(
+              "Paste any sentence, phrase, or short paragraph to catch grammar errors, sentence fragments, and awkward wording—with 3 context-aware native rewrites.",
+              "Tempel kalimat atau paragraf singkat untuk mendeteksi error grammar, potongan kalimat, dan diksi kaku—lengkap dengan 3 variasi penulisan alami.",
+              "Вставь любое английское предложение или короткий абзац: проверю грамматику, исправлю ошибки и предложу 3 естественных варианта."
+            )}
           </p>
         </div>
       </header>
@@ -381,11 +489,11 @@ export function GrammarCheckerView() {
         {/* Context Pill Selector */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">
-            Target Context
+            {pick("Target Context", "Konteks Target", "Контекст")}
           </span>
           <div
             role="radiogroup"
-            aria-label="Target Context"
+            aria-label={pick("Target Context", "Konteks Target", "Контекст")}
             className="flex flex-wrap gap-1.5"
           >
             {CONTEXT_OPTIONS.map((opt) => {
@@ -401,7 +509,7 @@ export function GrammarCheckerView() {
                     playGlassClick();
                     setContext(opt.id);
                   }}
-                  title={opt.hint}
+                  title={opt.hint[lang]}
                   className={cn(
                     "relative rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer select-none border",
                     active
@@ -409,7 +517,7 @@ export function GrammarCheckerView() {
                       : "bg-white/[0.04] border-white/[0.09] text-[#8E8E93] hover:text-[#F5F5F7] hover:bg-white/[0.08]"
                   )}
                 >
-                  {opt.label}
+                  {opt.label[lang]}
                 </motion.button>
               );
             })}
@@ -429,8 +537,16 @@ export function GrammarCheckerView() {
             }}
             maxLength={MAX_CHARS}
             rows={4}
-            placeholder="Write or paste an English sentence, phrase, or short paragraph to check..."
-            aria-label="English text to check"
+            placeholder={pick(
+              "Write or paste an English sentence, phrase, or short paragraph to check...",
+              "Tulis atau tempel kalimat, frasa, atau paragraf bahasa Inggris untuk diperiksa...",
+              "Напиши или вставь английское предложение, фразу или абзац для проверки..."
+            )}
+            aria-label={pick(
+              "English text to check",
+              "Teks bahasa Inggris untuk diperiksa",
+              "Английский текст для проверки"
+            )}
             className="w-full resize-y min-h-[124px] max-h-[280px] rounded-2xl bg-black/40 border border-white/[0.1] px-4 py-3.5 pb-9 text-sm sm:text-[15px] leading-relaxed text-[#F5F5F7] placeholder:text-[#636366] focus:outline-none focus:border-[#0A84FF]/65 focus:ring-2 focus:ring-[#0A84FF]/20 transition-all"
           />
           <div className="pointer-events-none absolute bottom-3 right-3.5 flex items-center gap-2">
@@ -448,10 +564,12 @@ export function GrammarCheckerView() {
         {/* Quick sample suggestions when empty */}
         {!text && !result && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="text-[#8E8E93] mr-1">Try:</span>
+            <span className="text-[#8E8E93] mr-1">
+              {pick("Try:", "Coba:", "Примеры:")}
+            </span>
             {QUICK_SAMPLES.map((sample) => (
               <button
-                key={sample.label}
+                key={sample.text}
                 type="button"
                 onClick={() => {
                   playGlassClick();
@@ -461,7 +579,7 @@ export function GrammarCheckerView() {
                 }}
                 className="rounded-full bg-white/[0.04] border border-white/[0.08] px-2.5 py-1 text-[11px] font-medium text-[#D1D1D6] hover:bg-white/[0.09] hover:text-white transition-colors cursor-pointer"
               >
-                {sample.label}
+                {sample.label[lang]}
               </button>
             ))}
           </div>
@@ -473,7 +591,13 @@ export function GrammarCheckerView() {
             <span className="hidden sm:inline-flex items-center gap-1 rounded-md bg-white/[0.05] border border-white/[0.08] px-2 py-0.5 font-mono text-[10px] text-[#D1D1D6]">
               Ctrl + Enter
             </span>
-            <span className="hidden sm:inline">to check immediately</span>
+            <span className="hidden sm:inline">
+              {pick(
+                "to check immediately",
+                "untuk periksa cepat",
+                "для быстрой проверки"
+              )}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
@@ -485,7 +609,7 @@ export function GrammarCheckerView() {
               className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] border border-white/[0.1] px-4 py-2 text-xs font-semibold text-[#D1D1D6] hover:bg-white/[0.11] disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
             >
               <Eraser className="h-3.5 w-3.5" />
-              <span>Clear</span>
+              <span>{pick("Clear", "Bersihkan", "Очистить")}</span>
             </motion.button>
 
             <motion.button
@@ -498,12 +622,14 @@ export function GrammarCheckerView() {
               {isChecking ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Checking...</span>
+                  <span>{pick("Checking...", "Memeriksa...", "Проверяю...")}</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
-                  <span>Check Grammar</span>
+                  <span>
+                    {pick("Check Grammar", "Cek Grammar", "Проверить")}
+                  </span>
                 </>
               )}
             </motion.button>
@@ -529,7 +655,7 @@ export function GrammarCheckerView() {
             disabled={!text.trim() || isChecking}
             className="shrink-0 rounded-full bg-[#FF453A]/20 border border-[#FF453A]/40 px-3 py-1 text-xs font-semibold text-white hover:bg-[#FF453A]/30 cursor-pointer"
           >
-            Retry
+            {pick("Retry", "Ulangi", "Повторить")}
           </button>
         </motion.div>
       )}
@@ -580,7 +706,8 @@ export function GrammarCheckerView() {
                   <span>{result.verdictLabel}</span>
                 </span>
                 <span className="rounded-full bg-white/[0.06] border border-white/[0.1] px-2.5 py-0.5 text-[11px] font-medium text-[#D1D1D6]">
-                  Context: {getContextLabel(checkedContext)}
+                  {pick("Context:", "Konteks:", "Контекст:")}{" "}
+                  {getContextLabel(checkedContext, lang)}
                 </span>
               </div>
             </div>
@@ -593,7 +720,11 @@ export function GrammarCheckerView() {
           <div className="rounded-2xl bg-white/[0.045] border border-white/[0.1] p-4 space-y-3.5">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-                Corrected Version
+                {pick(
+                  "Corrected Version",
+                  "Versi Diperbaiki",
+                  "Исправленный вариант"
+                )}
               </span>
               <motion.button
                 type="button"
@@ -611,12 +742,12 @@ export function GrammarCheckerView() {
                 {copiedKey === "corrected" ? (
                   <>
                     <Check className="h-3.5 w-3.5" />
-                    <span>Copied</span>
+                    <span>{pick("Copied", "Disalin", "Скопировано")}</span>
                   </>
                 ) : (
                   <>
                     <Copy className="h-3.5 w-3.5" />
-                    <span>Copy</span>
+                    <span>{pick("Copy", "Salin", "Копировать")}</span>
                   </>
                 )}
               </motion.button>
@@ -629,7 +760,8 @@ export function GrammarCheckerView() {
             {result.issues.length > 0 ? (
               <div className="pt-2.5 border-t border-white/[0.08] space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
-                  Key Fixes ({result.issues.length})
+                  {pick("Key Fixes", "Perbaikan Utama", "Что исправлено")} (
+                  {result.issues.length})
                 </p>
                 <ul className="space-y-1.5">
                   {result.issues.map((issue, idx) => (
@@ -656,7 +788,13 @@ export function GrammarCheckerView() {
             ) : (
               <div className="pt-2 border-t border-white/[0.08] flex items-center gap-1.5 text-xs text-[#6EE798]">
                 <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                <span>No specific grammar fixes needed.</span>
+                <span>
+                  {pick(
+                    "No specific grammar fixes needed.",
+                    "Tidak ada kesalahan tata bahasa khusus.",
+                    "Грамматических исправлений не требуется."
+                  )}
+                </span>
               </div>
             )}
           </div>
@@ -665,7 +803,11 @@ export function GrammarCheckerView() {
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">
-                Context-Aware Rewrites
+                {pick(
+                  "Context-Aware Rewrites",
+                  "Variasi Sesuai Konteks",
+                  "Варианты по стилю"
+                )}
               </h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -686,7 +828,11 @@ export function GrammarCheckerView() {
                           type="button"
                           whileTap={TAP_SCALE}
                           onClick={() => void handleCopy(copyId, alt.example)}
-                          aria-label={`Copy ${alt.context} rewrite`}
+                          aria-label={pick(
+                            `Copy ${alt.context} rewrite`,
+                            `Salin variasi ${alt.context}`,
+                            `Скопировать вариант (${alt.context})`
+                          )}
                           className={cn(
                             "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer",
                             isCopied
@@ -697,12 +843,16 @@ export function GrammarCheckerView() {
                           {isCopied ? (
                             <>
                               <Check className="h-3 w-3" />
-                              <span>Copied</span>
+                              <span>
+                                {pick("Copied", "Disalin", "Скопировано")}
+                              </span>
                             </>
                           ) : (
                             <>
                               <Copy className="h-3 w-3" />
-                              <span>Copy</span>
+                              <span>
+                                {pick("Copy", "Salin", "Копировать")}
+                              </span>
                             </>
                           )}
                         </motion.button>
@@ -727,7 +877,9 @@ export function GrammarCheckerView() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-[#0A84FF]" />
-            <h3 className="text-sm font-semibold text-white">Recent Checks</h3>
+            <h3 className="text-sm font-semibold text-white">
+              {pick("Recent Checks", "Riwayat Pemeriksaan", "Недавние проверки")}
+            </h3>
             {recentChecks.length > 0 && (
               <span className="rounded-full bg-white/[0.06] border border-white/[0.08] px-2 py-0.5 text-[10px] font-semibold text-[#8E8E93] tabular-nums">
                 {recentChecks.length}/{MAX_RECENT_CHECKS}
@@ -741,14 +893,20 @@ export function GrammarCheckerView() {
               className="inline-flex items-center gap-1 rounded-full bg-white/[0.04] border border-white/[0.08] px-2.5 py-1 text-[11px] font-medium text-[#8E8E93] hover:text-[#FF8982] hover:border-[#FF453A]/30 transition-colors cursor-pointer"
             >
               <Trash2 className="h-3 w-3" />
-              <span>Clear history</span>
+              <span>
+                {pick("Clear history", "Hapus riwayat", "Очистить")}
+              </span>
             </button>
           )}
         </div>
 
         {recentChecks.length === 0 ? (
           <p className="text-xs text-[#8E8E93] py-2">
-            Your last 10 grammar checks will appear here for quick review.
+            {pick(
+              "Your last 10 grammar checks will appear here for quick review.",
+              "10 pemeriksaan grammar terakhir akan muncul di sini untuk akses cepat.",
+              "Здесь появятся твои 10 последних проверок для быстрого возврата."
+            )}
           </p>
         ) : (
           <div className="space-y-2">
@@ -774,12 +932,12 @@ export function GrammarCheckerView() {
                         {entry.result.verdictLabel}
                       </span>
                       <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium text-[#8E8E93]">
-                        {getContextLabel(entry.context)}
+                        {getContextLabel(entry.context, lang)}
                       </span>
                     </div>
                     <span className="inline-flex items-center gap-1 text-[11px] text-[#8E8E93]">
                       <Clock className="h-3 w-3" />
-                      <span>{formatRelativeTime(entry.checkedAt)}</span>
+                      <span>{formatRelativeTime(entry.checkedAt, lang)}</span>
                     </span>
                   </div>
                   <p className="text-xs sm:text-sm text-[#F5F5F7] line-clamp-1 group-hover:text-white">

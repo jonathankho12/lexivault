@@ -16,7 +16,8 @@ function clampBand(val: unknown, fallback = 5.0): number {
 
 function buildFallbackSpeakingGrade(
   prompt: SpeakingPromptPack,
-  transcript: string
+  transcript: string,
+  lang: "en" | "id" | "ru" = "id"
 ): SpeakingGradeResult {
   const words = countWords(transcript);
   const sentences = transcript
@@ -55,6 +56,9 @@ function buildFallbackSpeakingGrade(
     4.5
   );
 
+  const isRu = lang === "ru";
+  const isEn = lang === "en";
+
   return {
     overall_band: overall,
     criteria: {
@@ -62,35 +66,60 @@ function buildFallbackSpeakingGrade(
       lexical_resource: lexicalScore,
       grammatical_range: grammarScore,
     },
-    criteria_feedback: {
-      fluency_coherence:
-        words < targetCount * 0.6
-          ? `Short response (${words} words) for ${prompt.part.toUpperCase()}; extend answers with reasons, examples, and natural discourse markers.`
-          : `Maintains clear flow across ${words} words; add smoother signposting phrases to elevate coherence.`,
-      lexical_resource:
-        uniqueWords.size < 25
-          ? "Relies on repetitive high-frequency words. Incorporate topic-specific collocations and natural idioms."
-          : "Adequate everyday vocabulary; upgrade generic adjectives into more precise native-like phrasing.",
-      grammatical_range:
-        "Combine simple clauses with natural complex structures (relative clauses, conditionals, past/present contrast) with fewer tense slips.",
-    },
-    summary_id:
-      words < targetCount * 0.6
-        ? `Jawaban lisanmu sepanjang ${words} kata masih cukup singkat untuk ${prompt.part.toUpperCase()}. Kembangkan alasan dengan contoh konkret dan kata hubung alami.`
-        : `Jawaban sepanjang ${words} kata sudah cukup mengalir dan menyentuh topik utama. Tingkatkan variasi idiom & kolokasi natural agar skor Lexical Resource naik.`,
+    criteria_feedback: isRu
+      ? {
+          fluency_coherence:
+            words < targetCount * 0.6
+              ? `Короткий ответ (${words} сл.) для ${prompt.part.toUpperCase()}; раскрывай мысль подробнее с причинами, примерами и естественными связками.`
+              : `Хороший темп и логика на протяжении ${words} сл.; добавь более плавные разговорные связки, чтобы поднять связность речи.`,
+          lexical_resource:
+            uniqueWords.size < 25
+              ? "Много повторяющейся базовой лексики. Используй более точные коллокации по теме и живые идиомы."
+              : "Уверенная повседневная лексика; замени общие прилагательные на более точные и естественные формулировки.",
+          grammatical_range:
+            "Сочетай простые фразы с придаточными, условными конструкциями и контрастом времён, следя за точностью.",
+        }
+      : {
+          fluency_coherence:
+            words < targetCount * 0.6
+              ? `Short response (${words} words) for ${prompt.part.toUpperCase()}; extend answers with reasons, examples, and natural discourse markers.`
+              : `Maintains clear flow across ${words} words; add smoother signposting phrases to elevate coherence.`,
+          lexical_resource:
+            uniqueWords.size < 25
+              ? "Relies on repetitive high-frequency words. Incorporate topic-specific collocations and natural idioms."
+              : "Adequate everyday vocabulary; upgrade generic adjectives into more precise native-like phrasing.",
+          grammatical_range:
+            "Combine simple clauses with natural complex structures (relative clauses, conditionals, past/present contrast) with fewer tense slips.",
+        },
+    summary_id: isRu
+      ? words < targetCount * 0.6
+        ? `Твой устный ответ (${words} сл.) пока коротковат для ${prompt.part.toUpperCase()}. Развей аргумент с помощью конкретного примера и естественных слов-связок.`
+        : `Ответ из ${words} сл. звучит связно и по теме. Добавь живые идиомы и устойчивые коллокации, чтобы поднять балл за Lexical Resource.`
+      : isEn
+        ? words < targetCount * 0.6
+          ? `Your spoken response (${words} words) is brief for ${prompt.part.toUpperCase()}. Develop your points with concrete examples and natural discourse markers.`
+          : `Your ${words}-word answer flows well on topic. Add more idiomatic phrasing and natural collocations to lift Lexical Resource.`
+        : words < targetCount * 0.6
+          ? `Jawaban lisanmu sepanjang ${words} kata masih cukup singkat untuk ${prompt.part.toUpperCase()}. Kembangkan alasan dengan contoh konkret dan kata hubung alami.`
+          : `Jawaban sepanjang ${words} kata sudah cukup mengalir dan menyentuh topik utama. Tingkatkan variasi idiom & kolokasi natural agar skor Lexical Resource naik.`,
     phrase_upgrades: [
       {
         awkward:
           sentences[0] || "I think it is very good and helpful for my life.",
         natural:
           "Honestly, it has proven genuinely transformative in my day-to-day routine.",
-        reason_id:
-          "Mengganti frasa umum dengan ungkapan lisan alami khas Band 8.0+.",
+        reason_id: isRu
+          ? "Заменяет общую базовую фразу на живое разговорное выражение уровня Band 8.0+."
+          : isEn
+            ? "Replaces a generic phrase with natural Band 8.0+ spoken phrasing."
+            : "Mengganti frasa umum dengan ungkapan lisan alami khas Band 8.0+.",
       },
     ],
     upgraded_vocabulary: (prompt.targetPhrases ?? []).slice(0, 4).map((phr) => ({
       term: phr,
-      note: "Natural high-band spoken expression for this topic",
+      note: isRu
+        ? "Естественное разговорное выражение высокого уровня для этой темы"
+        : "Natural high-band spoken expression for this topic",
       cefr: "C1",
       category: "idiom",
     })),
@@ -112,13 +141,20 @@ export async function POST(request: Request) {
       prompt?: SpeakingPromptPack;
       transcript?: string;
       durationSec?: number;
-      lang?: "en" | "id";
+      lang?: "en" | "id" | "ru";
     };
 
     const prompt = body.prompt;
     const transcript = body.transcript?.trim() ?? "";
     const words = countWords(transcript);
-    const feedbackLang = body.lang === "en" ? "English" : "Indonesian";
+    const lang =
+      body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
+    const feedbackLang =
+      lang === "en"
+        ? "English"
+        : lang === "ru"
+          ? 'natural Russian (casual "ты" study-buddy tone)'
+          : "Indonesian";
 
     if (!prompt || !transcript) {
       return NextResponse.json(
@@ -289,7 +325,7 @@ Return strictly valid JSON:
     }
 
     return NextResponse.json({
-      result: buildFallbackSpeakingGrade(prompt, transcript),
+      result: buildFallbackSpeakingGrade(prompt, transcript, lang),
       source: "fallback",
     });
   } catch {

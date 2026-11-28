@@ -19,6 +19,7 @@ import {
   cn,
   formatRegisterBadgeClass,
   formatTypeLabel,
+  getLocalizedExampleTranslation,
   getLocalizedMeaning,
 } from "@/lib/utils";
 import type { PracticeQuestion } from "@/types/lexivault";
@@ -99,7 +100,9 @@ export function FlashcardRecallCard({
               <p className="text-[11px] font-medium uppercase tracking-widest text-[#8E8E93]">
                 {lang === "en"
                   ? "Flashcard Recall · Guess the Meaning"
-                  : "Flashcard Recall · Tebak Arti"}
+                  : lang === "ru"
+                    ? "Карточка · Вспомни значение"
+                    : "Flashcard Recall · Tebak Arti"}
               </p>
               <h3 className="text-3xl sm:text-4xl font-bold tracking-tight text-white break-words">
                 {word.term}
@@ -120,10 +123,14 @@ export function FlashcardRecallCard({
                 {answered
                   ? lang === "en"
                     ? "Tap card to view full meaning"
-                    : "Ketuk kartu untuk lihat arti lengkap"
+                    : lang === "ru"
+                      ? "Нажми, чтобы открыть полное значение"
+                      : "Ketuk kartu untuk lihat arti lengkap"
                   : lang === "en"
                     ? "Tap card for Context Hint"
-                    : "Ketuk kartu untuk Context Hint"}
+                    : lang === "ru"
+                      ? "Нажми для подсказки в контексте"
+                      : "Ketuk kartu untuk Context Hint"}
               </span>
             </div>
           </div>
@@ -185,14 +192,18 @@ export function FlashcardRecallCard({
                   <div className="rounded-2xl bg-white/[0.05] border border-white/[0.09] p-3.5 text-xs text-[#D1D1D6]">
                     {lang === "en"
                       ? `Usage register: ${word.register} · Category: ${formatTypeLabel(word.type)}`
-                      : `Register penggunaan: ${word.register} · Kategori: ${formatTypeLabel(word.type)}`}
+                      : lang === "ru"
+                        ? `Стиль: ${word.register} · Тип: ${formatTypeLabel(word.type)}`
+                        : `Register penggunaan: ${word.register} · Kategori: ${formatTypeLabel(word.type)}`}
                   </div>
                 )}
 
                 <p className="text-[11px] text-[#8E8E93] text-center">
                   {lang === "en"
                     ? "Choose an answer below to reveal the full definition."
-                    : "Pilih jawaban di bawah untuk membuka arti lengkapnya."}
+                    : lang === "ru"
+                      ? "Выбери ответ ниже, чтобы открыть полное определение."
+                      : "Pilih jawaban di bawah untuk membuka arti lengkapnya."}
                 </p>
               </div>
             ) : (
@@ -206,11 +217,17 @@ export function FlashcardRecallCard({
                     <p className="text-xs leading-relaxed text-[#D1D1D6]">
                       <HighlightedText text={firstExample.sentence} />
                     </p>
-                    {lang === "id" && firstExample.translation_id && (
-                      <p className="text-[11px] leading-relaxed text-[#8E8E93]">
-                        <HighlightedText text={firstExample.translation_id} />
-                      </p>
-                    )}
+                    {(() => {
+                      const translated = getLocalizedExampleTranslation(
+                        firstExample,
+                        lang
+                      );
+                      return translated ? (
+                        <p className="text-[11px] leading-relaxed text-[#8E8E93]">
+                          <HighlightedText text={translated} />
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                 )}
               </div>
@@ -239,7 +256,9 @@ export function FlashcardRecallCard({
         <p className="text-xs font-semibold uppercase tracking-wider text-[#8E8E93] px-1">
           {lang === "en"
             ? "Select the most accurate meaning:"
-            : "Pilih arti Bahasa Indonesia yang paling tepat:"}
+            : lang === "ru"
+              ? "Выбери наиболее точное значение:"
+              : "Pilih arti Bahasa Indonesia yang paling tepat:"}
         </p>
         <div className="grid grid-cols-1 gap-2.5">
           {choices.map((choice, idx) => {
@@ -303,10 +322,14 @@ export function FlashcardRecallCard({
             {isCorrect
               ? lang === "en"
                 ? "Spot on!"
-                : "Tepat sekali!"
+                : lang === "ru"
+                  ? "В точку!"
+                  : "Tepat sekali!"
               : lang === "en"
                 ? "Not quite — review the meaning on the card."
-                : "Belum tepat — pelajari artinya di kartu."}
+                : lang === "ru"
+                  ? "Не совсем — посмотри значение на карточке."
+                  : "Belum tepat — pelajari artinya di kartu."}
           </span>
 
           <motion.button
@@ -316,7 +339,9 @@ export function FlashcardRecallCard({
             onClick={handleNext}
             className="inline-flex items-center gap-2 rounded-full bg-[#0A84FF] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(10,132,255,0.35)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span>{lang === "en" ? "Next" : "Lanjut"}</span>
+            <span>
+              {lang === "en" ? "Next" : lang === "ru" ? "Дальше" : "Lanjut"}
+            </span>
             <ArrowRight className="h-4 w-4" />
           </motion.button>
         </motion.div>

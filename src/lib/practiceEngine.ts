@@ -4,7 +4,11 @@ import {
   shuffleOptions,
 } from "@/lib/distractorEngine";
 import type { AppLanguage } from "@/lib/i18n";
-import { getLocalizedMeaning, getWeakestWords } from "@/lib/utils";
+import {
+  getLocalizedExampleTranslation,
+  getLocalizedMeaning,
+  getWeakestWords,
+} from "@/lib/utils";
 import type {
   DiscoveryItem,
   PracticeQuestion,
@@ -37,7 +41,8 @@ function buildFillBlankPrompt(
   const clueText =
     lang === "en"
       ? localizedMeaning
-      : sample.translation_id.replace(/\*\*/g, "") || localizedMeaning;
+      : getLocalizedExampleTranslation(sample, lang).replace(/\*\*/g, "") ||
+        localizedMeaning;
 
   const boldMatch = sample.sentence.match(/\*\*(.+?)\*\*/);
   if (boldMatch && boldMatch[1]) {
@@ -236,6 +241,7 @@ export function buildDailyMiniQuizSession(
     type: item.type,
     meaning_id: item.meaning_id,
     meaning_en: item.meaning_en,
+    meaning_ru: item.meaning_ru,
     examples_json: item.examples_json,
     synonyms: item.synonyms,
     antonyms: item.antonyms,

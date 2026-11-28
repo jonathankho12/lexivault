@@ -212,14 +212,21 @@ const VALID_REGISTERS = new Set<RegisterType>([
   "Slang",
 ]);
 
+type DailyPackLang = "en" | "id" | "ru";
+
 type RawDailyPackItem = Partial<DailyPackItem> & {
   phonetic?: string;
   example?: string;
   example_en?: string;
   example_id?: string;
+  example_ru?: string;
 };
 
-function buildDailyPackSchema(cefrPair: [CefrLevel, CefrLevel]): Schema {
+function buildDailyPackSchema(
+  cefrPair: [CefrLevel, CefrLevel],
+  lang: DailyPackLang
+): Schema {
+  const isRu = lang === "ru";
   return {
     type: Type.OBJECT,
     properties: {
@@ -237,9 +244,13 @@ function buildDailyPackSchema(cefrPair: [CefrLevel, CefrLevel]): Schema {
               enum: ["Academic", "Formal", "Casual"],
             },
             meaning_en: { type: Type.STRING },
-            meaning_id: { type: Type.STRING },
+            ...(isRu
+              ? { meaning_ru: { type: Type.STRING } }
+              : { meaning_id: { type: Type.STRING } }),
             example_en: { type: Type.STRING },
-            example_id: { type: Type.STRING },
+            ...(isRu
+              ? { example_ru: { type: Type.STRING } }
+              : { example_id: { type: Type.STRING } }),
             synonyms: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
@@ -252,9 +263,9 @@ function buildDailyPackSchema(cefrPair: [CefrLevel, CefrLevel]): Schema {
             "cefr",
             "register",
             "meaning_en",
-            "meaning_id",
+            isRu ? "meaning_ru" : "meaning_id",
             "example_en",
-            "example_id",
+            isRu ? "example_ru" : "example_id",
             "synonyms",
           ],
         },
@@ -280,7 +291,8 @@ function normalizeDailyPackItem(
   dateStr: string,
   index: number,
   cefrPair: [CefrLevel, CefrLevel],
-  forcedType?: "vocab" | "idiom"
+  forcedType?: "vocab" | "idiom",
+  lang: DailyPackLang = "id"
 ): DailyPackItem | null {
   const term = (raw.term || "").trim();
   if (!term) return null;
@@ -306,17 +318,21 @@ function normalizeDailyPackItem(
 
   const examples: WordExample[] = [];
   if (typeof raw.example_en === "string" && raw.example_en.trim().length >= 8) {
+    const exampleRu = (raw.example_ru || "").trim();
     examples.push({
       sentence: raw.example_en.trim(),
       translation_id: (raw.example_id || "").trim(),
+      ...(exampleRu ? { translation_ru: exampleRu } : {}),
       context: defaultContext,
     });
   } else if (Array.isArray(raw.examples)) {
     for (const [idx, ex] of raw.examples.slice(0, 2).entries()) {
       if (ex && typeof ex.sentence === "string" && ex.sentence.trim()) {
+        const translationRu = (ex.translation_ru || "").trim();
         examples.push({
           sentence: ex.sentence.trim(),
           translation_id: (ex.translation_id || "").trim(),
+          ...(translationRu ? { translation_ru: translationRu } : {}),
           context: ex.context || (idx === 0 ? "Daily" : "Academic"),
         });
       }
@@ -334,10 +350,19 @@ function normalizeDailyPackItem(
 
   const meaning_en =
     (raw.meaning_en || "").trim() || builtInBilingual?.meaning_en || "";
-  const meaning_id = (raw.meaning_id || "").trim();
+  const meaning_ru = (raw.meaning_ru || "").trim() || undefined;
+  const rawMeaningId = (raw.meaning_id || "").trim();
+  const meaning_id =
+    rawMeaningId || (lang === "ru" ? meaning_ru || meaning_en : "");
 
   // Never emit placeholder definitions or dummy examples
-  if (meaning_en.length < 4 || meaning_id.length < 4 || examples.length === 0) {
+  if (
+    meaning_en.length < 4 ||
+    (lang === "ru"
+      ? !meaning_ru || meaning_ru.length < 4
+      : meaning_id.length < 4) ||
+    examples.length === 0
+  ) {
     return null;
   }
 
@@ -368,6 +393,7 @@ function normalizeDailyPackItem(
     type,
     meaning_en,
     meaning_id,
+    ...(meaning_ru ? { meaning_ru } : {}),
     examples,
     synonyms: Array.isArray(raw.synonyms)
       ? raw.synonyms.map((s) => String(s).trim()).filter(Boolean).slice(0, 4)
@@ -407,6 +433,7 @@ async function generateDailyPackBatch(params: {
   dateStr: string;
   existingCsv: string;
   targetTier: DailyPackTargetTier;
+  lang: DailyPackLang;
 }): Promise<HybridModelResult<{ items?: RawDailyPackItem[] }>> {
   const {
     batchId,
@@ -416,7 +443,9 @@ async function generateDailyPackBatch(params: {
     dateStr,
     existingCsv,
     targetTier,
+    lang,
   } = params;
+  const isRu = lang === "ru";
   const tierMeta = getDailyPackTierMeta(targetTier);
   const tierSpec = TIER_PROMPT_SPECS[targetTier];
   const [lowCefr, highCefr] = tierMeta.cefrPair;
@@ -425,7 +454,24 @@ async function generateDailyPackBatch(params: {
     ? `EXACTLY ${count} ${targetTier} English idioms/phrasal expressions`
     : `EXACTLY ${count} ${targetTier} single English vocabulary words`;
 
-  const prompt = `Daily Pack (${dateStr}, ${batchId}, Tier ${targetTier} — ${tierMeta.nameEn}): generate ${label} focused on ${themeHint}.
+  const prompt = isRu
+    ? `Daily Pack (${dateStr}, ${batchId}, Tier ${targetTier} — ${tierMeta.nameEn}): generate ${label} focused on ${themeHint}.
+EXCLUDE: ${existingCsv}
+${CEFR_CALIBRATION_RULE}
+${REGISTER_CLASSIFICATION_RULE}
+
+Return compact JSON {items:[...]} strictly calibrated to ${targetTier} learners:
+- term: ${isIdiom ? tierSpec.idiomGuide : tierSpec.vocabGuide}
+- pronunciation: "·" syllable dots + ALL CAPS primary stress
+- ipa: /.../
+- cefr: "${lowCefr}" or "${highCefr}" ONLY (strictly matched to Cambridge EVP / Oxford 3000/5000 for ${targetTier})
+- register: ${isIdiom ? '"Casual", "Formal", or "Academic"' : '"Casual", "Formal", or "Academic"'}
+- meaning_en: 1 short, clear English definition appropriate for ${targetTier} learners
+- meaning_ru: 1 natural Russian definition (casual "ты" study-buddy clarity)
+- example_en: ${tierSpec.exampleStyle}
+- example_ru: natural Russian translation of example_en
+- synonyms: 2 concise English synonyms at ${targetTier} level`
+    : `Daily Pack (${dateStr}, ${batchId}, Tier ${targetTier} — ${tierMeta.nameEn}): generate ${label} focused on ${themeHint}.
 EXCLUDE: ${existingCsv}
 ${CEFR_CALIBRATION_RULE}
 ${REGISTER_CLASSIFICATION_RULE}
@@ -445,7 +491,9 @@ Return compact JSON {items:[...]} strictly calibrated to ${targetTier} learners:
   return generateStructuredWithHybridModel<{ items?: RawDailyPackItem[] }>({
     tier: "flash",
     routeName: `api/daily-pack:${targetTier}:${batchId}`,
-    systemInstruction: tierSpec.systemRole,
+    systemInstruction: isRu
+      ? tierSpec.systemRole.replace("English-Indonesian", "English-Russian")
+      : tierSpec.systemRole,
     contents: prompt,
     maxOutputTokens: Math.min(2200, Math.max(1300, count * (isIdiom ? 280 : 260))),
     fallbackMaxTokens: Math.min(2000, Math.max(1200, count * (isIdiom ? 260 : 240))),
@@ -461,12 +509,13 @@ Return compact JSON {items:[...]} strictly calibrated to ${targetTier} learners:
             dateStr,
             idx,
             tierMeta.cefrPair,
-            batchType
+            batchType,
+            lang
           ) !== null
       )
         ? null
         : `no valid complete daily-pack ${batchId} items`,
-    responseSchema: buildDailyPackSchema(tierMeta.cefrPair),
+    responseSchema: buildDailyPackSchema(tierMeta.cefrPair, lang),
   });
 }
 
@@ -478,7 +527,7 @@ export async function POST(request: Request) {
       idiomsQuota?: number;
       targetTier?: DailyPackTargetTier;
       existingTerms?: string[];
-      lang?: "en" | "id";
+      lang?: DailyPackLang;
     };
 
     const dateStr =
@@ -506,7 +555,8 @@ export async function POST(request: Request) {
       });
     }
 
-    const lang = body.lang === "en" ? "en" : "id";
+    const lang: DailyPackLang =
+      body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
     const rateLimit = checkAiRateLimit(request, lang, {
       bucket: "daily-pack",
       limit: 10,
@@ -543,6 +593,7 @@ export async function POST(request: Request) {
           dateStr,
           existingCsv,
           targetTier,
+          lang,
         }),
       }))
     );
@@ -629,7 +680,8 @@ export async function POST(request: Request) {
           dateStr,
           itemIndex,
           tierMeta.cefrPair,
-          spec.batchType
+          spec.batchType,
+          lang
         );
         if (!normalized) continue;
         const key = normalizeTermKey(normalized.term);

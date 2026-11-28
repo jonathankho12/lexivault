@@ -107,11 +107,11 @@ function cleanDistractorText(
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
-      lang?: "en" | "id";
+      lang?: "en" | "id" | "ru";
       items?: unknown;
     };
 
-    const lang = body.lang === "en" ? "en" : "id";
+    const lang = body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
     const rateLimit = checkAiRateLimit(request, lang, {
       bucket: "quiz-distractors",
       limit: 40,
@@ -132,7 +132,9 @@ export async function POST(request: Request) {
     const outputLanguage =
       lang === "en"
         ? "English"
-        : "natural Bahasa Indonesia (matching the style of the correct meaning)";
+        : lang === "ru"
+          ? "natural Russian (matching the style, register, and part-of-speech framing of the correct meaning)"
+          : "natural Bahasa Indonesia (matching the style of the correct meaning)";
 
     const serializedItems = items
       .map(
@@ -159,7 +161,7 @@ Return compact JSON: { "results": [{ "id": "...", "distractors": ["...", "...", 
       tier: "flash",
       routeName: "api/quiz-distractors",
       systemInstruction:
-        "Precision psychometric test writer for advanced English-Indonesian vocabulary quizzes. Return compact valid JSON only with 3 plausible, register-matched, length-matched wrong definitions per item.",
+        "Precision psychometric test writer for advanced English vocabulary quizzes (English, Indonesian, and Russian). Return compact valid JSON only with 3 plausible, register-matched, length-matched wrong definitions per item.",
       contents: prompt,
       maxOutputTokens: Math.min(2600, Math.max(900, items.length * 220)),
       fallbackMaxTokens: Math.min(2000, Math.max(800, items.length * 180)),

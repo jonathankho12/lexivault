@@ -28,10 +28,12 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       text?: string;
       sourceTag?: string;
-      lang?: "en" | "id";
+      lang?: "en" | "id" | "ru";
     };
     const rawText = body.text?.trim().slice(0, 5000) ?? "";
-    const lang = body.lang === "en" ? "en" : "id";
+    const lang =
+      body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
+    const isRu = lang === "ru";
 
     if (rawText.length < 15) {
       return NextResponse.json(
@@ -39,7 +41,9 @@ export async function POST(request: Request) {
           error:
             lang === "en"
               ? "Please paste at least 15 characters of English text to extract."
-              : "Tempelkan teks minimal 15 karakter untuk diekstrak.",
+              : isRu
+                ? "Вставь минимум 15 символов английского текста для извлечения лексики."
+                : "Tempelkan teks minimal 15 karakter untuk diekstrak.",
           code: "invalid_input",
         },
         { status: 400 }
@@ -55,7 +59,17 @@ export async function POST(request: Request) {
       return rateLimit.response;
     }
 
-    const prompt = `Extract 6–10 notable English vocab, idioms, or collocations from this text (ui: ${lang}).
+    const prompt = isRu
+      ? `Extract 6–10 notable English vocab, idioms, or collocations from this text (ui: ru).
+${CEFR_CALIBRATION_RULE}
+${REGISTER_CLASSIFICATION_RULE}
+${IDIOM_WORD_FAMILY_RULE}
+Text:
+"""
+${rawText}
+"""
+Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|collocation), register (Casual|Formal|Academic|Slang), pronunciation ("·" dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 concise English sentence), meaning_ru (1 natural Russian sentence in casual "ты" tone), examples (2 short English sentences with **bold** term + natural Russian translation_ru + context), synonyms (2-3 English), antonyms (1-2 English), word_families (1-3 real English {word,pos} for vocab/collocation ONLY; [] for idioms).`
+      : `Extract 6–10 notable English vocab, idioms, or collocations from this text (ui: ${lang}).
 ${CEFR_CALIBRATION_RULE}
 ${REGISTER_CLASSIFICATION_RULE}
 ${IDIOM_WORD_FAMILY_RULE}
@@ -70,8 +84,9 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
     }>({
       tier: "flash",
       routeName: "api/extract-vocab",
-      systemInstruction:
-        "Fast English-Indonesian vocabulary extractor. Return compact valid JSON only.",
+      systemInstruction: isRu
+        ? "Fast English-Russian vocabulary extractor. Return compact valid JSON only."
+        : "Fast English-Indonesian vocabulary extractor. Return compact valid JSON only.",
       contents: prompt,
       maxOutputTokens: 4096,
       fallbackMaxTokens: 2200,
@@ -83,7 +98,7 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
           (it) =>
             Boolean(it?.term?.trim()) &&
             Boolean(it?.meaning_en?.trim()) &&
-            Boolean(it?.meaning_id?.trim()) &&
+            Boolean(isRu ? it?.meaning_ru?.trim() : it?.meaning_id?.trim()) &&
             Array.isArray(it?.examples) &&
             it.examples.length > 0
         )
@@ -113,17 +128,23 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
                   enum: ["Formal", "Academic", "Casual", "Slang"],
                 },
                 meaning_en: { type: Type.STRING },
-                meaning_id: { type: Type.STRING },
+                ...(isRu
+                  ? { meaning_ru: { type: Type.STRING } }
+                  : { meaning_id: { type: Type.STRING } }),
                 examples: {
                   type: Type.ARRAY,
                   items: {
                     type: Type.OBJECT,
                     properties: {
                       sentence: { type: Type.STRING },
-                      translation_id: { type: Type.STRING },
+                      ...(isRu
+                        ? { translation_ru: { type: Type.STRING } }
+                        : { translation_id: { type: Type.STRING } }),
                       context: { type: Type.STRING },
                     },
-                    required: ["sentence", "translation_id", "context"],
+                    required: isRu
+                      ? ["sentence", "translation_ru", "context"]
+                      : ["sentence", "translation_id", "context"],
                   },
                 },
                 synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -148,7 +169,7 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
                 "type",
                 "register",
                 "meaning_en",
-                "meaning_id",
+                isRu ? "meaning_ru" : "meaning_id",
                 "examples",
                 "synonyms",
                 "antonyms",
@@ -200,7 +221,10 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
         const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
         const meaning_en =
           (it.meaning_en || "").trim() || builtInBilingual?.meaning_en || "";
-        const meaning_id = (it.meaning_id || "").trim();
+        const meaning_ru = (it.meaning_ru || "").trim() || undefined;
+        const rawMeaningId = (it.meaning_id || "").trim();
+        const meaning_id =
+          rawMeaningId || (isRu ? meaning_ru || meaning_en : "");
         const examples = Array.isArray(it.examples)
           ? it.examples
               .filter(
@@ -210,11 +234,22 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
                   ex.sentence.trim().length >= 8
               )
               .slice(0, 2)
+              .map((ex, idx) => {
+                const translationRu = (ex.translation_ru || "").trim();
+                return {
+                  sentence: ex.sentence.trim(),
+                  translation_id: (ex.translation_id || "").trim(),
+                  ...(translationRu ? { translation_ru: translationRu } : {}),
+                  context:
+                    (ex.context || "").trim() ||
+                    (idx === 0 ? "Daily" : "Academic"),
+                };
+              })
           : [];
 
         if (
           meaning_en.length < 4 ||
-          meaning_id.length < 4 ||
+          (isRu ? !meaning_ru || meaning_ru.length < 4 : meaning_id.length < 4) ||
           examples.length === 0
         ) {
           return null;
@@ -235,6 +270,7 @@ Concise JSON per item: term, cefr (A1|A2|B1|B2|C1|C2), type (vocab|idiom|colloca
           register: normalizeRegister(it.register, "Casual"),
           meaning_en,
           meaning_id,
+          ...(meaning_ru ? { meaning_ru } : {}),
           examples,
           synonyms: Array.isArray(it.synonyms) ? it.synonyms.slice(0, 4) : [],
           antonyms: Array.isArray(it.antonyms) ? it.antonyms.slice(0, 3) : [],

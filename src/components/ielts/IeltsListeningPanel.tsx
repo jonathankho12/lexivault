@@ -182,7 +182,9 @@ export function IeltsListeningPanel({
         setAudioError(
           isEn
             ? "Failed to load conversation audio. Tap Play to try again."
-            : "Gagal memuat audio percakapan. Coba klik Play lagi."
+            : lang === "ru"
+              ? "Не удалось загрузить аудиозапись. Нажми Play ещё раз."
+              : "Gagal memuat audio percakapan. Coba klik Play lagi."
         );
         return null;
       } finally {
@@ -204,7 +206,11 @@ export function IeltsListeningPanel({
     audio.onerror = () => {
       setIsPlaying(false);
       setAudioError(
-        isEn ? "Failed to play audio file." : "Gagal memutar berkas audio."
+        isEn
+          ? "Failed to play audio file."
+          : lang === "ru"
+            ? "Не удалось воспроизвести аудиофайл."
+            : "Gagal memutar berkas audio."
       );
     };
     audioRef.current = audio;
@@ -288,6 +294,7 @@ export function IeltsListeningPanel({
           excludeIds: seenIds,
           cefrLevel: targetCefr,
           sectionType: targetFormat,
+          lang,
         }),
       });
       if (res.ok) {
@@ -365,10 +372,14 @@ export function IeltsListeningPanel({
                       inferFormatMode(pack) === "section4"
                         ? isEn
                           ? "Section 4 (Academic)"
-                          : "Section 4 (Akademik)"
+                          : lang === "ru"
+                            ? "Часть 4 (Академ.)"
+                            : "Section 4 (Akademik)"
                         : isEn
                           ? "Section 1 (Everyday)"
-                          : "Section 1 (Sehari-hari)"
+                          : lang === "ru"
+                            ? "Часть 1 (Повседн.)"
+                            : "Section 1 (Sehari-hari)"
                     }`
                   : formatMode === "section4"
                     ? "B2–C2 · Section 4"
@@ -400,10 +411,14 @@ export function IeltsListeningPanel({
               {generating
                 ? isEn
                   ? "Generating..."
-                  : "Membuat..."
+                  : lang === "ru"
+                    ? "Генерирую..."
+                    : "Membuat..."
                 : isEn
                   ? "Generate New Section (AI)"
-                  : "Generate Soal Baru (AI)"}
+                  : lang === "ru"
+                    ? "Новая запись (ИИ)"
+                    : "Generate Soal Baru (AI)"}
             </span>
           </motion.button>
         </div>
@@ -411,7 +426,11 @@ export function IeltsListeningPanel({
         {/* Exam Format Selector: A1-B1 Section 1 / B2-C2 Section 4 */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/[0.08]">
           <span className="text-[11px] font-medium text-[#8E8E93]">
-            {isEn ? "Exam Format:" : "Format Ujian:"}
+            {isEn
+              ? "Exam Format:"
+              : lang === "ru"
+                ? "Формат:"
+                : "Format Ujian:"}
           </span>
           {(
             [
@@ -419,13 +438,17 @@ export function IeltsListeningPanel({
                 id: "section1" as const,
                 label: isEn
                   ? "A1–B1 · Section 1 (Dialogue)"
-                  : "A1–B1 · Section 1 (Dialog)",
+                  : lang === "ru"
+                    ? "A1–B1 · Часть 1 (Диалог)"
+                    : "A1–B1 · Section 1 (Dialog)",
               },
               {
                 id: "section4" as const,
                 label: isEn
                   ? "B2–C2 · Section 4 (Academic Lecture)"
-                  : "B2–C2 · Section 4 (Kuliah Akademik)",
+                  : lang === "ru"
+                    ? "B2–C2 · Часть 4 (Лекция)"
+                    : "B2–C2 · Section 4 (Kuliah Akademik)",
               },
             ] as const
           ).map((fmt) => (
@@ -460,10 +483,14 @@ export function IeltsListeningPanel({
                 isPlaying
                   ? isEn
                     ? "Pause audio"
-                    : "Jeda audio"
+                    : lang === "ru"
+                      ? "Пауза"
+                      : "Jeda audio"
                   : isEn
                     ? "Play audio"
-                    : "Putar audio"
+                    : lang === "ru"
+                      ? "Воспроизвести"
+                      : "Putar audio"
               }
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#0A84FF] to-[#5E5CE6] text-white shadow-[0_6px_20px_rgba(10,132,255,0.35)] cursor-pointer disabled:opacity-60"
             >
@@ -483,14 +510,20 @@ export function IeltsListeningPanel({
                   {audioLoading
                     ? isEn
                       ? "Preparing Multi-Accent Audio..."
-                      : "Menyiapkan Audio Multi-Aksen..."
+                      : lang === "ru"
+                        ? "Готовлю аудио с акцентами..."
+                        : "Menyiapkan Audio Multi-Aksen..."
                     : isPlaying
                       ? isEn
                         ? "Playing (Neural Voice)"
-                        : "Sedang Diputar (Neural Voice)"
+                        : lang === "ru"
+                          ? "Воспроизведение (Нейроголос)"
+                          : "Sedang Diputar (Neural Voice)"
                       : isEn
                         ? "Play Conversation Audio"
-                        : "Putar Audio Percakapan"}
+                        : lang === "ru"
+                          ? "Слушать аудиозапись"
+                          : "Putar Audio Percakapan"}
                 </span>
                 {isPlaying && (
                   <span
@@ -590,10 +623,14 @@ export function IeltsListeningPanel({
             {submitted
               ? isEn
                 ? "Transcript unlocked for review."
-                : "Transkrip tersedia untuk evaluasi."
+                : lang === "ru"
+                  ? "Расшифровка открыта для проверки."
+                  : "Transkrip tersedia untuk evaluasi."
               : isEn
                 ? "Transcript unlocks automatically after you submit your answers."
-                : "Transkrip terbuka otomatis setelah kamu submit jawaban."}
+                : lang === "ru"
+                  ? "Текст откроется автоматически после отправки ответов."
+                  : "Transkrip terbuka otomatis setelah kamu submit jawaban."}
           </span>
 
           <button
@@ -614,7 +651,15 @@ export function IeltsListeningPanel({
             ) : (
               <Eye className="h-3.5 w-3.5" />
             )}
-            <span>{showTranscript ? "Hide Transcript" : "Show Transcript"}</span>
+            <span>
+              {showTranscript
+                ? lang === "ru"
+                  ? "Скрыть текст"
+                  : "Hide Transcript"
+                : lang === "ru"
+                  ? "Показать текст"
+                  : "Show Transcript"}
+            </span>
           </button>
         </div>
 
@@ -643,11 +688,16 @@ export function IeltsListeningPanel({
         <div className="liquid-glass-elevated rounded-3xl p-5 flex items-center justify-between gap-3 border-[#30D158]/35">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-[#30D158]">
-              {isEn ? "IELTS Listening Result" : "Hasil Listening IELTS"}
+              {isEn
+                ? "IELTS Listening Result"
+                : lang === "ru"
+                  ? "Результат IELTS Listening"
+                  : "Hasil Listening IELTS"}
             </p>
             <p className="text-xl font-bold text-white">
               Est. Band {resultBand.toFixed(1)} ({correctCount}/
-              {pack.questions.length} {isEn ? "correct" : "benar"})
+              {pack.questions.length}{" "}
+              {isEn ? "correct" : lang === "ru" ? "верно" : "benar"})
             </p>
           </div>
           <CheckCircle2 className="h-7 w-7 text-[#30D158] shrink-0" />
@@ -711,7 +761,9 @@ export function IeltsListeningPanel({
                   placeholder={
                     isEn
                       ? "Type a short answer from the recording..."
-                      : "Ketik jawaban singkat sesuai rekaman..."
+                      : lang === "ru"
+                        ? "Введи краткий ответ из записи..."
+                        : "Ketik jawaban singkat sesuai rekaman..."
                   }
                   className="w-full rounded-2xl bg-white/[0.05] border border-white/[0.12] px-3.5 py-2.5 text-base sm:text-sm text-white placeholder:text-[#8E8E93] focus:outline-none focus:border-[#0A84FF]/60"
                 />
@@ -752,7 +804,7 @@ export function IeltsListeningPanel({
                 <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3 space-y-1.5 text-xs">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-semibold text-[#7CF099]">
-                      {isEn ? "Answer: " : "Jawaban: "}
+                      {isEn ? "Answer: " : lang === "ru" ? "Ответ: " : "Jawaban: "}
                       {q.answer}
                     </p>
                     {!/^\d+([.,:/-]\d+)*$/.test(q.answer.trim()) &&
@@ -764,11 +816,17 @@ export function IeltsListeningPanel({
                         />
                       )}
                   </div>
-                  {(isEn ? q.explanation_en : q.explanation_id) && (
-                    <p className="text-[#D1D1D6] leading-relaxed">
-                      {isEn ? q.explanation_en : q.explanation_id}
-                    </p>
-                  )}
+                  {(() => {
+                    const exp =
+                      lang === "en"
+                        ? q.explanation_en || q.explanation_id
+                        : lang === "ru"
+                          ? q.explanation_ru || q.explanation_id || q.explanation_en
+                          : q.explanation_id || q.explanation_en;
+                    return exp ? (
+                      <p className="text-[#D1D1D6] leading-relaxed">{exp}</p>
+                    ) : null;
+                  })()}
                 </div>
               )}
             </div>
@@ -783,7 +841,11 @@ export function IeltsListeningPanel({
           onClick={() => void handleSubmit()}
           className="w-full rounded-full bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] py-3 text-sm font-semibold text-white cursor-pointer"
         >
-          {isEn ? "Submit Listening Answers" : "Submit Jawaban Listening"}
+          {isEn
+            ? "Submit Listening Answers"
+            : lang === "ru"
+              ? "Проверить Listening"
+              : "Submit Jawaban Listening"}
         </motion.button>
       )}
     </div>

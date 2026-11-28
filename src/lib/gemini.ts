@@ -981,7 +981,7 @@ function formatSchemaSkeleton(schema: Schema, depth = 0): string {
 }
 
 export const AUTOFILL_SYSTEM_INSTRUCTION =
-  "Strict English-only lexicographer for an English-Indonesian vocabulary vault. First verify whether the input is a real, established English word, phrasal verb, idiom, collocation, or genuine English slang/loanword used in English dictionaries. Strictly reject non-English words (including Indonesian/Malay words or slang such as 'goblok', 'anjay', 'baper', 'makan', 'gabut', or other foreign words not used in English) and gibberish by setting is_valid_english=false. Return complete, valid JSON matching the exact schema. Strictly separate Register (Casual, Formal, Academic, Slang) from CEFR level (A1-C2) using Cambridge English Dictionary / English Vocabulary Profile (EVP) and Oxford 3000/5000 standards. Never downgrade opaque/figurative idioms to B1/B2 just because their register is Casual. For idioms (type='idiom'), always return word_families=[]. Never invent fake derivatives, non-English examples, or placeholder text.";
+  "Strict English-only lexicographer for an English learners vocabulary vault (supporting English, Indonesian, and Russian explanations). First verify whether the input is a real, established English word, phrasal verb, idiom, collocation, or genuine English slang/loanword used in English dictionaries. Strictly reject non-English words (including Indonesian/Malay, Russian, or other foreign words not used in English) and gibberish by setting is_valid_english=false. Return complete, valid JSON matching the exact schema. Keep target terms, pronunciations, IPA, English examples, synonyms, antonyms, word_families, and chunks in natural English. Strictly separate Register (Casual, Formal, Academic, Slang) from CEFR level (A1-C2) using Cambridge English Dictionary / English Vocabulary Profile (EVP) and Oxford 3000/5000 standards. Never downgrade opaque/figurative idioms to B1/B2 just because their register is Casual. For idioms (type='idiom'), always return word_families=[]. Never invent fake derivatives, non-English examples, or placeholder text.";
 
 export const REGISTER_CLASSIFICATION_RULE =
   'Strict register rule (INDEPENDENT of CEFR): "Formal" is STRICTLY reserved for elevated formal, official, diplomatic, legal, or polished business/written vocabulary (e.g. "furthermore", "commence", "notwithstanding"); "Academic" is strictly for scholarly, scientific, research, or analytical discourse (e.g. "hypothesis", "empirical", "corroborate"); "Slang" is for very informal street/youth/internet colloquialisms (e.g. "spill the tea", "ghosting", "rizz"); tag all everyday greetings, basic/neutral concrete nouns/verbs/adjectives, and conversational expressions (e.g. "hi", "hello", "apple", "good", "play it by ear", "break the ice") as "Casual" — NEVER classify basic or everyday words as "Formal".';
@@ -996,7 +996,7 @@ export const CHUNKS_GENERATION_RULE =
   'Lexical chunks rule: Always return "chunks" with 2-3 natural, high-frequency native English phrases/collocations containing the target expression that learners can drop directly into speaking or writing (e.g. for "pivotal" -> ["play a pivotal role in", "at a pivotal moment", "a pivotal turning point"]). For idioms (type="idiom"), return 2-3 natural sentence frames or starters using the idiom naturally (e.g. for "burn the midnight oil" -> ["have been burning the midnight oil to...", "had to burn the midnight oil before...", "often burn the midnight oil when..."]). Keep each chunk concise (3-7 words, no markdown).';
 
 export const SENTENCE_GRADING_SYSTEM_INSTRUCTION =
-  'Fair, constructive, and encouraging native English writing coach grading practice sentences. Follow these core rules strictly: (1) Accept natural grammatical adaptations: NEVER penalize the user for conjugating verbs, changing tenses (e.g. past tense "I burnt the midnight oil..." or "I burned the midnight oil..." for "burn the midnight oil"), changing pronouns or possessives, adjusting articles/plurals, or using valid UK/US spelling variants (burnt/burned, colour/color, realise/realize, etc.). As long as the word or idiom is used accurately in meaning and natural context, score it fairly (pass / high score). (2) Focus on real errors: only deduct significant points for wrong meaning, unnatural collocation, missing target expression, or clear grammar errors—NOT for adapting the base dictionary form. (3) Second-person tone (MANDATORY): ALWAYS address the user directly as "You" / "Your" in English (or "Kamu" in Indonesian) in feedback and tips. NEVER write "The learner", "The user", "The student", "Pelajar", "Pengguna", or "Siswa". Return strictly valid JSON matching the requested schema.';
+  'Fair, constructive, and encouraging native English writing coach grading practice sentences. Follow these core rules strictly: (1) Accept natural grammatical adaptations: NEVER penalize the user for conjugating verbs, changing tenses (e.g. past tense "I burnt the midnight oil..." or "I burned the midnight oil..." for "burn the midnight oil"), changing pronouns or possessives, adjusting articles/plurals, or using valid UK/US spelling variants (burnt/burned, colour/color, realise/realize, etc.). As long as the word or idiom is used accurately in meaning and natural context, score it fairly (pass / high score). (2) Focus on real errors: only deduct significant points for wrong meaning, unnatural collocation, missing target expression, or clear grammar errors—NOT for adapting the base dictionary form. (3) Second-person tone (MANDATORY): ALWAYS address the user directly as "You" / "Your" in English, "Kamu" in Indonesian, or casual warm "ты" ("тебя"/"твой") in Russian in feedback and tips. NEVER write third-person labels like "The learner", "The user", "The student", "Pelajar", "Pengguna", "Siswa", "Ученик", "Пользователь", or "Студент". Return strictly valid JSON matching the requested schema.';
 
 export function buildSentenceGradingPrompt(params: {
   term: string;
@@ -1004,10 +1004,11 @@ export function buildSentenceGradingPrompt(params: {
   register: string;
   wordFamiliesText: string;
   sentence: string;
-  lang: "en" | "id";
+  lang: "en" | "id" | "ru";
 }): string {
   const { term, meaning, register, wordFamiliesText, sentence, lang } = params;
   const isEn = lang === "en";
+  const isRu = lang === "ru";
 
   if (isEn) {
     return `You are a fair, constructive native English writing coach giving direct one-on-one feedback.
@@ -1038,6 +1039,37 @@ Return strictly valid JSON (ALL feedback and tips MUST be in natural English —
 - "feedback_id": specific, warm, constructive feedback in ENGLISH (2 sentences max) addressing the writer directly as "You" (NEVER "The learner", "The user", or "The student").
 - "native_rewrite": a polished, natural native-speaker English sentence using "${term}" (preserving the sentence's natural tense/meaning if it was already valid).
 - "tip": 1 short actionable tip in ENGLISH addressed directly to "You" on register, collocation, or phrasing.`;
+  }
+
+  if (isRu) {
+    return `You are a friendly, encouraging English tutor giving direct one-on-one feedback in natural Russian (casual "ты" study-buddy tone).
+Target expression: "${term}"
+Russian meaning: "${meaning}"
+Expected register: "${register}"
+Allowed word-family / inflected forms: ${wordFamiliesText || term}
+Sentence to evaluate: "${sentence}"
+
+Evaluate whether "${term}" (or any natural grammatical adaptation, tense/verb conjugation, pronoun change, UK/US spelling variant, or valid word-family form) is used accurately in meaning, grammar, and natural context.
+
+CORE GRADING RULES (MUST FOLLOW):
+1. ACCEPT NATURAL GRAMMATICAL ADAPTATIONS: Do NOT penalize conjugating verbs, changing tenses (e.g. past tense "I burnt the midnight oil..." or "I burned the midnight oil..." for "burn the midnight oil"), changing pronouns/possessives ("my", "their", "his"), adjusting articles/plurals, or using valid UK/US spelling variants (burnt/burned, colour/color, realise/realize, etc.). If the meaning and context are accurate and natural, award a passing / high score (70–100).
+2. FOCUS ON REAL ERRORS: Only deduct significant points for wrong meaning, unnatural collocation, missing the target expression, or clear grammar mistakes—NEVER deduct points simply because the sentence adapted the base dictionary form to fit grammar or tense.
+3. SECOND-PERSON CASUAL "ТЫ" TONE ONLY: Always address the learner directly as "ты" ("у тебя", "твой") in both "feedback_id" and "tip". NEVER use third-person labels like "Ученик", "Студент", "Пользователь", "The learner", or formal "Вы".
+
+SCORING RUBRIC (MUST FOLLOW):
+- 0 to 10 ("Нет попытки", is_correct=false): Empty, < 3 words, random gibberish/keyboard mash, non-English refusal, or non-attempts like "idunno", "idk", "не знаю", "хз", "пропуск", "test". NEVER give 35 for non-attempts!
+- 20 to 45 ("Нужно доработать", is_correct=false): A real, complete English sentence, BUT either did not use the target expression (or any valid adaptation/inflection of it) OR used it with the wrong meaning/context.
+- 46 to 69 ("Нужно доработать", is_correct=false): Uses the target expression with partial understanding, but has clear grammar errors, unnatural collocation, or unclear context.
+- 70 to 84 ("Хорошо", is_correct=true): Clear, understandable, mostly natural English sentence using the target expression (including natural tense/pronoun/UK-US adaptations) accurately, with only minor phrasing or grammar tweaks.
+- 85 to 100 ("Естественно", is_correct=true): Idiomatic, accurate meaning, natural grammar (including conjugated/adapted forms and valid UK/US spellings), and fitting register.
+
+Return strictly valid JSON (ALL feedback and tips MUST be in natural Russian, while keeping "native_rewrite" in natural English):
+- "is_correct": boolean (true ONLY if "Естественно" or "Хорошо", false otherwise)
+- "verdict": exactly one of "Естественно", "Хорошо", "Нужно доработать", or "Нет попытки"
+- "score": integer 0-100 following the rubric above
+- "feedback_id": specific, warm, constructive feedback in RUSSIAN (2 sentences max) using casual "ты".
+- "native_rewrite": a polished, natural native-speaker ENGLISH sentence using "${term}" (preserving the sentence's natural tense/meaning if it was already valid; if not, provide a clean everyday English example sentence).
+- "tip": 1 short actionable tip in RUSSIAN addressed directly to "ты" on register, collocation, or phrasing.`;
   }
 
   return `You are a fair, constructive native English writing coach giving direct one-on-one feedback in Indonesian.
@@ -1073,7 +1105,7 @@ Return strictly valid JSON:
 export function buildAutofillPrompt(params: {
   term: string;
   sourceTag?: string;
-  lang: "en" | "id";
+  lang: "en" | "id" | "ru";
   existingCsv: string;
 }): string {
   const { term, sourceTag, lang, existingCsv } = params;
@@ -1086,6 +1118,34 @@ Check if "${term}" is an exact, inflectional, morphological, or phrase variant o
 - If NO: set duplicate=false, existing_term="", and populate ALL dictionary fields below completely and accurately.`
     : `STEP 2 — DICTIONARY ENTRY (only when is_valid_english=true):
 Populate ALL dictionary fields below completely and accurately.`;
+
+  if (lang === "ru") {
+    return `Evaluate and (if valid English) create a complete English-Russian dictionary card for "${term}" (source: ${sourceTag || "general"}, ui: ru).
+
+STEP 1 — STRICT ENGLISH-ONLY VALIDATION (MANDATORY):
+Determine whether "${term}" is a valid, established English word, phrasal verb, idiom, collocation, or genuine English slang (accepted English loanwords like "café", "cliché", "déjà vu" are valid).
+- If "${term}" is NOT English (e.g. Russian/Indonesian words, non-English slang, foreign words from other languages not established in English, gibberish, keyboard mash like "asdfgh", or nonsense):
+  Set is_valid_english=false${hasExisting ? ', duplicate=false, existing_term=""' : ""}, set all string fields to "" (and cefr="A1", type="vocab", register="Casual"), and set all array fields to []. Do NOT translate non-English words or write non-English example sentences.
+- If "${term}" IS valid English: set is_valid_english=true and continue to Step 2.
+
+${duplicateBlock}
+
+Required fields (when is_valid_english=true and not a duplicate):
+- is_valid_english: true
+- term: canonical English spelling/casing
+- pronunciation: Google "Sounds like" phonetic spelling with "·" syllable dots & ALL CAPS primary stress (e.g. "am·BIV·uh·luhnt")
+- ipa: standard IPA inside slashes (e.g. "/æmˈbɪv.ə.lənt/")
+- cefr: true, objective CEFR level ("A1", "A2", "B1", "B2", "C1", or "C2") — ${CEFR_CALIBRATION_RULE}
+- type: vocab, idiom, or collocation
+- register: "Casual", "Formal", "Academic", or "Slang" — ${REGISTER_CLASSIFICATION_RULE}
+- meaning_en: 1 clear, natural English definition (figurative meaning for idioms)
+- meaning_ru: 1 clear, natural Russian definition (перевод и пояснение естественным русским языком; образный смысл для идиом, не дословный перевод)
+- examples: 2 natural ENGLISH example sentences (1 Daily, 1 Academic) wrapping the target term in **bold**, each with natural Russian translation_ru and context ("Daily" or "Academic")
+- synonyms: 2–4 register-matched English synonyms
+- antonyms: 1–3 contrasting English antonyms (or contextual opposites)
+- word_families: 1–4 real English {word, pos} morphological forms for vocab/collocation ONLY; ${IDIOM_WORD_FAMILY_RULE}
+- chunks: 2–3 natural, practical native English lexical chunks / collocations (or natural sentence frames/starters for idioms); ${CHUNKS_GENERATION_RULE}`;
+  }
 
   return `Evaluate and (if valid English) create a complete bilingual English-Indonesian dictionary card for "${term}" (source: ${sourceTag || "general"}, ui: ${lang}).
 
@@ -1121,7 +1181,7 @@ function buildBackupSystemPrompt(
   const skeleton = formatSchemaSkeleton(schema);
   const base =
     systemInstruction?.trim() ||
-    "Precise bilingual English-Indonesian lexicographer.";
+    "Precise multilingual English lexicographer (English, Indonesian, Russian).";
   const registerHint = skeleton.includes('"register":')
     ? `\n${REGISTER_CLASSIFICATION_RULE}`
     : "";

@@ -58,6 +58,7 @@ export interface DailyPackItem {
   type: "vocab" | "idiom";
   meaning_en: string;
   meaning_id: string;
+  meaning_ru?: string;
   examples: WordExample[];
   synonyms: string[];
   antonyms: string[];
@@ -99,6 +100,7 @@ export interface AuthUser {
 export interface WordExample {
   sentence: string;
   translation_id: string;
+  translation_ru?: string;
   context: "Daily" | "Academic" | string;
 }
 
@@ -117,6 +119,7 @@ export interface WordEntry {
   type: WordType;
   meaning_id: string;
   meaning_en?: string;
+  meaning_ru?: string;
   examples_json: WordExample[];
   synonyms: string[];
   antonyms: string[];
@@ -147,6 +150,7 @@ export interface DiscoveryItem {
   type: WordType;
   meaning_id: string;
   meaning_en?: string;
+  meaning_ru?: string;
   examples_json: WordExample[];
   synonyms: string[];
   antonyms: string[];
@@ -194,6 +198,7 @@ export interface ExtractedVocabItem {
   type: WordType;
   meaning_id: string;
   meaning_en?: string;
+  meaning_ru?: string;
   examples: WordExample[];
   synonyms: string[];
   antonyms: string[];
@@ -210,6 +215,7 @@ export interface SuggestedWordItem {
   type: WordType;
   meaning_en: string;
   meaning_id: string;
+  meaning_ru?: string;
   examples: WordExample[];
   synonyms: string[];
   antonyms: string[];
@@ -245,7 +251,11 @@ export type SentenceGradeVerdict =
   | "Belum Menjawab / Tidak Valid"
   | "Good"
   | "Needs Work"
-  | "No Valid Attempt";
+  | "No Valid Attempt"
+  | "Естественно"
+  | "Хорошо"
+  | "Нужно доработать"
+  | "Нет попытки";
 
 export interface SentenceGradeResult {
   is_correct: boolean;
@@ -264,6 +274,7 @@ export interface AutofillPayload {
   type: WordType;
   meaning_id: string;
   meaning_en?: string;
+  meaning_ru?: string;
   examples: WordExample[];
   synonyms: string[];
   antonyms: string[];

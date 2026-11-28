@@ -34,6 +34,7 @@ import {
 } from "@/components/QuickGuideModal";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { ActivityRings } from "@/components/gamification/ActivityRings";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { AccentToggle } from "@/components/layout/AccentToggle";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { SettingsModal } from "@/components/settings/SettingsModal";
@@ -150,10 +151,14 @@ export function AppShell({
     resolvedTheme === "dark"
       ? lang === "en"
         ? "Switch to Light Mode"
-        : "Ganti ke Mode Terang"
+        : lang === "ru"
+          ? "Включить светлую тему"
+          : "Ganti ke Mode Terang"
       : lang === "en"
         ? "Switch to Dark Mode"
-        : "Ganti ke Mode Gelap";
+        : lang === "ru"
+          ? "Включить тёмную тему"
+          : "Ganti ke Mode Gelap";
 
   useOverlayBackGuard("settings", settingsOpen, () => setSettingsOpen(false));
 
@@ -179,7 +184,12 @@ export function AppShell({
       icon: Layers,
     },
     { id: "practice", label: t.nav.practice, icon: GraduationCap },
-    { id: "grammar", label: t.nav.grammar, icon: SpellCheck },
+    {
+      id: "grammar",
+      label: t.nav.grammar,
+      mobileLabel: lang === "ru" ? "Грамм." : undefined,
+      icon: SpellCheck,
+    },
     { id: "ielts", label: t.nav.ielts, icon: Award },
     { id: "discover", label: t.nav.discover, icon: Compass },
     { id: "stats", label: t.nav.stats, icon: BarChart3 },
@@ -284,6 +294,14 @@ export function AppShell({
 
           {/* Bottom Controls */}
           <div className="space-y-2.5 pt-3">
+            {/* Compact UI & AI Language Switcher */}
+            <div className="flex items-center justify-between gap-2 rounded-2xl bg-white/[0.04] border border-white/[0.08] px-3 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93] truncate">
+                {t.settings.sections.language}
+              </span>
+              <LanguageSwitcher align="right" direction="up" compact />
+            </div>
+
             {/* Global US / UK Segmented Control & SFX Toggle */}
             <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3">
               <div className="flex items-center justify-between mb-2">
@@ -609,6 +627,8 @@ export function AppShell({
 
             <AccentToggle instanceId="mobile" compact />
 
+            <LanguageSwitcher align="right" direction="down" compact />
+
             <motion.button
               type="button"
               whileTap={TAP_SCALE}
@@ -636,7 +656,7 @@ export function AppShell({
               }}
               aria-label={t.nav.quickGuide}
               title={t.nav.quickGuide}
-              className="hidden min-[380px]:flex h-8 w-8 items-center justify-center rounded-full border bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer transition-colors"
+              className="hidden min-[440px]:flex h-8 w-8 items-center justify-center rounded-full border bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer transition-colors"
             >
               <HelpCircle className="h-3.5 w-3.5" />
             </motion.button>

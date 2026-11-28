@@ -49,6 +49,7 @@ import {
 import {
   cn,
   formatCefrBadgeClass,
+  getLocalizedExampleTranslation,
   getLocalizedMeaning,
   normalizeTermKey,
 } from "@/lib/utils";
@@ -65,6 +66,7 @@ interface QuizCard {
   mode: QuizQuestionMode;
   promptSentence?: string;
   promptTranslationId?: string;
+  promptTranslationRu?: string;
   choices: string[];
   correctChoice: string;
   requeued?: boolean;
@@ -84,7 +86,11 @@ function countActualWordsExcludingBlanks(text: string): number {
 
 function buildBlankSentence(
   item: DailyPackItem
-): { promptSentence: string; translationId?: string } | null {
+): {
+  promptSentence: string;
+  translationId?: string;
+  translationRu?: string;
+} | null {
   const targetTerm = item.term.trim();
   if (!targetTerm) return null;
 
@@ -118,7 +124,8 @@ function buildBlankSentence(
 
     return {
       promptSentence: maskedSentence,
-      translationId: example.translation_id,
+      translationId: getLocalizedExampleTranslation(example, "id"),
+      translationRu: getLocalizedExampleTranslation(example, "ru"),
     };
   }
 
@@ -158,6 +165,7 @@ function buildQuizCard(
       mode: "fill_blank",
       promptSentence: blankResult.promptSentence,
       promptTranslationId: blankResult.translationId,
+      promptTranslationRu: blankResult.translationRu,
       choices,
       correctChoice,
       requeued,
@@ -607,11 +615,15 @@ export function DailyPackModal() {
                   {loadingSeconds >= 10
                     ? isEn
                       ? `Switching to backup AI provider if needed... (${loadingSeconds}s)`
-                      : `Beralih ke provider AI cadangan jika diperlukan... (${loadingSeconds}d)`
+                      : lang === "ru"
+                        ? `При необходимости переключаюсь на резервный ИИ... (${loadingSeconds}с)`
+                        : `Beralih ke provider AI cadangan jika diperlukan... (${loadingSeconds}d)`
                     : loadingSeconds >= 3
                       ? isEn
                         ? `Generating ${dailyQuota.wordsPerDay} words & ${dailyQuota.idiomsPerDay} idioms in parallel... (${loadingSeconds}s)`
-                        : `Membuat ${dailyQuota.wordsPerDay} kosakata & ${dailyQuota.idiomsPerDay} idiom secara paralel... (${loadingSeconds}d)`
+                        : lang === "ru"
+                          ? `Готовлю ${dailyQuota.wordsPerDay} слов и ${dailyQuota.idiomsPerDay} идиом параллельно... (${loadingSeconds}с)`
+                          : `Membuat ${dailyQuota.wordsPerDay} kosakata & ${dailyQuota.idiomsPerDay} idiom secara paralel... (${loadingSeconds}d)`
                       : t.dailyPack.loadingSubtitle}
                 </p>
               </div>
@@ -763,13 +775,17 @@ export function DailyPackModal() {
                             sentence={currentMemItem.examples[0].sentence}
                           />
                         </p>
-                        {!isEn && currentMemItem.examples[0].translation_id && (
-                          <p className="text-xs text-[#8E8E93] leading-relaxed">
-                            <HighlightedSentence
-                              sentence={currentMemItem.examples[0].translation_id}
-                            />
-                          </p>
-                        )}
+                        {(() => {
+                          const translated = getLocalizedExampleTranslation(
+                            currentMemItem.examples[0],
+                            lang
+                          );
+                          return translated ? (
+                            <p className="text-xs text-[#8E8E93] leading-relaxed">
+                              <HighlightedSentence sentence={translated} />
+                            </p>
+                          ) : null;
+                        })()}
                       </div>
                     )}
 
@@ -908,20 +924,26 @@ export function DailyPackModal() {
                           <p className="text-base sm:text-lg font-medium text-white leading-relaxed">
                             {currentQuizCard.promptSentence}
                           </p>
-                          {!isEn &&
-                            (currentQuizCard.promptTranslationId ??
-                              currentQuizCard.item.examples[0]?.translation_id) && (
+                          {(() => {
+                            const translated =
+                              lang === "ru"
+                                ? (currentQuizCard as { promptTranslationRu?: string })
+                                    .promptTranslationRu ||
+                                  getLocalizedExampleTranslation(
+                                    currentQuizCard.item.examples[0],
+                                    "ru"
+                                  )
+                                : lang === "id"
+                                  ? currentQuizCard.promptTranslationId ??
+                                    currentQuizCard.item.examples[0]
+                                      ?.translation_id
+                                  : "";
+                            return translated ? (
                               <p className="text-xs text-[#8E8E93]">
-                                <HighlightedSentence
-                                  sentence={
-                                    (currentQuizCard.promptTranslationId ??
-                                      currentQuizCard.item.examples[0]
-                                        ?.translation_id) ||
-                                    ""
-                                  }
-                                />
+                                <HighlightedSentence sentence={translated} />
                               </p>
-                            )}
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                     )}

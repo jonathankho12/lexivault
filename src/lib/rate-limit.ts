@@ -172,9 +172,11 @@ export type RateLimitCheckResult =
 /**
  * Backwards-compatible wrapper used by AI routes.
  */
+import type { AppLanguage } from "@/lib/i18n";
+
 export function checkAiRateLimit(
   request: Request,
-  _lang?: "en" | "id",
+  _lang?: AppLanguage,
   options?: {
     limit?: number;
     windowMs?: number;

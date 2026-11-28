@@ -356,6 +356,7 @@ export function VaultView() {
         word.term.toLowerCase().includes(q) ||
         word.meaning_id.toLowerCase().includes(q) ||
         (word.meaning_en?.toLowerCase().includes(q) ?? false) ||
+        (word.meaning_ru?.toLowerCase().includes(q) ?? false) ||
         (word.cefr?.toLowerCase().includes(q) ?? false) ||
         word.synonyms.some((s) => s.toLowerCase().includes(q)) ||
         word.word_families_json.some((wf) => wf.word.toLowerCase().includes(q))
@@ -381,9 +382,13 @@ export function VaultView() {
       ? isFiltered || sortedWords.length !== words.length
         ? `Menampilkan ${sortedWords.length} dari ${words.length} item`
         : `Menampilkan ${sortedWords.length} item`
-      : isFiltered || sortedWords.length !== words.length
-        ? `Showing ${sortedWords.length} of ${words.length} ${words.length === 1 ? "item" : "items"}`
-        : `Showing ${sortedWords.length} ${sortedWords.length === 1 ? "item" : "items"}`;
+      : lang === "ru"
+        ? isFiltered || sortedWords.length !== words.length
+          ? `Показано ${sortedWords.length} из ${words.length}`
+          : `Показано: ${sortedWords.length}`
+        : isFiltered || sortedWords.length !== words.length
+          ? `Showing ${sortedWords.length} of ${words.length} ${words.length === 1 ? "item" : "items"}`
+          : `Showing ${sortedWords.length} ${sortedWords.length === 1 ? "item" : "items"}`;
 
   return (
     <div className="space-y-5">

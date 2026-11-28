@@ -34,6 +34,9 @@ export function CefrOnboardingModal() {
   } = useLexiVault();
   const { lang } = useLanguage();
   const isEn = lang === "en";
+  const isRu = lang === "ru";
+  const pick = (en: string, id: string, ru: string) =>
+    isEn ? en : isRu ? ru : id;
 
   const [step, setStep] = useState<OnboardingStep>("select");
   const [selectedCefr, setSelectedCefr] = useState<CefrLevel | null>("B1");
@@ -80,11 +83,11 @@ export function CefrOnboardingModal() {
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label={
-              isEn
-                ? "Choose Your English CEFR Level"
-                : "Pilih Level CEFR Bahasa Inggris Kamu"
-            }
+            aria-label={pick(
+              "Choose Your English CEFR Level",
+              "Pilih Level CEFR Bahasa Inggris Kamu",
+              "Выбери свой уровень английского (CEFR)"
+            )}
             initial={{ opacity: 0, y: 40, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 30, scale: 0.98 }}
@@ -165,7 +168,7 @@ export function CefrOnboardingModal() {
                                 {item.level}
                               </span>
                               <span className="text-sm font-bold text-white">
-                                {isEn ? item.titleEn : item.titleId}
+                                {pick(item.titleEn, item.titleId, item.titleRu)}
                               </span>
                             </div>
 
@@ -182,13 +185,13 @@ export function CefrOnboardingModal() {
                           </div>
 
                           <p className="text-xs text-[#D1D1D6] leading-relaxed">
-                            {isEn ? item.canDoEn : item.canDoId}
+                            {pick(item.canDoEn, item.canDoId, item.canDoRu)}
                           </p>
                         </div>
 
                         <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/[0.08] text-[11px]">
                           <span className="text-[#8E8E93]">
-                            {isEn ? "Daily Pack:" : "Paket Harian:"}
+                            {pick("Daily Pack:", "Paket Harian:", "Пак дня:")}
                           </span>
                           <span className="font-semibold text-[#70BCFF]">
                             {item.dailyPackPreviewLabel}
@@ -215,21 +218,25 @@ export function CefrOnboardingModal() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-white">
-                        {isEn
-                          ? "Not sure? Take the 3-Minute Placement Test →"
-                          : "Belum yakin? Ikuti Placement Test 3 Menit →"}
+                        {pick(
+                          "Not sure? Take the 3-Minute Placement Test →",
+                          "Belum yakin? Ikuti Placement Test 3 Menit →",
+                          "Не уверен? Пройди тест уровня за 3 минуты →"
+                        )}
                       </p>
                       <p className="text-xs text-[#A7A5FF]/90">
-                        {isEn
-                          ? "10 quick adaptive questions across vocab, reading, listening & writing (+75 XP)."
-                          : "10 soal cepat adaptif mencakup vocab, reading, listening & writing (+75 XP)."}
+                        {pick(
+                          "10 quick adaptive questions across vocab, reading, listening & writing (+75 XP).",
+                          "10 soal cepat adaptif mencakup vocab, reading, listening & writing (+75 XP).",
+                          "10 быстрых адаптивных вопросов: лексика, чтение, аудирование и письмо (+75 XP)."
+                        )}
                       </p>
                     </div>
                   </div>
 
                   <span className="inline-flex shrink-0 items-center gap-1 self-start sm:self-center rounded-full bg-[#5E5CE6]/25 border border-[#5E5CE6]/45 px-3 py-1.5 text-xs font-semibold text-[#D6D4FF]">
                     <Sparkles className="h-3.5 w-3.5" />
-                    <span>{isEn ? "Start Test" : "Mulai Tes"}</span>
+                    <span>{pick("Start Test", "Mulai Tes", "Начать тест")}</span>
                   </span>
                 </motion.button>
 
@@ -237,12 +244,16 @@ export function CefrOnboardingModal() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
                   <p className="text-xs text-[#8E8E93]">
                     {selectedMeta
-                      ? isEn
-                        ? `Selected: ${selectedMeta.level} (${selectedMeta.titleEn}) · Daily Pack target set to Auto (${selectedMeta.dailyPackPreviewLabel})`
-                        : `Dipilih: ${selectedMeta.level} (${selectedMeta.titleId}) · Target Harian diset Auto (${selectedMeta.dailyPackPreviewLabel})`
-                      : isEn
-                        ? "Select your starting CEFR level above."
-                        : "Pilih level CEFR awalmu di atas."}
+                      ? pick(
+                          `Selected: ${selectedMeta.level} (${selectedMeta.titleEn}) · Daily Pack target set to Auto (${selectedMeta.dailyPackPreviewLabel})`,
+                          `Dipilih: ${selectedMeta.level} (${selectedMeta.titleId}) · Target Harian diset Auto (${selectedMeta.dailyPackPreviewLabel})`,
+                          `Выбрано: ${selectedMeta.level} (${selectedMeta.titleRu}) · Пак дня: Авто (${selectedMeta.dailyPackPreviewLabel})`
+                        )
+                      : pick(
+                          "Select your starting CEFR level above.",
+                          "Pilih level CEFR awalmu di atas.",
+                          "Выбери свой стартовый уровень CEFR выше."
+                        )}
                   </p>
 
                   <motion.button
@@ -256,19 +267,23 @@ export function CefrOnboardingModal() {
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
                         <span>
-                          {isEn ? "Saving Profile..." : "Menyimpan Profil..."}
+                          {pick(
+                            "Saving Profile...",
+                            "Menyimpan Profil...",
+                            "Сохранение профиля..."
+                          )}
                         </span>
                       </>
                     ) : (
                       <>
                         <span>
                           {selectedMeta
-                            ? isEn
-                              ? `Start at ${selectedMeta.level} (${selectedMeta.dailyPackPreviewLabel})`
-                              : `Mulai di ${selectedMeta.level} (${selectedMeta.dailyPackPreviewLabel})`
-                            : isEn
-                              ? "Continue"
-                              : "Lanjutkan"}
+                            ? pick(
+                                `Start at ${selectedMeta.level} (${selectedMeta.dailyPackPreviewLabel})`,
+                                `Mulai di ${selectedMeta.level} (${selectedMeta.dailyPackPreviewLabel})`,
+                                `Начать с ${selectedMeta.level} (${selectedMeta.dailyPackPreviewLabel})`
+                              )
+                            : pick("Continue", "Lanjutkan", "Продолжить")}
                         </span>
                         <ArrowRight className="h-4 w-4" />
                       </>
@@ -290,23 +305,31 @@ export function CefrOnboardingModal() {
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     <span>
-                      {isEn
-                        ? "Back to CEFR Level Picker"
-                        : "Kembali ke Pilihan Level CEFR"}
+                      {pick(
+                        "Back to CEFR Level Picker",
+                        "Kembali ke Pilihan Level CEFR",
+                        "Назад к выбору CEFR"
+                      )}
                     </span>
                   </button>
 
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF]">
-                    {isEn ? "Step 2 · Placement Test" : "Langkah 2 · Placement Test"}
+                    {pick(
+                      "Step 2 · Placement Test",
+                      "Langkah 2 · Placement Test",
+                      "Шаг 2 · Тест уровня"
+                    )}
                   </span>
                 </div>
 
                 <PlacementTestFlow
                   startImmediately
-                  finishLabel={
-                    isEn ? "Save Level & Enter Vault" : "Simpan Level & Masuk Vault"
-                  }
-                  cancelLabel={isEn ? "Back" : "Kembali"}
+                  finishLabel={pick(
+                    "Save Level & Enter Vault",
+                    "Simpan Level & Masuk Vault",
+                    "Сохранить и открыть словарь"
+                  )}
+                  cancelLabel={pick("Back", "Kembali", "Назад")}
                   onCancel={() => setStep("select")}
                   onResultCalculated={(profile) => {
                     void completeCefrOnboarding(profile.cefr_level, {

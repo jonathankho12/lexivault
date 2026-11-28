@@ -8,6 +8,7 @@ import { IOS_SPRING } from "@/lib/motion";
 export function ShimmerWordSkeleton({ term }: { term?: string }) {
   const { lang } = useLanguage();
   const isEn = lang === "en";
+  const isRu = lang === "ru";
 
   return (
     <motion.div
@@ -27,15 +28,21 @@ export function ShimmerWordSkeleton({ term }: { term?: string }) {
               {term
                 ? isEn
                   ? `Preparing "${term}"...`
-                  : `Menyiapkan "${term}"...`
+                  : isRu
+                    ? `Готовлю «${term}»...`
+                    : `Menyiapkan "${term}"...`
                 : isEn
                   ? "AI is analyzing..."
-                  : "AI sedang menganalisis..."}
+                  : isRu
+                    ? "ИИ анализирует..."
+                    : "AI sedang menganalisis..."}
             </p>
             <p className="text-xs text-[#8E8E93]">
               {isEn
                 ? "Definition, example sentences, word family & US/UK audio"
-                : "Arti, contoh kalimat, word family & audio US/UK"}
+                : isRu
+                  ? "Значение, примеры предложений, однокоренные и US/UK аудио"
+                  : "Arti, contoh kalimat, word family & audio US/UK"}
             </p>
           </div>
         </div>

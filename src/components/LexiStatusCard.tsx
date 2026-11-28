@@ -671,7 +671,9 @@ export function LexiStatusCard() {
                 ? t.lexi.giveTreatBtn
                 : lang === "en"
                   ? "Complete Daily Pack, Practice, or close a Daily Ring to earn treats"
-                  : "Selesaikan Target Harian, Practice, atau tutup Daily Ring untuk dapat snack"
+                  : lang === "ru"
+                    ? "Пройди Пак дня, Практику или закрой кольцо дня, чтобы заработать вкусняшку"
+                    : "Selesaikan Target Harian, Practice, atau tutup Daily Ring untuk dapat snack"
             }
             className={cn(
               "inline-flex items-center justify-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-bold transition-all",

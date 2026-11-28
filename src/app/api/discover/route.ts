@@ -51,7 +51,8 @@ function normalizeItems(
   rawItems: Partial<DiscoveryItem>[],
   dateStr: string,
   excludeKeys: Set<string>,
-  limit: number
+  limit: number,
+  lang: "en" | "id" | "ru"
 ): DiscoveryItem[] {
   const validTypes = new Set<WordType>(["vocab", "idiom", "collocation"]);
   const validRegisters = new Set<RegisterType>([
@@ -77,7 +78,10 @@ function normalizeItems(
     const builtInBilingual = BUILT_IN_ENGLISH_MEANINGS[key];
     const meaning_en =
       (item.meaning_en || "").trim() || builtInBilingual?.meaning_en || "";
-    const meaning_id = (item.meaning_id || "").trim();
+    const meaning_ru = (item.meaning_ru || "").trim();
+    const rawMeaningId = (item.meaning_id || "").trim();
+    const meaning_id =
+      rawMeaningId || (lang === "ru" ? meaning_ru || meaning_en : "");
     const examples = Array.isArray(item.examples_json)
       ? item.examples_json
           .filter(
@@ -87,9 +91,20 @@ function normalizeItems(
               ex.sentence.trim().length >= 8
           )
           .slice(0, 2)
+          .map((ex, eIdx) => ({
+            sentence: ex.sentence.trim(),
+            translation_id: (ex.translation_id || "").trim(),
+            ...(ex.translation_ru?.trim()
+              ? { translation_ru: ex.translation_ru.trim() }
+              : {}),
+            context:
+              (ex.context || "").trim() || (eIdx === 0 ? "Daily" : "Academic"),
+          }))
       : [];
 
-    if (meaning_en.length < 4 || meaning_id.length < 4 || examples.length === 0) {
+    const hasLocalized =
+      lang === "ru" ? meaning_ru.length >= 4 : meaning_id.length >= 4;
+    if (meaning_en.length < 4 || !hasLocalized || examples.length === 0) {
       continue;
     }
 
@@ -106,6 +121,7 @@ function normalizeItems(
       type: resolvedType,
       meaning_id,
       meaning_en,
+      ...(meaning_ru ? { meaning_ru } : {}),
       examples_json: examples,
       synonyms: Array.isArray(item.synonyms) ? item.synonyms.slice(0, 3) : [],
       antonyms: Array.isArray(item.antonyms) ? item.antonyms.slice(0, 2) : [],
@@ -142,7 +158,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       date?: string;
       existingTerms?: string[];
-      lang?: "en" | "id";
+      lang?: "en" | "id" | "ru";
       category?: DiscoverCategory;
       tone?: DiscoverTone;
       count?: number;
@@ -153,7 +169,8 @@ export async function POST(request: Request) {
       body.date && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
         ? body.date
         : new Date().toISOString().slice(0, 10);
-    const lang = body.lang === "en" ? "en" : "id";
+    const lang = body.lang === "en" ? "en" : body.lang === "ru" ? "ru" : "id";
+    const isRu = lang === "ru";
     const rateLimit = checkAiRateLimit(request, lang, {
       bucket: "discover",
       limit: 30,
@@ -201,6 +218,13 @@ export async function POST(request: Request) {
         ? "High-utility C1–C2 expressions across Academic, Formal, and Casual registers."
         : `ALL items must fit "${tone}" register (C1–C2 level).`;
 
+    const meaningFieldGuide = isRu
+      ? "meaning_ru (1 natural figurative Russian definition)"
+      : "meaning_id (1 natural figurative Indonesian sentence)";
+    const exampleFieldGuide = isRu
+      ? "examples_json (2 concise English sentences with **bold** target + translation_ru + context Daily/Academic)"
+      : "examples_json (2 concise sentences with **bold** target + translation_id + context Daily/Academic)";
+
     const prompt = `Generate ${requestedCount} fresh English expressions (date ${dateStr}, ui ${lang}).
 ${categoryRule}
 ${toneRule}
@@ -210,16 +234,17 @@ ${REGISTER_CLASSIFICATION_RULE}
 ${IDIOM_WORD_FAMILY_RULE}
 ${CHUNKS_GENERATION_RULE}
 
-Concise JSON per item:
-term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Casual|Slang), pronunciation ("·" syllable dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 crisp sentence), meaning_id (1 natural figurative Indonesian sentence), examples_json (2 concise sentences with **bold** target + translation_id + context Daily/Academic), synonyms (2-3), antonyms (1-2), word_families_json (1-3 {word,pos} for vocab/collocation ONLY; [] for idioms), chunks (2-3 natural native collocations/phrases or idiom sentence frames).`;
+Concise JSON per item (keep English target terms, pronunciation, IPA, English examples, synonyms, antonyms, word_families_json, and chunks in natural English):
+term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Casual|Slang), pronunciation ("·" syllable dots + ALL CAPS primary stress), ipa (/.../), meaning_en (1 crisp sentence), ${meaningFieldGuide}, ${exampleFieldGuide}, synonyms (2-3), antonyms (1-2), word_families_json (1-3 {word,pos} for vocab/collocation ONLY; [] for idioms), chunks (2-3 natural native collocations/phrases or idiom sentence frames).`;
 
     const aiRes = await generateStructuredWithHybridModel<{
       items?: Partial<DiscoveryItem>[];
     }>({
       tier: "flash",
       routeName: mode === "more" ? "api/discover:more" : "api/discover",
-      systemInstruction:
-        "Fast C1-C2 English lexicographer. Return compact valid JSON only with zero duplicates.",
+      systemInstruction: isRu
+        ? "Fast C1-C2 English lexicographer providing English entries with natural Russian explanations. Return compact valid JSON only with zero duplicates."
+        : "Fast C1-C2 English lexicographer. Return compact valid JSON only with zero duplicates.",
       contents: prompt,
       maxOutputTokens: 3584,
       fallbackMaxTokens: 2000,
@@ -229,7 +254,13 @@ term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Ca
         if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
           return "empty discover items";
         }
-        return normalizeItems(parsed.items, dateStr, excludeKeys, requestedCount).length > 0
+        return normalizeItems(
+          parsed.items,
+          dateStr,
+          excludeKeys,
+          requestedCount,
+          lang
+        ).length > 0
           ? null
           : "no valid complete discover items";
       },
@@ -250,17 +281,25 @@ term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Ca
                   enum: ["vocab", "idiom", "collocation"],
                 },
                 meaning_en: { type: Type.STRING },
-                meaning_id: { type: Type.STRING },
+                ...(isRu
+                  ? { meaning_ru: { type: Type.STRING } }
+                  : { meaning_id: { type: Type.STRING } }),
                 examples_json: {
                   type: Type.ARRAY,
                   items: {
                     type: Type.OBJECT,
                     properties: {
                       sentence: { type: Type.STRING },
-                      translation_id: { type: Type.STRING },
+                      ...(isRu
+                        ? { translation_ru: { type: Type.STRING } }
+                        : { translation_id: { type: Type.STRING } }),
                       context: { type: Type.STRING },
                     },
-                    required: ["sentence", "translation_id", "context"],
+                    required: [
+                      "sentence",
+                      isRu ? "translation_ru" : "translation_id",
+                      "context",
+                    ],
                   },
                 },
                 synonyms: {
@@ -298,7 +337,7 @@ term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Ca
                 "cefr",
                 "type",
                 "meaning_en",
-                "meaning_id",
+                isRu ? "meaning_ru" : "meaning_id",
                 "examples_json",
                 "synonyms",
                 "antonyms",
@@ -318,7 +357,8 @@ term, cefr (C1|C2), type (vocab|idiom|collocation), register (Formal|Academic|Ca
         aiRes.data.items,
         dateStr,
         excludeKeys,
-        requestedCount
+        requestedCount,
+        lang
       );
       if (normalized.length > 0) {
         const pack: DailyDiscoveryPack = {

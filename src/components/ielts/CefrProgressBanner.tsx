@@ -38,7 +38,11 @@ export function CefrProgressBanner({
             </p>
             <h2 className="mt-0.5 text-xl sm:text-2xl font-bold tracking-tight text-white">
               {hasScore
-                ? `You're now at ${profile.cefr_level} level • Est. Band ${profile.estimated_band.toFixed(1)}`
+                ? lang === "ru"
+                  ? `Твой уровень: ${profile.cefr_level} • Est. Band ${profile.estimated_band.toFixed(1)}`
+                  : lang === "id"
+                    ? `Level kamu ${profile.cefr_level} • Est. Band ${profile.estimated_band.toFixed(1)}`
+                    : `You're now at ${profile.cefr_level} level • Est. Band ${profile.estimated_band.toFixed(1)}`
                 : t.ielts.bannerTitleFallback}
             </h2>
           </div>
@@ -130,7 +134,9 @@ export function CefrProgressBanner({
           <span>
             {isEn
               ? "Complete the Quick Placement Test (3–5 minutes) or any IELTS module to calculate your starting Band and CEFR level."
-              : "Selesaikan Quick Placement Test (3–5 menit) atau salah satu modul IELTS untuk menghitung Band & level CEFR awalmu."}
+              : lang === "ru"
+                ? "Пройди быстрый тест уровня (3–5 минут) или любой модуль IELTS, чтобы определить свой стартовый Band и CEFR."
+                : "Selesaikan Quick Placement Test (3–5 menit) atau salah satu modul IELTS untuk menghitung Band & level CEFR awalmu."}
           </span>
         </div>
       )}
