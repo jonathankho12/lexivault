@@ -317,8 +317,8 @@ export function AppShell({
       <AmbientBackground />
 
       {/* Desktop Translucent Glass Sidebar */}
-      <aside className="hidden md:flex fixed inset-y-0 left-0 z-30 w-64 lg:w-72 flex-col p-4">
-        <div className="liquid-glass-chrome flex h-full flex-col justify-between overflow-y-auto no-scrollbar rounded-3xl p-4">
+      <aside className="hidden md:flex fixed inset-y-0 left-0 z-30 h-[100dvh] w-64 lg:w-72 flex-col p-3 lg:p-4">
+        <div className="liquid-glass-chrome flex h-full flex-col justify-between overflow-y-auto overscroll-contain no-scrollbar rounded-3xl p-3.5 lg:p-4">
           <div>
             {/* Brand */}
             <div className="group flex items-center gap-3 px-2 py-2">
@@ -521,15 +521,11 @@ export function AppShell({
                   playGlassClick();
                   setSettingsOpen(true);
                 }}
-                className="flex flex-1 min-w-0 items-center justify-between gap-2 rounded-2xl bg-white/[0.05] border border-white/[0.09] px-3.5 py-2.5 text-xs font-semibold text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer transition-colors"
+                title={t.nav.settings}
+                className="flex h-10 flex-1 min-w-0 items-center justify-center gap-1.5 rounded-2xl bg-white/[0.05] border border-white/[0.09] px-2.5 lg:px-3 text-xs font-semibold text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer touch-manipulation transition-colors"
               >
-                <span className="inline-flex items-center gap-2 min-w-0">
-                  <Settings className="h-4 w-4 text-[#0A84FF] shrink-0" />
-                  <span className="truncate">{t.nav.settings}</span>
-                </span>
-                <span className="text-[10px] font-medium text-[#8E8E93] truncate">
-                  {isGuest ? t.nav.syncGuest : `@${user?.username ?? ""}`}
-                </span>
+                <Settings className="h-4 w-4 text-[#0A84FF] shrink-0" />
+                <span className="whitespace-nowrap">{t.nav.settings}</span>
               </motion.button>
 
               <motion.button
@@ -541,7 +537,7 @@ export function AppShell({
                 }}
                 aria-label={t.nav.quickGuide}
                 title={t.nav.quickGuide}
-                className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl bg-white/[0.05] border border-white/[0.09] text-[#8E8E93] hover:text-white hover:bg-white/[0.1] cursor-pointer transition-colors"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/[0.05] border border-white/[0.09] text-[#8E8E93] hover:text-white hover:bg-white/[0.1] cursor-pointer touch-manipulation transition-colors"
               >
                 <HelpCircle className="h-4 w-4" />
               </motion.button>
@@ -555,7 +551,7 @@ export function AppShell({
                 }}
                 aria-label={themeToggleLabel}
                 title={themeToggleLabel}
-                className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl bg-white/[0.05] border border-white/[0.09] text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer transition-colors"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/[0.05] border border-white/[0.09] text-[#F5F5F7] hover:bg-white/[0.1] cursor-pointer touch-manipulation transition-colors"
               >
                 {resolvedTheme === "dark" ? (
                   <Sun className="h-4 w-4 text-[#FF9F0A]" />
@@ -570,15 +566,21 @@ export function AppShell({
               <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] px-3 py-2.5 space-y-2">
                 {isGuest ? (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FF9F0A]/15 border border-[#FF9F0A]/35 text-[#FFBE5C]">
-                        <User className="h-3.5 w-3.5" />
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#FF9F0A]/15 border border-[#FF9F0A]/35 text-[#FFBE5C]">
+                        <User className="h-4 w-4" />
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-white truncate">
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="text-xs font-semibold text-white truncate"
+                          title={t.nav.guestModeLabel}
+                        >
                           {t.nav.guestModeLabel}
                         </p>
-                        <p className="text-[10px] text-[#8E8E93] truncate">
+                        <p
+                          className="text-[10px] text-[#8E8E93] truncate"
+                          title={t.nav.guestSavedLocally}
+                        >
                           {t.nav.guestSavedLocally}
                         </p>
                       </div>
@@ -588,23 +590,33 @@ export function AppShell({
                       type="button"
                       whileTap={TAP_SCALE}
                       onClick={handleCreateAccountFromGuest}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-3 py-1.5 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-3 py-1.5 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer touch-manipulation"
                     >
-                      <UserPlus className="h-3 w-3" />
+                      <UserPlus className="h-3 w-3 shrink-0" />
                       <span>{t.nav.createAccountSync}</span>
                     </motion.button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0A84FF]/20 border border-[#0A84FF]/35 text-[#70BCFF]">
-                        <User className="h-3.5 w-3.5" />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0A84FF]/20 border border-[#0A84FF]/35 text-[#70BCFF]">
+                        <User className="h-4 w-4" />
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-white truncate">
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="text-xs font-semibold text-white truncate"
+                          title={`@${user.username}`}
+                        >
                           @{user.username}
                         </p>
-                        <p className="text-[10px] text-[#8E8E93] truncate">
+                        <p
+                          className="text-[10px] text-[#8E8E93] truncate"
+                          title={
+                            user.provider === "supabase"
+                              ? t.nav.cloudAccount
+                              : t.nav.localAccount
+                          }
+                        >
                           {user.provider === "supabase"
                             ? t.nav.cloudAccount
                             : t.nav.localAccount}
@@ -618,10 +630,10 @@ export function AppShell({
                       onClick={() => void logout()}
                       title={t.nav.logout}
                       aria-label={t.nav.logout}
-                      className="inline-flex items-center gap-1 rounded-full bg-white/[0.07] border border-white/[0.1] px-2.5 py-1.5 text-[11px] font-medium text-[#FF8982] hover:bg-[#FF453A]/15 hover:border-[#FF453A]/35 transition-[opacity,border-color,background-color] cursor-pointer"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-full bg-white/[0.06] border border-white/[0.1] px-3 py-1.5 text-[11px] font-semibold text-[#FF8982] hover:bg-[#FF453A]/15 hover:border-[#FF453A]/35 transition-[opacity,border-color,background-color] cursor-pointer touch-manipulation"
                     >
-                      <LogOut className="h-3 w-3" />
-                      <span>{t.nav.logout}</span>
+                      <LogOut className="h-3 w-3 shrink-0" />
+                      <span className="whitespace-nowrap">{t.nav.logout}</span>
                     </motion.button>
                   </div>
                 )}
@@ -656,9 +668,9 @@ export function AppShell({
       </aside>
 
       {/* Mobile Top Translucent Header */}
-      <header className="md:hidden sticky top-0 z-30 pt-[env(safe-area-inset-top)] liquid-glass-chrome mobile-chrome-bar mobile-chrome-top rounded-none">
-        <div className="flex items-center justify-between gap-2 px-3 py-2">
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      <header className="md:hidden sticky top-0 z-30 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] liquid-glass-chrome mobile-chrome-bar mobile-chrome-top rounded-none">
+        <div className="flex items-center justify-between gap-2 px-2.5 sm:px-3.5 py-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <div className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center transform-gpu">
               <Image
                 src="/lexi-badge.png"
@@ -671,7 +683,7 @@ export function AppShell({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center min-w-0">
-                <span className="text-[15px] leading-tight font-bold tracking-tight text-white whitespace-nowrap">
+                <span className="text-[15px] leading-tight font-bold tracking-tight text-white truncate">
                   LexiVault
                 </span>
               </div>
@@ -681,7 +693,7 @@ export function AppShell({
                   playGlassClick();
                   openStreakCalendar();
                 }}
-                className="block max-w-full truncate text-left text-[11px] leading-tight text-[#8E8E93] hover:text-[#F5F5F7] transition-[opacity,color] cursor-pointer"
+                className="block max-w-full truncate text-left text-[11px] leading-tight text-[#8E8E93] hover:text-[#F5F5F7] transition-[opacity,color] cursor-pointer touch-manipulation"
               >
                 {isGuest
                   ? t.nav.guestModeLabel
@@ -692,7 +704,7 @@ export function AppShell({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <motion.button
               type="button"
               whileTap={TAP_SCALE}
@@ -703,13 +715,13 @@ export function AppShell({
               aria-label={t.nav.discover}
               title={t.nav.discover}
               className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full border transition-colors cursor-pointer",
+                "flex h-9 w-9 min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full border transition-colors cursor-pointer touch-manipulation",
                 activeTab === "discover"
                   ? "bg-[#0A84FF]/22 border-[#0A84FF]/45 text-[#70BCFF]"
                   : "bg-white/[0.06] border-white/[0.1] text-[#D1D1D6]"
               )}
             >
-              <Compass className="h-3.5 w-3.5" />
+              <Compass className="h-4 w-4" />
             </motion.button>
 
             <AccentToggle instanceId="mobile" compact />
@@ -723,12 +735,12 @@ export function AppShell({
               }}
               aria-label={themeToggleLabel}
               title={themeToggleLabel}
-              className="flex h-8 w-8 items-center justify-center rounded-full border bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer transition-colors"
+              className="flex h-9 w-9 min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full border bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer touch-manipulation transition-colors"
             >
               {resolvedTheme === "dark" ? (
-                <Sun className="h-3.5 w-3.5 text-[#FF9F0A]" />
+                <Sun className="h-4 w-4 text-[#FF9F0A]" />
               ) : (
-                <Moon className="h-3.5 w-3.5 text-[#0A84FF]" />
+                <Moon className="h-4 w-4 text-[#0A84FF]" />
               )}
             </motion.button>
 
@@ -741,9 +753,9 @@ export function AppShell({
               }}
               aria-label={t.nav.quickGuide}
               title={t.nav.quickGuide}
-              className="hidden min-[440px]:flex h-8 w-8 items-center justify-center rounded-full border bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer transition-colors"
+              className="hidden min-[410px]:flex h-9 w-9 min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full border bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12] cursor-pointer touch-manipulation transition-colors"
             >
-              <HelpCircle className="h-3.5 w-3.5" />
+              <HelpCircle className="h-4 w-4" />
             </motion.button>
 
             <motion.button
@@ -760,13 +772,13 @@ export function AppShell({
                   : t.nav.settings
               }
               className={cn(
-                "relative flex h-8 w-8 items-center justify-center rounded-full border transition-[opacity,border-color,background-color] cursor-pointer",
+                "relative flex h-9 w-9 min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full border transition-[opacity,border-color,background-color] cursor-pointer touch-manipulation",
                 hasSyncError
                   ? "bg-[#FF453A]/15 border-[#FF453A]/45 text-[#FF8982] hover:bg-[#FF453A]/25"
                   : "bg-white/[0.06] border-white/[0.1] text-[#D1D1D6] hover:bg-white/[0.12]"
               )}
             >
-              <Settings className="h-3.5 w-3.5" />
+              <Settings className="h-4 w-4" />
               {hasSyncError && (
                 <span
                   aria-hidden="true"
@@ -780,7 +792,7 @@ export function AppShell({
 
       {/* Main Content — Instant 60 FPS Tab Switch */}
       <main className="md:pl-64 lg:pl-72">
-        <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 pt-4 sm:pt-7 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-12">
+        <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 pt-4 sm:pt-7 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-12">
           {isGuest && (
             <div className="md:hidden mb-3.5 flex items-center justify-between gap-2 rounded-2xl bg-white/[0.04] border border-white/[0.08] px-3.5 py-2">
               <div className="min-w-0">
@@ -792,9 +804,9 @@ export function AppShell({
                 type="button"
                 whileTap={TAP_SCALE}
                 onClick={handleCreateAccountFromGuest}
-                className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-2.5 py-1 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer"
+                className="shrink-0 min-h-[36px] inline-flex items-center gap-1 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-3 py-1.5 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 transition-[opacity,border-color,background-color] cursor-pointer touch-manipulation whitespace-nowrap"
               >
-                <UserPlus className="h-3 w-3" />
+                <UserPlus className="h-3 w-3 shrink-0" />
                 <span>{t.nav.createAccountSync}</span>
               </motion.button>
             </div>
@@ -809,7 +821,7 @@ export function AppShell({
       {/* Mobile Edge-to-Edge Bottom Navigation Bar */}
       <nav
         aria-label="Mobile Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 m-0 bg-[var(--ios-surface)] mobile-chrome-bottom rounded-none px-1.5 pt-1.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 m-0 bg-[var(--ios-surface)] mobile-chrome-bottom rounded-none pt-1.5 pl-[max(0.375rem,env(safe-area-inset-left))] pr-[max(0.375rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <div className="mx-auto grid max-w-md grid-cols-6 items-center gap-0.5">
           {mobileDockItems.map((item) => {
@@ -825,7 +837,7 @@ export function AppShell({
                   setActiveTab(item.id);
                 }}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 px-0.5 transition-colors cursor-pointer select-none",
+                  "relative flex min-h-[44px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 px-0.5 transition-colors cursor-pointer select-none touch-manipulation",
                   active ? "text-white" : "text-[#8E8E93]"
                 )}
               >
@@ -839,7 +851,7 @@ export function AppShell({
                 {item.id === "flashcards" && isHydrated && dueWordsCount > 0 && (
                   <span
                     aria-hidden="true"
-                    className="absolute top-1 right-3 h-2 w-2 rounded-full bg-[#FF9F0A]"
+                    className="absolute top-1 right-2.5 sm:right-3 h-2 w-2 rounded-full bg-[#FF9F0A]"
                   />
                 )}
                 <Icon
@@ -886,7 +898,7 @@ export function AppShell({
         {ruAnnouncementOpen && (
           <div
             key="ru-announcement-portal"
-            className="fixed inset-0 z-[65] flex items-center justify-center p-4 sm:p-6"
+            className="fixed inset-0 z-[65] flex items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6"
           >
             {/* Backdrop */}
             <motion.div
@@ -910,7 +922,7 @@ export function AppShell({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.96 }}
               transition={IOS_SHEET_SPRING}
-              className="liquid-glass-elevated transform-gpu will-change-transform relative z-10 w-full max-w-md max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[32px] p-6 sm:p-8 text-center"
+              className="liquid-glass-elevated transform-gpu will-change-transform relative z-10 w-full max-w-md max-h-[90dvh] overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar rounded-[32px] p-6 sm:p-8 text-center"
             >
               {/* Subtle top accent glow */}
               <div

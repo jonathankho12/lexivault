@@ -287,7 +287,7 @@ export function SettingsModal({
       {open && (
         <div
           key="settings-modal-portal"
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6"
+          className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 pt-[max(0.75rem,env(safe-area-inset-top))] md:p-6"
         >
           {/* Backdrop */}
           <motion.div
@@ -308,18 +308,18 @@ export function SettingsModal({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 34 }}
             transition={IOS_SHEET_SPRING}
-            className="liquid-glass-elevated transform-gpu will-change-transform relative z-10 w-full md:max-w-2xl max-h-[88dvh] overflow-y-auto no-scrollbar rounded-t-[32px] md:rounded-3xl p-5 sm:p-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] space-y-5"
+            className="liquid-glass-elevated transform-gpu will-change-transform relative z-10 w-full md:max-w-2xl max-h-[90dvh] overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar rounded-t-[32px] md:rounded-3xl p-4 sm:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6 space-y-5"
           >
             {/* Mobile Drag Handle */}
             <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-white/25 md:hidden" />
 
             {/* Modal Header */}
             <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#0A84FF]/20 border border-[#0A84FF]/35 text-[#70BCFF]">
                   <Settings className="h-5 w-5" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-xl font-bold text-white tracking-tight">
                     {t.settings.title}
                   </h2>
@@ -333,7 +333,7 @@ export function SettingsModal({
                 type="button"
                 onClick={onClose}
                 aria-label={t.settings.close}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[#8E8E93] hover:text-white cursor-pointer"
+                className="flex h-9 w-9 min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[#8E8E93] hover:text-white cursor-pointer touch-manipulation"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -348,7 +348,7 @@ export function SettingsModal({
               <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] divide-y divide-white/[0.08]">
                 {/* Profile & Rank */}
                 <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
                       className={cn(
                         "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border",
@@ -360,7 +360,14 @@ export function SettingsModal({
                       <User className="h-4.5 w-4.5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-white truncate">
+                      <p
+                        className="text-sm font-bold text-white truncate"
+                        title={
+                          isGuest
+                            ? t.nav.guestModeLabel
+                            : `@${user?.username ?? "user"}`
+                        }
+                      >
                         {isGuest
                           ? t.nav.guestModeLabel
                           : `@${user?.username ?? "user"}`}
@@ -373,7 +380,7 @@ export function SettingsModal({
 
                   <span
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold",
+                      "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold",
                       isCloud
                         ? "bg-[#30D158]/15 border-[#30D158]/35 text-[#7CF099]"
                         : isGuest
@@ -457,12 +464,12 @@ export function SettingsModal({
                             onChange={(e) => setNewPassword(e.target.value)}
                             placeholder={t.settings.account.newPassword}
                             required
-                            className="min-w-0 flex-1 bg-transparent text-xs text-white placeholder:text-[#8E8E93] focus:outline-none"
+                            className="min-w-0 flex-1 bg-transparent text-base sm:text-sm text-white placeholder:text-[#8E8E93] focus:outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => setShowPwd((p) => !p)}
-                            className="text-[#8E8E93] hover:text-white cursor-pointer"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center text-[#8E8E93] hover:text-white cursor-pointer touch-manipulation"
                           >
                             {showPwd ? (
                               <EyeOff className="h-3.5 w-3.5" />
@@ -479,7 +486,7 @@ export function SettingsModal({
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder={t.settings.account.confirmPassword}
                             required
-                            className="min-w-0 flex-1 bg-transparent text-xs text-white placeholder:text-[#8E8E93] focus:outline-none"
+                            className="min-w-0 flex-1 bg-transparent text-base sm:text-sm text-white placeholder:text-[#8E8E93] focus:outline-none"
                           />
                         </div>
                       </div>
