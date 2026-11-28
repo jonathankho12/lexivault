@@ -2338,7 +2338,7 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
   ru: {
     auth: {
       subtitle: "Адаптивный английский и подготовка к IELTS (A1–C2)",
-      lexiInspiration: "Вдохновлено верным ротвейлером Абеля — Лекси",
+      lexiInspiration: "Вдохновлено верным ротвейлером Абела — Лекси",
       loginTab: "Войти",
       registerTab: "Регистрация",
       usernameLabel: "Логин",
@@ -2975,9 +2975,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
       },
     },
     developer: {
-      builtBy: "Создатель — Абель Джонатан",
+      builtBy: "Создатель — Абел Джонатхан",
       sectionTitle: "О приложении и авторе",
-      name: "Абель Джонатан",
+      name: "Абел Джонатхан",
       roleSubtitle: "Создатель LexiVault",
       mascotName: "Лекси",
       mascotStatus: "Настоящая Лекси (талисман-ротвейлер)",

@@ -129,10 +129,10 @@ export function SettingsDeveloperCard({
               AJ
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-white truncate">
+              <p className="text-sm font-bold text-white leading-snug break-words">
                 {t.developer.name}
               </p>
-              <p className="text-xs text-[#8E8E93] truncate">
+              <p className="text-xs text-[#8E8E93] leading-snug break-words">
                 {t.developer.roleSubtitle}
               </p>
             </div>
@@ -140,9 +140,9 @@ export function SettingsDeveloperCard({
         </div>
 
         {/* Miniature Rottweiler "Lexi" Mascot Tribute */}
-        <div className="group flex items-center gap-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] px-3 py-2.5">
+        <div className="group flex items-start gap-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] px-3 py-2.5">
           {useLexiBadge ? (
-            <div className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center transform-gpu">
+            <div className="relative mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center transform-gpu">
               <Image
                 src="/lexi-badge.png"
                 alt={t.developer.mascotName}
@@ -154,20 +154,20 @@ export function SettingsDeveloperCard({
           ) : (
             <LexiLogo size="sm" showHoverShimmer />
           )}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
               <span className="text-xs font-bold text-white">
                 {t.developer.mascotName}
               </span>
               <span
                 aria-hidden="true"
-                className="h-1.5 w-1.5 rounded-full bg-[#38BDF8] shadow-[0_0_6px_rgba(56,189,248,0.85)]"
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#38BDF8] shadow-[0_0_6px_rgba(56,189,248,0.85)]"
               />
-              <span className="text-[10px] font-medium text-[#8E8E93] truncate">
+              <span className="text-[10px] font-medium text-[#8E8E93] leading-snug break-words">
                 {t.developer.mascotStatus}
               </span>
             </div>
-            <p className="text-[11px] text-[#A7B4FF]/85 truncate">
+            <p className="text-[11px] text-[#A7B4FF]/85 leading-snug break-words">
               {t.auth.lexiInspiration}
             </p>
           </div>
