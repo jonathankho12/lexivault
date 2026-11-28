@@ -1,3 +1,4 @@
+import { getBuiltInRussianMeaning } from "@/lib/bilingualCache";
 import { normalizeTermKey } from "@/lib/utils";
 import type { DailyPackItem, DailyPackTargetTier } from "@/types/lexivault";
 
@@ -2424,10 +2425,12 @@ export function pickFallbackDailyPack(
   const pickedWords = availableWords.slice(0, safeWordsQuota).map((item) => ({
     ...item,
     id: `${dateStr}-${item.id}`,
+    meaning_ru: item.meaning_ru || getBuiltInRussianMeaning(item.term),
   }));
   const pickedIdioms = availableIdioms.slice(0, safeIdiomsQuota).map((item) => ({
     ...item,
     id: `${dateStr}-${item.id}`,
+    meaning_ru: item.meaning_ru || getBuiltInRussianMeaning(item.term),
   }));
 
   // Interleave gently so each 5-item mini-round contains a refreshing blend of words & idioms

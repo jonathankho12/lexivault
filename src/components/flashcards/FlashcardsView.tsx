@@ -47,6 +47,7 @@ import {
   formatRegisterBadgeClass,
   formatSourceTagLabel,
   formatTypeLabel,
+  getLocalizedExampleTranslation,
   getLocalizedMeaning,
   WEAKEST_CLEAR_STREAK,
 } from "@/lib/utils";
@@ -446,13 +447,17 @@ function SwipeableFlashcard({
                   <p className="text-xs sm:text-sm leading-relaxed text-[#F5F5F7]">
                     <HighlightedText text={word.examples_json[0].sentence} />
                   </p>
-                  {lang === "id" && word.examples_json[0].translation_id && (
-                    <p className="text-[11px] leading-relaxed text-[#8E8E93]">
-                      <HighlightedText
-                        text={word.examples_json[0].translation_id}
-                      />
-                    </p>
-                  )}
+                  {(() => {
+                    const translated = getLocalizedExampleTranslation(
+                      word.examples_json[0],
+                      lang
+                    );
+                    return translated ? (
+                      <p className="text-[11px] leading-relaxed text-[#8E8E93]">
+                        <HighlightedText text={translated} />
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
               )}
 

@@ -12,6 +12,7 @@ import {
   EyeOff,
   Flame,
   KeyRound,
+  Languages,
   Loader2,
   LogOut,
   Minus,
@@ -32,10 +33,10 @@ import {
   X,
 } from "lucide-react";
 import { CefrRecommendationBanner } from "@/components/gamification/CefrRecommendationBanner";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { LexiAvatar } from "@/components/LexiAvatar";
 import { GetAndroidAppPill } from "@/components/pwa/AndroidAppModal";
 import { SettingsDeveloperCard } from "@/components/ui/DeveloperCredits";
-import { FlagEnIcon, FlagIdIcon, FlagRuIcon } from "@/components/ui/FlagIcons";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePwaInstall } from "@/context/PwaInstallContext";
@@ -90,12 +91,16 @@ export function SettingsModal({
     startBatchRefreshAllWords,
     cancelBatchRefreshAllWords,
     resetBatchRefreshStatus,
+    ruBatchTranslate,
+    startTranslateMissingRuMeanings,
+    cancelTranslateMissingRuMeanings,
+    resetRuBatchTranslateStatus,
     changePassword,
     openRegisterFromGuest,
     logout,
   } = useLexiVault();
   const { openAppModal } = usePwaInstall();
-  const { lang, setLang, t } = useLanguage();
+  const { lang, t } = useLanguage();
   const { theme, resolvedTheme, setTheme } = useTheme();
 
   const [editingPassword, setEditingPassword] = useState(false);
@@ -131,8 +136,9 @@ export function SettingsModal({
       setConfirmBatchRefresh(false);
       setForceSyncFeedback(null);
       resetBatchRefreshStatus();
+      resetRuBatchTranslateStatus();
     }
-  }, [open, resetBatchRefreshStatus]);
+  }, [open, resetBatchRefreshStatus, resetRuBatchTranslateStatus]);
 
   useEffect(() => {
     if (!open) return;
@@ -149,6 +155,7 @@ export function SettingsModal({
   const isCloud = user?.provider === "supabase";
   const hasSyncError =
     isCloud && (syncStatus === "error" || Boolean(syncError));
+  const missingRuCount = words.filter((w) => !w.meaning_ru?.trim()).length;
 
   const handleForceSyncNow = async () => {
     if (!isCloud || isForceSyncing) return;
@@ -537,71 +544,139 @@ export function SettingsModal({
                 {t.settings.sections.language}
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {(
-                  [
-                    {
-                      id: "en",
-                      label: t.settings.language.english,
-                      sub: t.settings.language.englishSub,
-                      Flag: FlagEnIcon,
-                    },
-                    {
-                      id: "id",
-                      label: t.settings.language.indonesia,
-                      sub: t.settings.language.indonesiaSub,
-                      Flag: FlagIdIcon,
-                    },
-                    {
-                      id: "ru",
-                      label: t.settings.language.russian,
-                      sub: t.settings.language.russianSub,
-                      Flag: FlagRuIcon,
-                    },
-                  ] as const
-                ).map((item) => {
-                  const active = lang === item.id;
-                  const Flag = item.Flag;
-                  return (
-                    <motion.button
-                      key={item.id}
-                      type="button"
-                      whileTap={TAP_SCALE}
-                      onClick={() => {
-                        playGlassClick();
-                        setLang(item.id);
-                      }}
-                      className={cn(
-                        "flex items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition-colors cursor-pointer",
-                        active
-                          ? "bg-[#0A84FF]/15 border-[#0A84FF]/50 text-white"
-                          : "bg-white/[0.04] border-white/[0.08] text-[#D1D1D6] hover:bg-white/[0.08]"
-                      )}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Flag className="h-5 w-5 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-xs sm:text-sm font-semibold truncate">
-                            {item.label}
-                          </p>
-                          <p className="text-[11px] text-[#8E8E93] truncate">
-                            {item.sub}
+              <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] divide-y divide-white/[0.08]">
+                <div className="flex items-center justify-between gap-3 p-4">
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-white">
+                      {lang === "en"
+                        ? "App & Explanations Language"
+                        : lang === "ru"
+                          ? "Язык интерфейса и объяснений"
+                          : "Bahasa Aplikasi & Penjelasan"}
+                    </p>
+                    <p className="text-[11px] text-[#8E8E93] truncate">
+                      {lang === "en"
+                        ? t.settings.language.englishSub
+                        : lang === "ru"
+                          ? t.settings.language.russianSub
+                          : t.settings.language.indonesiaSub}
+                    </p>
+                  </div>
+                  <LanguageSwitcher align="right" direction="down" />
+                </div>
+
+                {lang === "ru" &&
+                  (missingRuCount > 0 || ruBatchTranslate.status !== "idle") && (
+                    <div className="p-3.5 space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Languages className="h-4 w-4 text-[#70BCFF] shrink-0" />
+                          <p className="text-xs text-[#D1D1D6] leading-snug">
+                            {missingRuCount > 0
+                              ? `Слов без русского значения: ${missingRuCount}`
+                              : "Все значения слов переведены на русский"}
                           </p>
                         </div>
+
+                        {ruBatchTranslate.status !== "running" &&
+                          missingRuCount > 0 && (
+                            <motion.button
+                              type="button"
+                              whileTap={TAP_SCALE}
+                              onClick={() => {
+                                playGlassClick();
+                                void startTranslateMissingRuMeanings();
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-3 py-1.5 text-[11px] font-semibold text-[#70BCFF] hover:bg-[#0A84FF]/28 cursor-pointer shrink-0"
+                            >
+                              <Sparkles className="h-3 w-3" />
+                              <span>
+                                Перевести значения слов на русский (
+                                {missingRuCount})
+                              </span>
+                            </motion.button>
+                          )}
                       </div>
-                      <span
-                        className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-                          active
-                            ? "bg-[#0A84FF] border-[#0A84FF] text-white"
-                            : "border-white/20 text-transparent"
+
+                      {ruBatchTranslate.status === "running" && (
+                        <div className="rounded-xl bg-white/[0.05] border border-white/[0.12] p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Loader2 className="h-3.5 w-3.5 text-[#0A84FF] animate-spin shrink-0" />
+                              <span className="text-xs font-medium text-white tabular-nums truncate">
+                                Переводим значения:{" "}
+                                {ruBatchTranslate.completedCount} /{" "}
+                                {ruBatchTranslate.total}
+                              </span>
+                            </div>
+                            <motion.button
+                              type="button"
+                              whileTap={TAP_SCALE}
+                              onClick={() => {
+                                playGlassClick();
+                                cancelTranslateMissingRuMeanings();
+                              }}
+                              className="rounded-full bg-[#FF453A]/15 border border-[#FF453A]/35 px-2.5 py-1 text-[11px] font-semibold text-[#FFB4AE] hover:bg-[#FF453A]/25 cursor-pointer shrink-0"
+                            >
+                              {t.settings.dataStorage.refreshCancelBtn}
+                            </motion.button>
+                          </div>
+
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
+                            <div
+                              className="h-full rounded-full bg-[#0A84FF] transition-all duration-300"
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.round(
+                                    (ruBatchTranslate.completedCount /
+                                      Math.max(1, ruBatchTranslate.total)) *
+                                      100
+                                  )
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {ruBatchTranslate.status !== "idle" &&
+                        ruBatchTranslate.status !== "running" && (
+                          <div
+                            role="status"
+                            className={cn(
+                              "flex items-start gap-2 rounded-xl border px-3 py-2 text-xs font-medium tabular-nums",
+                              ruBatchTranslate.status === "done" &&
+                                ruBatchTranslate.failedCount === 0
+                                ? "bg-[#30D158]/15 border-[#30D158]/35 text-[#7CF099]"
+                                : ruBatchTranslate.status === "error"
+                                  ? "bg-[#FF453A]/15 border-[#FF453A]/35 text-[#FFB4AE]"
+                                  : "bg-[#FF9F0A]/12 border-[#FF9F0A]/30 text-[#FFD18C]"
+                            )}
+                          >
+                            {ruBatchTranslate.status === "done" &&
+                            ruBatchTranslate.failedCount === 0 ? (
+                              <Check className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                            ) : (
+                              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                            )}
+                            <span>
+                              {ruBatchTranslate.status === "rate_limited"
+                                ? `${ruBatchTranslate.error || "Достигнут лимит запросов ИИ."} (Переведено: ${ruBatchTranslate.translatedCount})`
+                                : ruBatchTranslate.status === "error"
+                                  ? `${ruBatchTranslate.error || "Не удалось завершить перевод."} (Переведено: ${ruBatchTranslate.translatedCount})`
+                                  : ruBatchTranslate.status === "cancelled"
+                                    ? `Остановлено — переведено слов: ${ruBatchTranslate.translatedCount}`
+                                    : `Готово — переведено слов: ${ruBatchTranslate.translatedCount}${
+                                        ruBatchTranslate.failedCount > 0
+                                          ? `, пропущено: ${ruBatchTranslate.failedCount}`
+                                          : ""
+                                      }`}
+                            </span>
+                          </div>
                         )}
-                      >
-                        <Check className="h-3 w-3 stroke-[2.5]" />
-                      </span>
-                    </motion.button>
-                  );
-                })}
+                    </div>
+                  )}
               </div>
             </section>
 

@@ -34,7 +34,6 @@ import {
 } from "@/components/QuickGuideModal";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { ActivityRings } from "@/components/gamification/ActivityRings";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { AccentToggle } from "@/components/layout/AccentToggle";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { SettingsModal } from "@/components/settings/SettingsModal";
@@ -294,14 +293,6 @@ export function AppShell({
 
           {/* Bottom Controls */}
           <div className="space-y-2.5 pt-3">
-            {/* Compact UI & AI Language Switcher */}
-            <div className="flex items-center justify-between gap-2 rounded-2xl bg-white/[0.04] border border-white/[0.08] px-3 py-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93] truncate">
-                {t.settings.sections.language}
-              </span>
-              <LanguageSwitcher align="right" direction="up" compact />
-            </div>
-
             {/* Global US / UK Segmented Control & SFX Toggle */}
             <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] p-3">
               <div className="flex items-center justify-between mb-2">
@@ -626,8 +617,6 @@ export function AppShell({
             </motion.button>
 
             <AccentToggle instanceId="mobile" compact />
-
-            <LanguageSwitcher align="right" direction="down" compact />
 
             <motion.button
               type="button"

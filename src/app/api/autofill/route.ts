@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { Type, type Schema } from "@google/genai";
-import { BUILT_IN_ENGLISH_MEANINGS } from "@/lib/bilingualCache";
+import {
+  BUILT_IN_ENGLISH_MEANINGS,
+  getBuiltInRussianMeaning,
+} from "@/lib/bilingualCache";
 import {
   AUTOFILL_SYSTEM_INSTRUCTION,
   buildAutofillPrompt,
@@ -199,7 +202,10 @@ function validateAndNormalizeAutofillPayload(
     (raw.meaning_en || raw.definition || "").trim() ||
     builtInBilingual?.meaning_en ||
     "";
-  const meaning_ru = (raw.meaning_ru || "").trim() || undefined;
+  const meaning_ru =
+    (raw.meaning_ru || "").trim() ||
+    (lang === "ru" ? getBuiltInRussianMeaning(cleanTerm) : undefined) ||
+    undefined;
   const rawMeaningId = (raw.meaning_id || "").trim();
   const meaning_id =
     rawMeaningId || (lang === "ru" ? meaning_ru || meaning_en : "");

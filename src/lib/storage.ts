@@ -325,6 +325,7 @@ function sanitizeWordForCloud(
   const meaning_id =
     word.meaning_id?.trim() || word.meaning_en?.trim() || term;
   const meaning_en = word.meaning_en?.trim() || undefined;
+  const meaning_ru = word.meaning_ru?.trim() || undefined;
   const pronunciation = word.pronunciation?.trim() || undefined;
   const ipa = word.ipa?.trim() || undefined;
   const examples_json = Array.isArray(word.examples_json)
@@ -397,6 +398,7 @@ function sanitizeWordForCloud(
     type,
     meaning_id,
     meaning_en,
+    meaning_ru,
     examples_json,
     synonyms,
     antonyms,
@@ -423,6 +425,7 @@ function buildWordPayloadTiers(
   sanitized: WordEntry,
   activeUserId: string
 ): [
+  Record<string, unknown>,
   Record<string, unknown>,
   Record<string, unknown>,
   Record<string, unknown>,
@@ -476,7 +479,19 @@ function buildWordPayloadTiers(
     chunks_json: sanitized.chunks ?? [],
   };
 
-  return [extendedPayload, fullPayload, midPayload, sm2Payload, minimalPayload];
+  const multilingualPayload: Record<string, unknown> = {
+    ...extendedPayload,
+    meaning_ru: sanitized.meaning_ru ?? null,
+  };
+
+  return [
+    multilingualPayload,
+    extendedPayload,
+    fullPayload,
+    midPayload,
+    sm2Payload,
+    minimalPayload,
+  ];
 }
 
 function mergeTwoWordEntries(
@@ -515,8 +530,14 @@ function mergeTwoWordEntries(
   const localExamples = Array.isArray(localWord.examples_json)
     ? localWord.examples_json
     : [];
+  const localHasMoreRuEx =
+    localExamples.some((ex) => Boolean(ex?.translation_ru?.trim())) &&
+    !cloudExamples.some((ex) => Boolean(ex?.translation_ru?.trim()));
   const examples_json =
-    localExamples.length > cloudExamples.length ? localExamples : cloudExamples;
+    localExamples.length > cloudExamples.length ||
+    (localExamples.length === cloudExamples.length && localHasMoreRuEx)
+      ? localExamples
+      : cloudExamples;
 
   const cloudSyns = Array.isArray(cloudWord.synonyms) ? cloudWord.synonyms : [];
   const localSyns = Array.isArray(localWord.synonyms) ? localWord.synonyms : [];
@@ -567,6 +588,7 @@ function mergeTwoWordEntries(
     type: cloudWord.type || localWord.type,
     meaning_id: cloudWord.meaning_id || localWord.meaning_id,
     meaning_en: cloudWord.meaning_en || localWord.meaning_en,
+    meaning_ru: cloudWord.meaning_ru || localWord.meaning_ru,
     examples_json,
     synonyms,
     antonyms,
@@ -732,6 +754,7 @@ async function upsertWordToSupabase(
           pronunciation: row.pronunciation || sanitized.pronunciation,
           ipa: row.ipa || sanitized.ipa,
           meaning_en: row.meaning_en || sanitized.meaning_en,
+          meaning_ru: row.meaning_ru || sanitized.meaning_ru,
           cefr: row.cefr || sanitized.cefr,
           chunks: rowChunks.length > 0 ? rowChunks : sanitized.chunks,
           last_reviewed_date:
@@ -836,7 +859,7 @@ async function upsertWordsBatchToSupabase(
     let chunkSaved = false;
     let chunkPrimaryError: unknown = null;
 
-    const totalTiers = 5;
+    const totalTiers = 6;
     for (let tierIdx = 0; tierIdx < totalTiers; tierIdx += 1) {
       const payloads = chunk.map(
         (w) => buildWordPayloadTiers(w, activeUserId)[tierIdx]
@@ -866,6 +889,7 @@ async function upsertWordsBatchToSupabase(
               pronunciation: row.pronunciation || orig?.pronunciation,
               ipa: row.ipa || orig?.ipa,
               meaning_en: row.meaning_en || orig?.meaning_en,
+              meaning_ru: row.meaning_ru || orig?.meaning_ru,
               cefr: row.cefr || orig?.cefr,
               chunks: rowChunks.length > 0 ? rowChunks : orig?.chunks,
               last_reviewed_date:
@@ -1260,6 +1284,7 @@ interface ReviewMetaRecord {
   ease_factor?: number;
   repetitions?: number;
   chunks?: string[];
+  meaning_ru?: string;
 }
 
 function readReviewMetaMap(userId: string): Record<string, ReviewMetaRecord> {
@@ -1277,6 +1302,7 @@ function writeReviewMeta(userId: string, word: WordEntry): void {
     const map = readReviewMetaMap(userId);
     const existing = map[word.id] ?? map[`term:${normalizeTermKey(word.term)}`];
     const resolvedChunks = extractWordChunks(word);
+    const resolvedMeaningRu = word.meaning_ru?.trim() || existing?.meaning_ru;
     const meta: ReviewMetaRecord = {
       last_reviewed_date: word.last_reviewed_date ?? null,
       review_count: getEffectiveReviewCount(word),
@@ -1288,6 +1314,7 @@ function writeReviewMeta(userId: string, word: WordEntry): void {
         resolvedChunks.length > 0
           ? resolvedChunks
           : existing?.chunks,
+      meaning_ru: resolvedMeaningRu,
     };
     map[word.id] = meta;
     map[`term:${normalizeTermKey(word.term)}`] = meta;
@@ -1312,18 +1339,19 @@ function hydrateWordMetadata(word: WordEntry, userId?: string): WordEntry {
     word.pronunciation,
     word.ipa
   );
-  const resolvedMeanings = resolveWordMeanings(
-    word.term,
-    word.meaning_id,
-    word.meaning_en,
-    word.cefr
-  );
-
   let reviewMeta: ReviewMetaRecord | undefined;
   if (userId && typeof window !== "undefined") {
     const map = readReviewMetaMap(userId);
     reviewMeta = map[word.id] ?? map[`term:${normalizeTermKey(word.term)}`];
   }
+
+  const resolvedMeanings = resolveWordMeanings(
+    word.term,
+    word.meaning_id,
+    word.meaning_en,
+    word.cefr,
+    word.meaning_ru || reviewMeta?.meaning_ru
+  );
 
   const lastReviewedDate =
     word.last_reviewed_date ?? reviewMeta?.last_reviewed_date ?? null;
@@ -1345,6 +1373,7 @@ function hydrateWordMetadata(word: WordEntry, userId?: string): WordEntry {
     ipa: resolvedPron.ipa ?? undefined,
     meaning_id: resolvedMeanings.meaning_id,
     meaning_en: resolvedMeanings.meaning_en,
+    meaning_ru: resolvedMeanings.meaning_ru,
     cefr: resolvedMeanings.cefr,
     chunks: resolvedChunks,
     source_tag: normalizeSourceTag(word.source_tag),
@@ -1367,7 +1396,8 @@ function hydrateDiscoveryMetadata(item: DiscoveryItem): DiscoveryItem {
     item.term,
     item.meaning_id,
     item.meaning_en,
-    item.cefr
+    item.cefr,
+    item.meaning_ru
   );
   return {
     ...item,
@@ -1375,6 +1405,7 @@ function hydrateDiscoveryMetadata(item: DiscoveryItem): DiscoveryItem {
     ipa: resolvedPron.ipa ?? undefined,
     meaning_id: resolvedMeanings.meaning_id,
     meaning_en: resolvedMeanings.meaning_en,
+    meaning_ru: resolvedMeanings.meaning_ru,
     cefr: resolvedMeanings.cefr,
   };
 }
@@ -1392,10 +1423,15 @@ function readLocalWords(
 
   if (raw === null) {
     if (!allowSeed || demoCleared) return [];
-    const seeded = buildInitialMockWords(todayStr).map((w) => ({
-      ...w,
-      user_id: userId,
-    }));
+    const seeded = buildInitialMockWords(todayStr).map((w) =>
+      hydrateWordMetadata(
+        {
+          ...w,
+          user_id: userId,
+        },
+        userId
+      )
+    );
     window.localStorage.setItem(key, JSON.stringify(seeded));
     return seeded;
   }
@@ -2571,7 +2607,13 @@ export async function saveWordEntry(
   userId: string
 ): Promise<WordEntry> {
   cacheWordPronunciation(word.term, word.pronunciation, word.ipa);
-  cacheWordMeanings(word.term, word.meaning_en, word.meaning_id, word.cefr);
+  cacheWordMeanings(
+    word.term,
+    word.meaning_en,
+    word.meaning_id,
+    word.cefr,
+    word.meaning_ru
+  );
 
   const canonicalSource = normalizeSourceTag(word.source_tag);
   const supabase = getScopedSupabase(userId);
@@ -2636,7 +2678,13 @@ export async function updateWordEntry(
   userId: string
 ): Promise<WordEntry> {
   cacheWordPronunciation(word.term, word.pronunciation, word.ipa);
-  cacheWordMeanings(word.term, word.meaning_en, word.meaning_id, word.cefr);
+  cacheWordMeanings(
+    word.term,
+    word.meaning_en,
+    word.meaning_id,
+    word.cefr,
+    word.meaning_ru
+  );
 
   const supabase = getScopedSupabase(userId);
   if (supabase) {

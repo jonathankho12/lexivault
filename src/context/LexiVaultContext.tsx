@@ -177,6 +177,26 @@ const INITIAL_BATCH_REFRESH_STATE: BatchRefreshState = {
   failedCount: 0,
 };
 
+export interface RuBatchTranslateState {
+  status: "idle" | "running" | "done" | "cancelled" | "rate_limited" | "error";
+  completedCount: number;
+  total: number;
+  translatedCount: number;
+  failedCount: number;
+  error?: string;
+}
+
+const INITIAL_RU_BATCH_TRANSLATE_STATE: RuBatchTranslateState = {
+  status: "idle",
+  completedCount: 0,
+  total: 0,
+  translatedCount: 0,
+  failedCount: 0,
+};
+
+const RU_TRANSLATE_BATCH_SIZE = 8;
+const RU_TRANSLATE_BATCH_DELAY_MS = 750;
+
 const BATCH_REFRESH_DELAY_MS = 650;
 const BATCH_REFRESH_429_BACKOFF_MS = 3500;
 // Comfortably above worst-case server-side fallback budget (Gemini 10s + Groq 10s + CF Workers AI 10s = 30s)
@@ -337,6 +357,10 @@ interface LexiVaultContextValue {
   startBatchRefreshAllWords: () => Promise<void>;
   cancelBatchRefreshAllWords: () => void;
   resetBatchRefreshStatus: () => void;
+  ruBatchTranslate: RuBatchTranslateState;
+  startTranslateMissingRuMeanings: () => Promise<void>;
+  cancelTranslateMissingRuMeanings: () => void;
+  resetRuBatchTranslateStatus: () => void;
   saveDiscoveryItemToVault: (item: DiscoveryItem) => Promise<WordEntry | null>;
   removeWord: (id: string) => Promise<void>;
   recordAnswer: (wordId: string, isCorrect: boolean) => Promise<void>;
@@ -447,6 +471,8 @@ export function LexiVaultProvider({
   const [batchRefresh, setBatchRefresh] = useState<BatchRefreshState>(
     INITIAL_BATCH_REFRESH_STATE
   );
+  const [ruBatchTranslate, setRuBatchTranslate] =
+    useState<RuBatchTranslateState>(INITIAL_RU_BATCH_TRANSLATE_STATE);
 
   const launchNonceRef = useRef(0);
   const celebrationNonceRef = useRef(0);
@@ -460,6 +486,8 @@ export function LexiVaultProvider({
   const pendingDailyPackTreatDateRef = useRef<string | null>(null);
   const batchRefreshAbortRef = useRef<AbortController | null>(null);
   const batchRefreshRunningRef = useRef(false);
+  const ruTranslateAbortRef = useRef<AbortController | null>(null);
+  const ruTranslateRunningRef = useRef(false);
   const wordsRef = useRef<WordEntry[]>([]);
   wordsRef.current = words;
   const ringTargetsRef = useRef<DailyRingTargets>(ringTargets);
@@ -2496,7 +2524,10 @@ export function LexiVaultProvider({
           ipa: aiData.ipa || latestTarget.ipa,
           cefr: aiData.cefr || latestTarget.cefr,
           type: aiData.type,
-          meaning_id: aiData.meaning_id || latestTarget.meaning_id,
+          meaning_id:
+            lang === "ru"
+              ? latestTarget.meaning_id || aiData.meaning_id
+              : aiData.meaning_id || latestTarget.meaning_id,
           meaning_en: aiData.meaning_en || latestTarget.meaning_en,
           meaning_ru: aiData.meaning_ru || latestTarget.meaning_ru,
           examples_json: aiData.examples,
@@ -2605,7 +2636,9 @@ export function LexiVaultProvider({
           !res.aborted &&
           !abortController.signal.aborted &&
           res.error &&
-          /429|rate limit|batas permintaan|sibuk|high demand/i.test(res.error)
+          /429|rate limit|batas permintaan|sibuk|high demand|лимит|перегружен/i.test(
+            res.error
+          )
         ) {
           await sleepAbortable(
             BATCH_REFRESH_429_BACKOFF_MS,
@@ -2660,6 +2693,203 @@ export function LexiVaultProvider({
       }));
     }
   }, [refreshWordWithAI]);
+
+  const cancelTranslateMissingRuMeanings = useCallback(() => {
+    ruTranslateAbortRef.current?.abort();
+  }, []);
+
+  const resetRuBatchTranslateStatus = useCallback(() => {
+    if (ruTranslateRunningRef.current) return;
+    setRuBatchTranslate(INITIAL_RU_BATCH_TRANSLATE_STATE);
+  }, []);
+
+  const startTranslateMissingRuMeanings = useCallback(async () => {
+    if (ruTranslateRunningRef.current || !userRef.current) return;
+    const activeUserId = userRef.current.id;
+    const missingWords = wordsRef.current.filter((w) => !w.meaning_ru?.trim());
+    if (missingWords.length === 0) return;
+
+    const abortController = new AbortController();
+    ruTranslateAbortRef.current = abortController;
+    ruTranslateRunningRef.current = true;
+
+    let completedCount = 0;
+    let translatedCount = 0;
+    let failedCount = 0;
+    let stopStatus: RuBatchTranslateState["status"] = "done";
+    let stopError: string | undefined;
+
+    setRuBatchTranslate({
+      status: "running",
+      completedCount: 0,
+      total: missingWords.length,
+      translatedCount: 0,
+      failedCount: 0,
+    });
+
+    try {
+      for (
+        let offset = 0;
+        offset < missingWords.length;
+        offset += RU_TRANSLATE_BATCH_SIZE
+      ) {
+        if (abortController.signal.aborted) {
+          stopStatus = "cancelled";
+          break;
+        }
+
+        const chunk = missingWords.slice(
+          offset,
+          offset + RU_TRANSLATE_BATCH_SIZE
+        );
+
+        let res: Response;
+        try {
+          res = await fetch("/api/translate-ru", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: abortController.signal,
+            body: JSON.stringify({
+              items: chunk.map((w) => ({
+                id: w.id,
+                term: w.term,
+                meaning_en: w.meaning_en || w.meaning_id || w.term,
+                type: w.type,
+              })),
+            }),
+          });
+        } catch (err) {
+          if (
+            abortController.signal.aborted ||
+            (err &&
+              typeof err === "object" &&
+              "name" in err &&
+              (err as { name?: string }).name === "AbortError")
+          ) {
+            stopStatus = "cancelled";
+            break;
+          }
+          stopStatus = "error";
+          stopError = "Не удалось подключиться к ИИ. Попробуй снова чуть позже.";
+          break;
+        }
+
+        if (!res.ok) {
+          let apiCode: string | undefined;
+          let apiError = "";
+          try {
+            const errJson = (await res.json()) as {
+              code?: string;
+              error?: string;
+              message?: string;
+            };
+            apiCode = errJson.code;
+            apiError = errJson.error || errJson.message || "";
+          } catch {
+            // ignore
+          }
+
+          if (
+            res.status === 429 ||
+            res.status === 503 ||
+            apiCode === "rate_limit" ||
+            apiCode === "quota" ||
+            apiCode === "overload"
+          ) {
+            stopStatus = "rate_limited";
+            stopError =
+              "Достигнут лимит запросов ИИ — переведённые слова сохранены. Продолжи через минуту.";
+            break;
+          }
+
+          stopStatus = "error";
+          stopError = formatGeminiClientError(
+            apiCode,
+            res.status,
+            apiError || `Ошибка перевода (HTTP ${res.status}).`,
+            "ru"
+          );
+          break;
+        }
+
+        const json = (await res.json()) as {
+          translations?: Array<{ id: string; meaning_ru: string }>;
+        };
+        const returnedMap = new Map<string, string>();
+        for (const item of json.translations ?? []) {
+          if (item?.id && item.meaning_ru?.trim()) {
+            returnedMap.set(item.id, item.meaning_ru.trim());
+          }
+        }
+
+        for (const targetWord of chunk) {
+          if (abortController.signal.aborted) break;
+          const ruText = returnedMap.get(targetWord.id);
+          if (ruText) {
+            const latest =
+              wordsRef.current.find((w) => w.id === targetWord.id) ??
+              targetWord;
+            const updatedEntry = await runCloudMutation(() =>
+              updateWordEntry({ ...latest, meaning_ru: ruText }, activeUserId)
+            );
+            wordsRef.current = wordsRef.current.map((w) =>
+              w.id === targetWord.id ? updatedEntry : w
+            );
+            setWords((prev) =>
+              prev.map((w) => (w.id === targetWord.id ? updatedEntry : w))
+            );
+            setSelectedWord((prev) =>
+              prev && prev.id === targetWord.id ? updatedEntry : prev
+            );
+            translatedCount += 1;
+          } else {
+            failedCount += 1;
+          }
+        }
+
+        completedCount = Math.min(
+          missingWords.length,
+          offset + chunk.length
+        );
+
+        setRuBatchTranslate({
+          status: "running",
+          completedCount,
+          total: missingWords.length,
+          translatedCount,
+          failedCount,
+        });
+
+        if (
+          offset + RU_TRANSLATE_BATCH_SIZE < missingWords.length &&
+          !abortController.signal.aborted
+        ) {
+          await sleepAbortable(
+            RU_TRANSLATE_BATCH_DELAY_MS,
+            abortController.signal
+          );
+        }
+      }
+    } finally {
+      const wasCancelled =
+        abortController.signal.aborted || stopStatus === "cancelled";
+      ruTranslateRunningRef.current = false;
+      ruTranslateAbortRef.current = null;
+
+      if (!wasCancelled && stopStatus === "done" && translatedCount > 0) {
+        playCorrectChime(2);
+      }
+
+      setRuBatchTranslate({
+        status: wasCancelled ? "cancelled" : stopStatus,
+        completedCount,
+        total: missingWords.length,
+        translatedCount,
+        failedCount,
+        error: stopError,
+      });
+    }
+  }, [runCloudMutation]);
 
   // 0ms optimistic save from Discover (NEVER calls /api/autofill before insert)
   const saveDiscoveryItemToVault = useCallback(
@@ -3186,10 +3416,14 @@ export function LexiVaultProvider({
     batchRefreshAbortRef.current?.abort();
     batchRefreshAbortRef.current = null;
     batchRefreshRunningRef.current = false;
+    ruTranslateAbortRef.current?.abort();
+    ruTranslateAbortRef.current = null;
+    ruTranslateRunningRef.current = false;
     pendingLexiIntroRef.current = false;
     justRegisteredUserIdRef.current = null;
     onboardingFlowActiveRef.current = false;
     setBatchRefresh(INITIAL_BATCH_REFRESH_STATE);
+    setRuBatchTranslate(INITIAL_RU_BATCH_TRANSLATE_STATE);
     await signOutUser();
     setAuthInitialMode("login");
     setUser(null);
@@ -3334,6 +3568,10 @@ export function LexiVaultProvider({
     startBatchRefreshAllWords,
     cancelBatchRefreshAllWords,
     resetBatchRefreshStatus,
+    ruBatchTranslate,
+    startTranslateMissingRuMeanings,
+    cancelTranslateMissingRuMeanings,
+    resetRuBatchTranslateStatus,
     saveDiscoveryItemToVault,
     removeWord,
     recordAnswer,
