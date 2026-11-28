@@ -29,7 +29,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { formatDailyPackTierLabel } from "@/lib/dailyPackTiers";
 import { IOS_SPRING, STAGGER_CONTAINER, TAP_SCALE } from "@/lib/motion";
-import { playGlassClick } from "@/lib/soundEffects";
+import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
 import {
   ALL_CEFR_LEVELS,
   cn,
@@ -52,9 +52,15 @@ type TypeFilter = "all" | WordType;
 type RegisterFilter = "all" | RegisterType;
 type CefrFilter = "all" | CefrLevel;
 
+function getStarterMissionDismissKey(userId?: string | null): string {
+  return `lexivault_starter_missions_v1_${userId || "guest"}`;
+}
+
 export function VaultView() {
   const {
+    user,
     words,
+    studyLogs,
     todayStr,
     isCapturing,
     isHydrated,
@@ -64,6 +70,9 @@ export function VaultView() {
     openDailyPackModal,
     launchCommuteMode,
     lexiEnabled,
+    setLexiEnabled,
+    lexiCompanion,
+    setActiveTab,
   } = useLexiVault();
   const { lang, t } = useLanguage();
 
@@ -94,15 +103,152 @@ export function VaultView() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [extractorOpen, setExtractorOpen] = useState(false);
   const [packFlameBurst, setPackFlameBurst] = useState(false);
+  const [missionDismissed, setMissionDismissed] = useState(true);
+  const [missionJustFinished, setMissionJustFinished] = useState(false);
+  const [captureHighlight, setCaptureHighlight] = useState(false);
+  const [lexiHighlight, setLexiHighlight] = useState(false);
   const packFlameTimerRef = useRef<number | null>(null);
+  const quickCaptureWrapRef = useRef<HTMLDivElement>(null);
+  const lexiCardWrapRef = useRef<HTMLDivElement>(null);
+  const missionAutoDismissedRef = useRef(false);
+  const missionDoneTimerRef = useRef<number | null>(null);
+  const highlightTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (packFlameTimerRef.current !== null) {
         window.clearTimeout(packFlameTimerRef.current);
       }
+      if (missionDoneTimerRef.current !== null) {
+        window.clearTimeout(missionDoneTimerRef.current);
+      }
+      if (highlightTimerRef.current !== null) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
     };
   }, []);
+
+  const stepAddWord = useMemo(
+    () =>
+      studyLogs.some((l) => l.words_added > 0) ||
+      words.some((w) => !w.id.startsWith("mock-word-")),
+    [studyLogs, words]
+  );
+
+  const stepReviewCard = useMemo(
+    () =>
+      words.some(
+        (w) => (w.review_count ?? 0) > 0 || w.last_reviewed_date !== null
+      ) ||
+      studyLogs.some(
+        (l) => l.reviews_count > 0 || (l.recall_today ?? 0) > 0
+      ),
+    [studyLogs, words]
+  );
+
+  const stepPetLexi =
+    lexiCompanion.hasPetted ||
+    lexiCompanion.petsTotal > 0 ||
+    lexiCompanion.treatsFedTotal > 0;
+
+  const completedMissionsCount =
+    (stepAddWord ? 1 : 0) + (stepReviewCard ? 1 : 0) + (stepPetLexi ? 1 : 0);
+  const completedMissionsCountRef = useRef(completedMissionsCount);
+  completedMissionsCountRef.current = completedMissionsCount;
+
+  // Hydrate per-user starter mission dismissal state
+  useEffect(() => {
+    if (!isHydrated) return;
+    missionAutoDismissedRef.current = false;
+    setMissionJustFinished(false);
+    const key = getStarterMissionDismissKey(user?.id);
+    try {
+      const stored = window.localStorage.getItem(key) === "1";
+      if (!stored && completedMissionsCountRef.current === 3) {
+        window.localStorage.setItem(key, "1");
+        setMissionDismissed(true);
+        return;
+      }
+      setMissionDismissed(stored);
+    } catch {
+      setMissionDismissed(false);
+    }
+  }, [isHydrated, user?.id]);
+
+  // Auto-dismiss cleanly once user finishes all 3 starter steps live
+  useEffect(() => {
+    if (!isHydrated || missionDismissed || completedMissionsCount < 3) return;
+    if (missionAutoDismissedRef.current) return;
+    missionAutoDismissedRef.current = true;
+    playCorrectChime(3);
+    setMissionJustFinished(true);
+    try {
+      window.localStorage.setItem(getStarterMissionDismissKey(user?.id), "1");
+    } catch {
+      // Ignore storage restrictions
+    }
+    missionDoneTimerRef.current = window.setTimeout(() => {
+      setMissionDismissed(true);
+      setMissionJustFinished(false);
+      missionDoneTimerRef.current = null;
+    }, 1700);
+  }, [completedMissionsCount, isHydrated, missionDismissed, user?.id]);
+
+  const handleDismissMissions = useCallback(() => {
+    playGlassClick();
+    try {
+      window.localStorage.setItem(getStarterMissionDismissKey(user?.id), "1");
+    } catch {
+      // Ignore storage restrictions
+    }
+    setMissionDismissed(true);
+  }, [user?.id]);
+
+  const handleMissionAddWord = useCallback(() => {
+    playGlassClick();
+    quickCaptureWrapRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    const input = quickCaptureWrapRef.current?.querySelector("input");
+    if (input) {
+      input.focus({ preventScroll: true });
+    }
+    setCaptureHighlight(true);
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      setCaptureHighlight(false);
+      highlightTimerRef.current = null;
+    }, 1500);
+  }, []);
+
+  const handleMissionReviewCard = useCallback(() => {
+    playGlassClick();
+    setActiveTab("flashcards");
+  }, [setActiveTab]);
+
+  const handleMissionPetLexi = useCallback(() => {
+    playGlassClick();
+    if (!lexiEnabled) {
+      setLexiEnabled(true);
+    }
+    window.requestAnimationFrame(() => {
+      lexiCardWrapRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    setLexiHighlight(true);
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      setLexiHighlight(false);
+      highlightTimerRef.current = null;
+    }, 1600);
+  }, [lexiEnabled, setLexiEnabled]);
 
   const triggerPackFlameBurst = useCallback(() => {
     setPackFlameBurst(true);
@@ -307,8 +453,125 @@ export function VaultView() {
 
       <DailyPackModal />
 
+      {/* Compact "First 3 Steps" Starter Mission Bar for New Users */}
+      <AnimatePresence>
+        {isHydrated && !missionDismissed && (
+          <motion.section
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8, scale: 0.985 }}
+            transition={IOS_SPRING}
+            aria-label={t.vault.starterMissions.title}
+            className={cn(
+              "liquid-glass rounded-3xl p-4 sm:px-5 sm:py-4 border transition-colors",
+              missionJustFinished
+                ? "border-[#30D158]/45 bg-[#30D158]/[0.08]"
+                : "border-[#0A84FF]/30 bg-gradient-to-r from-[#0A84FF]/[0.07] via-white/[0.02] to-[#30D158]/[0.06]"
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs sm:text-sm font-bold text-white">
+                    {t.vault.starterMissions.title}
+                  </span>
+                  <span className="rounded-full bg-[#0A84FF]/18 border border-[#0A84FF]/40 px-2 py-0.5 text-[10px] font-bold text-[#70BCFF] tabular-nums">
+                    {completedMissionsCount}/3
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#8E8E93]">
+                  {missionJustFinished
+                    ? t.vault.starterMissions.completedToast
+                    : t.vault.starterMissions.subtitle}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDismissMissions}
+                aria-label={t.vault.starterMissions.dismissAria}
+                className="shrink-0 rounded-full p-1 text-[#8E8E93] hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(
+                [
+                  {
+                    id: "add",
+                    label: t.vault.starterMissions.stepAddWord,
+                    done: stepAddWord,
+                    onClick: handleMissionAddWord,
+                  },
+                  {
+                    id: "review",
+                    label: t.vault.starterMissions.stepReviewCard,
+                    done: stepReviewCard,
+                    onClick: handleMissionReviewCard,
+                  },
+                  {
+                    id: "lexi",
+                    label: t.vault.starterMissions.stepPetLexi,
+                    done: stepPetLexi,
+                    onClick: handleMissionPetLexi,
+                  },
+                ] as const
+              ).map((mission, idx) => (
+                <button
+                  key={mission.id}
+                  type="button"
+                  onClick={mission.onClick}
+                  className={cn(
+                    "flex items-center gap-2 rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition-all cursor-pointer active:scale-[0.98]",
+                    mission.done
+                      ? "bg-[#30D158]/14 border-[#30D158]/40 text-[#A6F8BA]"
+                      : "bg-white/[0.04] border-white/[0.1] text-[#F5F5F7] hover:bg-white/[0.08] hover:border-[#0A84FF]/40"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+                      mission.done
+                        ? "bg-[#30D158] text-black"
+                        : "bg-white/[0.08] text-[#8E8E93]"
+                    )}
+                  >
+                    {mission.done ? (
+                      <Check className="h-3 w-3 stroke-[2.75]" />
+                    ) : (
+                      idx + 1
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      "min-w-0 truncate",
+                      mission.done && "line-through opacity-80"
+                    )}
+                  >
+                    {mission.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
       {/* Lexi Companion Daily Vault Maintenance Card */}
-      {lexiEnabled && <LexiStatusCard />}
+      {lexiEnabled && (
+        <div
+          ref={lexiCardWrapRef}
+          className={cn(
+            "rounded-3xl transition-shadow duration-300",
+            lexiHighlight &&
+              "ring-2 ring-[#0A84FF]/70 shadow-[0_0_28px_rgba(10,132,255,0.35)]"
+          )}
+        >
+          <LexiStatusCard />
+        </div>
+      )}
 
       {/* Persistent Daily Learning Pack CTA Card */}
       {isHydrated && (
@@ -440,7 +703,16 @@ export function VaultView() {
       <CefrRecommendationBanner variant="vault" />
 
       {/* Floating Quick-Capture Input Bar */}
-      <QuickCaptureBar onPendingTermChange={setPendingTerm} />
+      <div
+        ref={quickCaptureWrapRef}
+        className={cn(
+          "rounded-3xl transition-shadow duration-300",
+          captureHighlight &&
+            "ring-2 ring-[#0A84FF]/70 shadow-[0_0_28px_rgba(10,132,255,0.35)]"
+        )}
+      >
+        <QuickCaptureBar onPendingTermChange={setPendingTerm} />
+      </div>
 
       {/* Search & Filter Controls */}
       <div className="space-y-3">
@@ -661,7 +933,7 @@ export function VaultView() {
           variants={STAGGER_CONTAINER}
           initial="hidden"
           animate="visible"
-          className="grid grid-cols-1 md:grid-cols-2 gap-4"
+          className="vault-word-grid grid grid-cols-1 md:grid-cols-2 gap-4"
         >
           {sortedWords.map((word) => (
             <VaultWordCard key={word.id} word={word} />

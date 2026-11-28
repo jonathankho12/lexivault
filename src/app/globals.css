@@ -1334,14 +1334,7 @@ body {
   animation: lexiEmberRise4 740ms cubic-bezier(0.16, 1, 0.3, 1) 360ms infinite;
 }
 
-/* View Transitions API: GPU-Accelerated Circular Theme Reveal */
-html.theme-transitioning,
-html.theme-transitioning *,
-html.theme-transitioning *::before,
-html.theme-transitioning *::after {
-  transition: none !important;
-}
-
+/* View Transitions API: Pure GPU Opacity Crossfade (Zero Layout/Clip-Path Thrash) */
 ::view-transition-group(root) {
   animation: none;
 }
@@ -1350,9 +1343,6 @@ html.theme-transitioning *::after {
 ::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transform: translateZ(0);
 }
 
 ::view-transition-old(root) {
@@ -1360,6 +1350,12 @@ html.theme-transitioning *::after {
 }
 
 ::view-transition-new(root) {
-  z-index: 9999;
-  will-change: clip-path;
+  z-index: 2;
+  will-change: opacity;
+}
+
+/* Off-screen Vault card paint isolation for instant theme switches */
+.vault-word-grid > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
 }

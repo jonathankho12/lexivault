@@ -147,6 +147,15 @@ export interface TranslationDictionary {
       "alpha-desc": string;
       type: string;
     };
+    starterMissions: {
+      title: string;
+      subtitle: string;
+      completedToast: string;
+      dismissAria: string;
+      stepAddWord: string;
+      stepReviewCard: string;
+      stepPetLexi: string;
+    };
   };
   suggest: {
     title: string;
@@ -533,29 +542,48 @@ export interface TranslationDictionary {
     skip: string;
     back: string;
     next: string;
-    startExploring: string;
-    steps: [
-      {
-        title: string;
-        description: string;
-        chips: [string, string];
-      },
-      {
-        title: string;
-        description: string;
-        chips: [string, string, string];
-      },
-      {
-        title: string;
-        description: string;
-        chips: [string, string];
-      },
-      {
-        title: string;
-        description: string;
-        chips: [string, string, string];
-      },
-    ];
+    step1: {
+      title: string;
+      subtitle: string;
+      lexiLine: string;
+      selectedHint: string;
+      options: {
+        starterTitle: string;
+        starterBadge: string;
+        starterDesc: string;
+        intermediateTitle: string;
+        intermediateBadge: string;
+        intermediateDesc: string;
+        advancedTitle: string;
+        advancedBadge: string;
+        advancedDesc: string;
+      };
+    };
+    step2: {
+      title: string;
+      subtitle: string;
+      lexiPrompt: string;
+      lexiWin: string;
+      chunkLabel: string;
+      term: string;
+      phonetic: string;
+      chunk: string;
+      prompt: string;
+      choices: [string, string, string];
+      correctIndex: number;
+      tryAgainHint: string;
+      winBannerTitle: string;
+      winBannerBody: string;
+    };
+    step3: {
+      title: string;
+      description: string;
+      lexiLine: string;
+      chosenLevelLabel: string;
+      starterMissionPreview: string;
+      primaryCta: string;
+      secondaryCta: string;
+    };
   };
   developer: {
     builtBy: string;
@@ -837,6 +865,15 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         "alpha-asc": "Abjad: A → Z",
         "alpha-desc": "Abjad: Z → A",
         type: "Berdasarkan Tipe (Vocab → Idiom → Collocation)",
+      },
+      starterMissions: {
+        title: "Langkah Pertama",
+        subtitle: "Selesaikan 3 misi cepat biar langsung jago",
+        completedToast: "Mantap! Semua misi awal beres 🎉",
+        dismissAria: "Tutup panduan langkah pertama",
+        stepAddWord: "Tambah 1 kata pakai AI",
+        stepReviewCard: "Ulas 1 Flashcard",
+        stepPetLexi: "Elus atau kasih snack ke Lexi",
       },
     },
     suggest: {
@@ -1251,38 +1288,57 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         "Buka menu titik tiga browser (⋮), lalu pilih 'Install app' atau 'Add to Home screen'.",
     },
     quickGuide: {
-      eyebrow: "Panduan Cepat LexiVault",
-      stepOf: "Langkah {current} dari {total}",
+      eyebrow: "Mulai Cepat",
+      stepOf: "{current} / {total}",
       skip: "Lewati",
       back: "Kembali",
       next: "Lanjut",
-      startExploring: "Mulai Jelajahi",
-      steps: [
-        {
-          title: "Vault & Target Harian",
-          description:
-            "Simpan kata atau idiom apa pun dengan AI autofill otomatis, atau ambil paket harian CEFR untuk membangun leksikon pribadimu.",
-          chips: ["AI Autofill", "Target Harian CEFR"],
+      step1: {
+        title: "Pilih Level Targetmu",
+        subtitle: "Paket harian otomatis menyesuaikan level pilihanmu—bisa diubah kapan saja.",
+        lexiLine: "Santai aja! Pilih yang paling nyaman buat kamu sekarang.",
+        selectedHint: "Target harian disetel ke {tier} ✓",
+        options: {
+          starterTitle: "Pemula",
+          starterBadge: "A1–A2",
+          starterDesc: "Kosakata inti & frasa sehari-hari yang langsung kepakai",
+          intermediateTitle: "Menengah",
+          intermediateBadge: "B1–B2",
+          intermediateDesc: "Percakapan lancar, kerja & idiom natural",
+          advancedTitle: "IELTS / Mahir",
+          advancedBadge: "C1–C2",
+          advancedDesc: "Target Band 7.5+, esai akademik & nuansa C2",
         },
-        {
-          title: "Cards & Practice",
-          description:
-            "Ulas dengan flashcard SM-2 (geser kartu atau tombol 1–4) lalu latih pemakaian aktif lewat AI Sentence Maker & Weakest Drill.",
-          chips: ["SM-2 Geser / 1–4", "AI Sentence Maker", "Weakest Drill"],
-        },
-        {
-          title: "Grammar & IELTS",
-          description:
-            "Perbaiki kalimat dengan penulisan ulang sesuai konteks dan latih 4 skill IELTS lengkap dengan feedback penguji AI.",
-          chips: ["Rewrites Kontekstual", "4 Skill IELTS"],
-        },
-        {
-          title: "Daily Rings & Lexi",
-          description:
-            "Tutup 3 ring harianmu untuk menjaga Lexi tetap senang, menjaga streak, dan menaikkan Mastery Rank kamu.",
-          chips: ["Vocab Ring", "Recall Ring", "IELTS Ring"],
-        },
-      ],
+      },
+      step2: {
+        title: "Coba Latihan 15 Detik",
+        subtitle: "Dengarkan audio, lihat frasa alaminya, lalu pilih arti yang tepat.",
+        lexiPrompt: "Tes kilat pertama! Putar audio kalau mau, lalu pilih artinya:",
+        lexiWin: "Keren! Kamu siap banget mulai hari ini!",
+        chunkLabel: "Frasa Alami",
+        term: "resilient",
+        phonetic: "/rɪˈzɪl.i.ənt/",
+        chunk: "stay resilient under pressure",
+        prompt: "Apa arti \"resilient\"?",
+        choices: [
+          "Tangguh & cepat pulih dari kesulitan",
+          "Mudah bingung atau ragu-ragu",
+          "Berbicara pelan di ruangan formal",
+        ],
+        correctIndex: 0,
+        tryAgainHint: "Hampir! Petunjuk: artinya cepat bangkit setelah menghadapi tekanan.",
+        winBannerTitle: "Kamu siap! 🎉",
+        winBannerBody: "Begitu cara LexiVault melatih kosakata + frasa alami dalam hitungan detik.",
+      },
+      step3: {
+        title: "Semua Siap untuk Hari Pertamamu!",
+        description: "Ambil Target Harian pertamamu sekarang, atau jelajahi Vault dan coba misi 3 langkah cepat.",
+        lexiLine: "Guk! Aku bakal jaga streak & progress-mu tiap hari di Vault.",
+        chosenLevelLabel: "Level aktif:",
+        starterMissionPreview: "Misi 3 Langkah Pertama menunggumu di Vault",
+        primaryCta: "Mulai Target Harian Pertamaku →",
+        secondaryCta: "Jelajahi Vault",
+      },
     },
     developer: {
       builtBy: "Dibuat oleh Abel Jonathan",
@@ -1615,6 +1671,15 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         "alpha-asc": "Alphabetical: A → Z",
         "alpha-desc": "Alphabetical: Z → A",
         type: "By Type (Vocab → Idiom → Collocation)",
+      },
+      starterMissions: {
+        title: "Getting Started",
+        subtitle: "3 quick steps to build momentum",
+        completedToast: "Awesome! All 3 starter steps complete 🎉",
+        dismissAria: "Dismiss getting started bar",
+        stepAddWord: "Add 1 word with AI",
+        stepReviewCard: "Review 1 Flashcard",
+        stepPetLexi: "Pet or feed Lexi",
       },
     },
     suggest: {
@@ -2026,38 +2091,57 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         "Open your browser menu (⋮), then tap 'Install app' or 'Add to Home screen'.",
     },
     quickGuide: {
-      eyebrow: "LexiVault Quick Guide",
-      stepOf: "Step {current} of {total}",
+      eyebrow: "Quick Start",
+      stepOf: "{current} / {total}",
       skip: "Skip",
       back: "Back",
       next: "Next",
-      startExploring: "Start Exploring",
-      steps: [
-        {
-          title: "Vault & Daily Pack",
-          description:
-            "Save any word or idiom with AI autofill, or grab your daily CEFR pack to build your personal lexicon.",
-          chips: ["AI Autofill", "Daily CEFR Pack"],
+      step1: {
+        title: "Pick Your Target Level",
+        subtitle: "Your Daily Pack adapts automatically—you can tweak this anytime in Settings.",
+        lexiLine: "Zero pressure—tap the level that feels right for you today.",
+        selectedHint: "Daily Pack set to {tier} ✓",
+        options: {
+          starterTitle: "Starter",
+          starterBadge: "A1–A2",
+          starterDesc: "Essential everyday words & practical phrases",
+          intermediateTitle: "Intermediate",
+          intermediateBadge: "B1–B2",
+          intermediateDesc: "Fluent daily speech, work & natural idioms",
+          advancedTitle: "IELTS / Advanced",
+          advancedBadge: "C1–C2",
+          advancedDesc: "Band 7.5+ academic range & C2 precision",
         },
-        {
-          title: "Cards & Practice",
-          description:
-            "Review with SM-2 flashcards (swipe or 1–4 keys) and test active usage with AI Sentence Maker & Weakest Drill.",
-          chips: ["SM-2 Swipe / 1–4", "AI Sentence Maker", "Weakest Drill"],
-        },
-        {
-          title: "Grammar & IELTS",
-          description:
-            "Fix sentences with context-aware rewrites and train all 4 IELTS skills with AI examiner feedback.",
-          chips: ["Context Rewrites", "All 4 IELTS Skills"],
-        },
-        {
-          title: "Daily Rings & Lexi",
-          description:
-            "Close your 3 daily rings to keep Lexi happy and level up your Mastery Rank.",
-          chips: ["Vocab Ring", "Recall Ring", "IELTS Ring"],
-        },
-      ],
+      },
+      step2: {
+        title: "15-Second Interactive First Try",
+        subtitle: "Listen to the native pronunciation & chunk, then pick the matching meaning.",
+        lexiPrompt: "Quick warm-up! Play the audio if you like, then tap the meaning:",
+        lexiWin: "You're ready! That's how fast new words stick here.",
+        chunkLabel: "Natural Chunk",
+        term: "resilient",
+        phonetic: "/rɪˈzɪl.i.ənt/",
+        chunk: "stay resilient under pressure",
+        prompt: "What does \"resilient\" mean?",
+        choices: [
+          "Able to recover quickly from difficulties",
+          "Easily confused or uncertain",
+          "Speaking quietly in formal rooms",
+        ],
+        correctIndex: 0,
+        tryAgainHint: "Almost! Hint: think of bouncing back strong after tough moments.",
+        winBannerTitle: "You're ready! 🎉",
+        winBannerBody: "Every word pairs clear meaning, native chunks, and instant audio.",
+      },
+      step3: {
+        title: "All Set for Your First Win!",
+        description: "Jump straight into your first Daily Pack, or explore the Vault and finish the 3 quick starter steps.",
+        lexiLine: "Woof! I'll guard your streak and cheer you on every day.",
+        chosenLevelLabel: "Active level:",
+        starterMissionPreview: "Your First 3 Steps checklist is waiting in Vault",
+        primaryCta: "Start My First Daily Pack →",
+        secondaryCta: "Explore Vault",
+      },
     },
     developer: {
       builtBy: "Built by Abel Jonathan",

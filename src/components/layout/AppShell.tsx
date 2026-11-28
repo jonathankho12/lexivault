@@ -81,6 +81,7 @@ export function AppShell({
     isLexiIntroOpen,
     isWhatsNewOpen,
     dailyPackModalOpen,
+    openDailyPackModal,
     selectedWord,
     celebrationToast,
     clearCelebrationToast,
@@ -101,6 +102,13 @@ export function AppShell({
   const handleOpenQuickGuide = React.useCallback(() => {
     setQuickGuideOpen(true);
   }, []);
+
+  const handleStartFirstDailyPack = React.useCallback(() => {
+    markQuickGuideSeen(user);
+    setQuickGuideOpen(false);
+    setActiveTab("vault");
+    openDailyPackModal();
+  }, [openDailyPackModal, setActiveTab, user]);
 
   // Auto-open Quick Guide once for first-time users only when no other blocking modal is open
   useEffect(() => {
@@ -757,10 +765,11 @@ export function AppShell({
         onOpenQuickGuide={handleOpenQuickGuide}
       />
 
-      {/* Quick App Guide (4-Step Onboarding Tour) */}
+      {/* Quick App Guide (Duolingo-Style Interactive Onboarding) */}
       <QuickGuideModal
         open={quickGuideOpen}
         onClose={handleCloseQuickGuide}
+        onStartDailyPack={handleStartFirstDailyPack}
       />
 
       {/* First-Time Lexi Guardian Introduction Modal */}

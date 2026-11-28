@@ -117,65 +117,38 @@ function getCurrentResolvedTheme(): ResolvedTheme {
   return resolveTheme(getStoredTheme());
 }
 
-function getTransitionOrigin(origin?: ThemeTransitionOrigin): {
-  x: number;
-  y: number;
-} {
-  const fallback = {
-    x: typeof window !== "undefined" ? window.innerWidth / 2 : 0,
-    y: typeof window !== "undefined" ? window.innerHeight / 2 : 0,
-  };
+let activeViewTransition: ViewTransitionLike | null = null;
+let activeThemeAnimation: Animation | null = null;
 
-  if (!origin) {
-    return fallback;
-  }
-
-  if (typeof Element !== "undefined" && origin instanceof Element) {
-    const rect = origin.getBoundingClientRect();
-    if (rect.width > 0 || rect.height > 0) {
-      return {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      };
+function cancelActiveThemeTransition() {
+  if (activeThemeAnimation) {
+    try {
+      activeThemeAnimation.cancel();
+    } catch {
+      // Ignore animation cancellation errors
     }
-    return fallback;
+    activeThemeAnimation = null;
   }
-
-  const evt = origin as ThemeTransitionEventLike;
-  if (
-    typeof evt.clientX === "number" &&
-    typeof evt.clientY === "number" &&
-    (evt.clientX !== 0 || evt.clientY !== 0)
-  ) {
-    return { x: evt.clientX, y: evt.clientY };
-  }
-
-  const targetEl = evt.currentTarget ?? evt.target;
-  if (typeof Element !== "undefined" && targetEl instanceof Element) {
-    const rect = targetEl.getBoundingClientRect();
-    if (rect.width > 0 || rect.height > 0) {
-      return {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      };
+  if (activeViewTransition?.skipTransition) {
+    try {
+      activeViewTransition.skipTransition();
+    } catch {
+      // Ignore if transition already finished
     }
+    activeViewTransition = null;
   }
-
-  return fallback;
 }
 
-let activeThemeTransitionId = 0;
-let activeViewTransition: ViewTransitionLike | null = null;
-
 /**
- * Switches theme with an origin-aware circular View Transition reveal
- * when supported, reduced motion is off, and the resolved theme changes.
+ * Switches theme with a lightweight GPU opacity-only View Transition crossfade
+ * (zero clip-path, zero flushSync layout thrash) when supported and reduced motion is off.
  */
 export function setThemeWithTransition(
   nextTheme: ThemePreference,
   eventOrElement?: ThemeTransitionOrigin,
   onApply?: (resolved: ResolvedTheme, viaViewTransition: boolean) => void
 ): ResolvedTheme {
+  void eventOrElement;
   const nextResolved = resolveTheme(nextTheme);
   const currentResolved = getCurrentResolvedTheme();
 
@@ -195,101 +168,67 @@ export function setThemeWithTransition(
         ).startViewTransition
       : undefined;
 
+  cancelActiveThemeTransition();
+
   if (
     currentResolved === nextResolved ||
     typeof startViewTransition !== "function" ||
     prefersReducedMotion ||
     typeof window === "undefined"
   ) {
-    const resolved = setThemePreference(nextTheme);
+    const resolved = setThemePreference(nextTheme, !onApply);
     onApply?.(resolved, false);
     return resolved;
   }
 
-  if (activeViewTransition?.skipTransition) {
-    try {
-      activeViewTransition.skipTransition();
-    } catch {
-      // Ignore if previous transition already finished
-    }
-    activeViewTransition = null;
-  }
-
-  const { x, y } = getTransitionOrigin(eventOrElement);
-  const endRadius = Math.ceil(
-    Math.hypot(
-      Math.max(x, window.innerWidth - x),
-      Math.max(y, window.innerHeight - y)
-    )
-  );
-
   let applied = false;
-  const apply = (viaViewTransition: boolean) => {
+  const apply = () => {
     if (applied) return;
     applied = true;
     const resolved = setThemePreference(nextTheme, !onApply);
-    onApply?.(resolved, viaViewTransition);
+    onApply?.(resolved, false);
   };
 
   const root = document.documentElement;
-  const transitionId = ++activeThemeTransitionId;
-  let safetyTimer: ReturnType<typeof setTimeout> | null = null;
-  const clearTransitionClass = () => {
-    if (safetyTimer !== null) {
-      clearTimeout(safetyTimer);
-      safetyTimer = null;
-    }
-    if (activeThemeTransitionId === transitionId) {
-      activeViewTransition = null;
-      root.classList.remove("theme-transitioning");
-    }
-  };
-
-  root.classList.add("theme-transitioning");
 
   try {
-    const transition = startViewTransition.call(document, () => {
-      apply(true);
-    });
+    const transition = startViewTransition.call(document, apply);
     activeViewTransition = transition;
 
-    safetyTimer = setTimeout(clearTransitionClass, 700);
-
     if (transition.finished && typeof transition.finished.finally === "function") {
-      transition.finished.finally(clearTransitionClass).catch(() => {
-        // Ignore AbortError if a rapid follow-up toggle skips this transition
-      });
-    } else {
-      transition.ready
-        .then(() => {
-          setTimeout(clearTransitionClass, 540);
+      transition.finished
+        .finally(() => {
+          if (activeViewTransition === transition) {
+            activeViewTransition = null;
+            activeThemeAnimation = null;
+          }
         })
-        .catch(clearTransitionClass);
+        .catch(() => {
+          // Ignore AbortError when rapid toggles skip an in-flight transition
+        });
     }
 
     transition.ready
       .then(() => {
-        root.animate(
+        if (activeViewTransition !== transition) return;
+        activeThemeAnimation = root.animate(
           {
-            clipPath: [
-              `circle(0px at ${x}px ${y}px)`,
-              `circle(${endRadius}px at ${x}px ${y}px)`,
-            ],
+            opacity: [0, 1],
           },
           {
-            duration: 520,
-            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            duration: 160,
+            easing: "ease-out",
             fill: "both",
             pseudoElement: "::view-transition-new(root)",
           }
         );
       })
       .catch(() => {
-        // Ignore AbortError if a rapid follow-up toggle skips this transition
+        // Ignore AbortError when rapid toggles skip an in-flight transition
       });
   } catch {
-    clearTransitionClass();
-    apply(false);
+    cancelActiveThemeTransition();
+    apply();
   }
 
   return nextResolved;
