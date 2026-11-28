@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
@@ -17,7 +18,6 @@ import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { GetAndroidAppPill } from "@/components/pwa/AndroidAppModal";
 import { AuthDeveloperFooter } from "@/components/ui/DeveloperCredits";
 import { LanguageFlagPill } from "@/components/ui/FlagIcons";
-import { LexiLogo } from "@/components/ui/LexiLogo";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault } from "@/context/LexiVaultContext";
 import { usePwaInstall } from "@/context/PwaInstallContext";
@@ -103,12 +103,20 @@ export function AuthView() {
       >
         {/* Brand Header */}
         <div className="text-center space-y-3">
-          <LexiLogo
-            size="hero"
-            showAmbientGlow
-            showHoverShimmer
-            className="mx-auto"
-          />
+          <div className="relative mx-auto inline-flex h-[92px] w-[92px] sm:h-[104px] sm:w-[104px] shrink-0 items-center justify-center transform-gpu">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -inset-4 rounded-full bg-[radial-gradient(circle,rgba(94,92,230,0.34)_0%,rgba(56,189,248,0.16)_46%,rgba(0,0,0,0)_74%)] blur-xl transform-gpu"
+            />
+            <Image
+              src="/lexi-badge.png"
+              alt="LexiVault"
+              width={384}
+              height={415}
+              priority
+              className="relative z-10 h-full w-full object-contain select-none pointer-events-none transform-gpu drop-shadow-[0_12px_24px_rgba(15,23,42,0.32)] dark:drop-shadow-[0_14px_28px_rgba(0,0,0,0.75)] will-change-transform transition-transform duration-300 ease-out hover:scale-[1.06]"
+            />
+          </div>
           <div className="space-y-1">
             <h1 className="text-3xl font-bold tracking-tight text-white">
               LexiVault
