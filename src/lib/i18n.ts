@@ -719,6 +719,15 @@ export interface TranslationDictionary {
       }
     >;
   };
+  russianAnnouncement: {
+    badge: string;
+    title: string;
+    description: string;
+    switchCta: string;
+    gotItCta: string;
+    closeAria: string;
+    settingsHint: string;
+  };
 }
 
 export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
@@ -1529,6 +1538,16 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
         },
       },
     },
+    russianAnnouncement: {
+      badge: "BAHASA BARU",
+      title: "LexiVault kini mendukung Bahasa Rusia!",
+      description:
+        "Antarmuka lengkap, arti kata, terjemahan contoh, serta feedback AI kini tersedia dalam Bahasa Rusia. Kamu juga bisa menerjemahkan kosakata yang sudah ada di Settings.",
+      switchCta: "Switch to Русский",
+      gotItCta: "Mengerti",
+      closeAria: "Tutup pengumuman Bahasa Rusia",
+      settingsHint: "Kamu bisa mengganti bahasa kapan saja di Settings.",
+    },
   },
   en: {
     auth: {
@@ -2333,6 +2352,16 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
           ],
         },
       },
+    },
+    russianAnnouncement: {
+      badge: "NEW LANGUAGE",
+      title: "Russian UI & AI Support Is Here!",
+      description:
+        "LexiVault now supports full Russian interface, word meanings, example translations, and AI coaching feedback. You can also translate existing Vault words anytime in Settings.",
+      switchCta: "Switch to Русский",
+      gotItCta: "Got it",
+      closeAria: "Close Russian language announcement",
+      settingsHint: "You can switch languages anytime in Settings.",
     },
   },
   ru: {
@@ -3173,6 +3202,16 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationDictionary> = {
           ],
         },
       },
+    },
+    russianAnnouncement: {
+      badge: "НОВЫЙ ЯЗЫК",
+      title: "Русский интерфейс и ИИ уже в LexiVault!",
+      description:
+        "Теперь в LexiVault доступны русский интерфейс, значения слов, переводы примеров и подсказки ИИ. Существующие слова можно перевести в Настройках.",
+      switchCta: "Переключить на Русский",
+      gotItCta: "Понятно",
+      closeAria: "Закрыть объявление о русском языке",
+      settingsHint: "Язык всегда можно сменить в Настройках.",
     },
   },
 };

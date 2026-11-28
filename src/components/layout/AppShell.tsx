@@ -15,6 +15,7 @@ import {
   LogOut,
   Moon,
   Settings,
+  Sparkles,
   SpellCheck,
   Sun,
   Trophy,
@@ -37,14 +38,35 @@ import { ActivityRings } from "@/components/gamification/ActivityRings";
 import { AccentToggle } from "@/components/layout/AccentToggle";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { SettingsModal } from "@/components/settings/SettingsModal";
+import { FlagRuIcon } from "@/components/ui/FlagIcons";
 import { WordDetailSheet } from "@/components/ui/WordDetailSheet";
 import { useLanguage } from "@/context/LanguageContext";
 import { useLexiVault, useOverlayBackGuard } from "@/context/LexiVaultContext";
 import { useTheme } from "@/context/ThemeContext";
-import { IOS_SPRING, TAP_SCALE } from "@/lib/motion";
-import { playGlassClick } from "@/lib/soundEffects";
+import { IOS_SHEET_SPRING, IOS_SPRING, TAP_SCALE } from "@/lib/motion";
+import { playCorrectChime, playGlassClick } from "@/lib/soundEffects";
 import { cn, formatCefrBadgeClass } from "@/lib/utils";
 import type { TabId } from "@/types/lexivault";
+
+const RU_ANNOUNCEMENT_SEEN_KEY = "lexivault_ru_announcement_seen_v1";
+
+function hasSeenRuAnnouncement(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(RU_ANNOUNCEMENT_SEEN_KEY) === "true";
+  } catch {
+    return true;
+  }
+}
+
+function markRuAnnouncementSeen(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RU_ANNOUNCEMENT_SEEN_KEY, "true");
+  } catch {
+    // Ignore storage quota errors
+  }
+}
 
 const MOBILE_DOCK_IDS: ReadonlySet<TabId> = new Set([
   "vault",
@@ -89,10 +111,11 @@ export function AppShell({
     openRegisterFromGuest,
     logout,
   } = useLexiVault();
-  const { lang, t } = useLanguage();
+  const { lang, setLang, t } = useLanguage();
   const { resolvedTheme, toggleTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickGuideOpen, setQuickGuideOpen] = useState(false);
+  const [ruAnnouncementOpen, setRuAnnouncementOpen] = useState(false);
 
   const handleCloseQuickGuide = React.useCallback(() => {
     markQuickGuideSeen(user);
@@ -109,6 +132,18 @@ export function AppShell({
     setActiveTab("vault");
     openDailyPackModal();
   }, [openDailyPackModal, setActiveTab, user]);
+
+  const handleDismissRuAnnouncement = React.useCallback(() => {
+    markRuAnnouncementSeen();
+    setRuAnnouncementOpen(false);
+  }, []);
+
+  const handleSwitchToRussian = React.useCallback(() => {
+    playCorrectChime(2);
+    markRuAnnouncementSeen();
+    setLang("ru");
+    setRuAnnouncementOpen(false);
+  }, [setLang]);
 
   // Auto-open Quick Guide once for first-time users only when no other blocking modal is open
   useEffect(() => {
@@ -146,6 +181,59 @@ export function AppShell({
     user,
   ]);
 
+  // One-time Russian UI & AI support announcement for existing users (skip onboarding or if lang is already ru)
+  useEffect(() => {
+    if (!isHydrated || !user || ruAnnouncementOpen) return;
+    if (lang === "ru") return;
+    if (hasSeenRuAnnouncement()) return;
+    if (
+      !cefrOnboardingCompleted ||
+      showCefrOnboarding ||
+      isLexiIntroOpen ||
+      isWhatsNewOpen ||
+      quickGuideOpen ||
+      !hasSeenQuickGuide(user) ||
+      dailyPackModalOpen ||
+      settingsOpen ||
+      Boolean(selectedWord)
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (!hasSeenRuAnnouncement() && hasSeenQuickGuide(user)) {
+        setRuAnnouncementOpen(true);
+      }
+    }, 550);
+
+    return () => clearTimeout(timer);
+  }, [
+    cefrOnboardingCompleted,
+    dailyPackModalOpen,
+    isHydrated,
+    isLexiIntroOpen,
+    isWhatsNewOpen,
+    lang,
+    quickGuideOpen,
+    ruAnnouncementOpen,
+    selectedWord,
+    settingsOpen,
+    showCefrOnboarding,
+    user,
+  ]);
+
+  useEffect(() => {
+    if (!ruAnnouncementOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        playGlassClick();
+        handleDismissRuAnnouncement();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleDismissRuAnnouncement, ruAnnouncementOpen]);
+
   const themeToggleLabel =
     resolvedTheme === "dark"
       ? lang === "en"
@@ -160,6 +248,11 @@ export function AppShell({
           : "Ganti ke Mode Gelap";
 
   useOverlayBackGuard("settings", settingsOpen, () => setSettingsOpen(false));
+  useOverlayBackGuard(
+    "ru_announcement",
+    ruAnnouncementOpen,
+    handleDismissRuAnnouncement
+  );
 
   useEffect(() => {
     if (!celebrationToast) return;
@@ -786,6 +879,125 @@ export function AppShell({
 
       {/* Versioned What's New Feature Announcement Modal */}
       <WhatsNewModal />
+
+      {/* One-Time Russian Language Support Announcement (Existing Users) */}
+      <AnimatePresence>
+        {ruAnnouncementOpen && (
+          <div
+            key="ru-announcement-portal"
+            className="fixed inset-0 z-[65] flex items-center justify-center p-4 sm:p-6"
+          >
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={() => {
+                playGlassClick();
+                handleDismissRuAnnouncement();
+              }}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+            />
+
+            {/* Liquid Glass Card */}
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ru-announcement-title"
+              initial={{ opacity: 0, y: 20, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.96 }}
+              transition={IOS_SHEET_SPRING}
+              className="liquid-glass-elevated transform-gpu will-change-transform relative z-10 w-full max-w-md max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[32px] p-6 sm:p-8 text-center"
+            >
+              {/* Subtle top accent glow */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-[#0A84FF]/65 to-transparent"
+              />
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  playGlassClick();
+                  handleDismissRuAnnouncement();
+                }}
+                aria-label={t.russianAnnouncement.closeAria}
+                className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.05] border border-white/[0.08] text-[#8E8E93] hover:text-white hover:bg-white/[0.1] transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="flex flex-col items-center space-y-4">
+                {/* Badge */}
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF]/15 border border-[#0A84FF]/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#70BCFF]">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>{t.russianAnnouncement.badge}</span>
+                </span>
+
+                {/* Hero SVG RU Flag Emblem */}
+                <div className="relative flex items-center justify-center py-1">
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -inset-4 rounded-full blur-xl"
+                    style={{
+                      background:
+                        "radial-gradient(circle,rgba(10,132,255,0.28) 0%,rgba(213,43,30,0.16) 52%,transparent 75%)",
+                    }}
+                  />
+                  <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.07] border border-white/[0.16] shadow-[0_12px_30px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.22)]">
+                    <FlagRuIcon className="h-10 w-10" />
+                  </div>
+                </div>
+
+                {/* Title & Description */}
+                <div className="space-y-2">
+                  <h2
+                    id="ru-announcement-title"
+                    className="text-xl sm:text-2xl font-bold tracking-tight text-white"
+                  >
+                    {t.russianAnnouncement.title}
+                  </h2>
+                  <p className="text-sm text-[#D1D1D6] leading-relaxed">
+                    {t.russianAnnouncement.description}
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="w-full space-y-2.5 pt-1">
+                  <motion.button
+                    type="button"
+                    whileTap={TAP_SCALE}
+                    onClick={handleSwitchToRussian}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#0A84FF] to-[#5E5CE6] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(10,132,255,0.34)] hover:brightness-110 transition-all cursor-pointer"
+                  >
+                    <FlagRuIcon className="h-4 w-4" />
+                    <span>{t.russianAnnouncement.switchCta}</span>
+                  </motion.button>
+
+                  <motion.button
+                    type="button"
+                    whileTap={TAP_SCALE}
+                    onClick={() => {
+                      playGlassClick();
+                      handleDismissRuAnnouncement();
+                    }}
+                    className="w-full inline-flex items-center justify-center rounded-full bg-white/[0.07] border border-white/[0.12] px-6 py-3 text-sm font-semibold text-[#E5E5EA] hover:bg-white/[0.12] hover:text-white transition-colors cursor-pointer"
+                  >
+                    {t.russianAnnouncement.gotItCta}
+                  </motion.button>
+                </div>
+
+                <p className="text-[11px] text-[#8E8E93]">
+                  {t.russianAnnouncement.settingsHint}
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* First-Time CEFR Onboarding Modal */}
       <CefrOnboardingModal />
